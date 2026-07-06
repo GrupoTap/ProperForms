@@ -1,3 +1,19 @@
+<!--
+form08.html — 05/07/2026 — Sprint FormsPipeline (FIX 2)
+Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
+  - Form08 passa a honrar os_id/tarefa_id vindos do PCF: novas vars de
+    módulo _osId/_tarefaId lidas de location.search no boot, com
+    pré-preenchimento de #id-os/#id-cliente só quando os campos ainda
+    estão vazios (não sobrescreve rascunho restaurado).
+  - goToFinal() agora dispara (fire-and-forget, sem bloquear PDF/foto
+    locais) uma chamada ao GAS (action de gravação de formulário) quando
+    _osId está presente, reutilizando a mesma key já usada em
+    salvarFotoForm08 — fecha a tarefa auto:form08 no pipeline e persiste
+    o diagnóstico em FORMULARIOS.
+  - Sem ?os_id= (uso avulso), nenhuma chamada nova ao GAS é feita; fluxo
+    de fotos/PDF local segue idêntico ao anterior.
+  - Nenhum ID/data-key/nome de função renomeado.
+-->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1194,6 +1210,8 @@
 // ── END HUB SESSION CHECK ─────────────────────────────────────────────────
 
 // v_novo ─ helpers Google credential
+var _osId = '';
+var _tarefaId = '';
 function gcBody(obj) {
   return JSON.stringify(Object.assign({}, obj, { google_credential: window._GC || '' }));
 }
@@ -1790,6 +1808,24 @@ function updateThumbState(thumbId, cssClass) {
 // ══ FINAL SCREEN ══════════════════════════════════════════════════════════
 function goToFinal() {
   captureAllInputs();
+
+  if (_osId) {
+    try {
+      var _payload = {
+        action: 'saveFormulario',
+        key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+        os_id: _osId,
+        tarefa_id: _tarefaId,
+        tipo_formulario: 'form08',
+        tecnico_nome: state.identificacao.tecnico || '',
+        tecnico_id: '',
+        campos_json: state,
+        fotos_json: state.fotos || []
+      };
+      fetch(GAS_URL, { method: 'POST', body: gcBody(_payload) });
+    } catch (e) { /* silencioso — não interrompe o fluxo do form */ }
+  }
+
   renderSummary();
   showScreen('screen-final');
 }
@@ -2225,6 +2261,15 @@ document.addEventListener('DOMContentLoaded', () => {
     hydrateUI(draft);
     showToast('Rascunho restaurado');
   }
+
+  // Pipeline: ler os_id/tarefa_id da URL e pré-preencher OS/cliente
+  var _p = new URLSearchParams(location.search);
+  _osId     = _p.get('os_id')     || '';
+  _tarefaId = _p.get('tarefa_id') || '';
+  var _cli  = _p.get('cliente')   || _p.get('client')     || '';
+  var _num  = _p.get('os_numero') || _p.get('os')         || '';
+  if (_num) { var eOs = document.getElementById('id-os');      if (eOs && !eOs.value) eOs.value = _num; }
+  if (_cli) { var eCl = document.getElementById('id-cliente'); if (eCl && !eCl.value) eCl.value = _cli; }
 
   // Wire all inputs for auto-save
   wireAllInputs();
