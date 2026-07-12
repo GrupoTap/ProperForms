@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<!--
+peritagem.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com etiqueta própria
+  - Novo form_uid (pgpUid(), 1x por sessão) enviado em saveFormulario — GAS
+    (v68) deduplica reenvios sem duplicar a tarefa concluída.
+  - enviar() checa a resposta real do GAS (status==='ok') antes de considerar
+    o envio bem-sucedido; falha mostra o motivo real via toast (mantido o
+    catch existente).
+  - Modo avulso (sem os_id): mensagem final agora deixa explícito que os
+    dados do formulário NÃO ficam no sistema, só as fotos no Drive.
+  - Upload de foto renomeado 'salvarFotoForm08'→'salvarFotoForm', com
+    categoria:'foto_'+tipoForm/entity_type:tipoForm no payload (GAS mantém
+    'salvarFotoForm08' como case alias da mesma função).
+  - tecnico_id/tecnico_nome agora usam a sessão (proper_session) como
+    fallback, sem sobrescrever valor já digitado no formulário.
+  - Nenhum ID/data-key de UI renomeado. form09/form10 não tocados.
+
+  Peritagem — Form 09 (Mecânica / "FORM03") e Form 10 (Elétrica / "FORM04").
+  Motor data-driven a partir de ESPEC_Form09_Form10_peritagem.md. Um arquivo,
+  dois esquemas — selecione por ?tipo=09 ou ?tipo=10.
+  Integração idêntica ao form08: ?os_id=&tarefa_id= → grava em FORMULARIOS com
+  tipo_formulario=form09|form10 (o GAS fecha auto:form09|auto:form10) e sobe fotos
+  ao Drive via salvarFotoForm08. ZERO mudança de GAS.
+
+  Defaults aplicados nas 4 dúvidas da ESPEC (Fernando ajusta depois):
+   1) Gateway do Form09 ramifica por tipo de compressor (parafuso/pistão) — mantido.
+   2) Assinatura = nome do responsável + carimbo no PDF (sem canvas de assinatura).
+   3) Análise de óleo = só "amostra coletada" (sem campos de laudo).
+   4) Nenhuma seção extra além das da ESPEC.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Peritagem</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:680px;margin:0 auto}
+  h1{font-size:22px;font-weight:700}.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+  .card-h{padding:12px 14px;font-size:16px;font-weight:700;color:#cbd5e1;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .card-b{padding:0 14px 14px}
+  .card.collapsed .card-b{display:none}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=date],textarea,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:56px}
+  .row2{display:flex;gap:8px}.row2>div{flex:1}
+  .item{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .item:first-child{border-top:0;padding-top:0;margin-top:0}
+  .item-label{font-size:14px;margin-bottom:2px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .pills button{flex:1;min-width:56px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;cursor:pointer}
+  .pills button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .pills button.sim.on{background:var(--green);border-color:var(--green);color:#07240f}
+  .pills button.nao.on{background:var(--red);border-color:var(--red);color:#2a0a0a}
+  .pills button.na.on,.pills button.nt.on{background:var(--muted);border-color:var(--muted);color:#0b0b0b}
+  .med{display:flex;gap:6px;align-items:center}.med input{flex:1}.med .u{font-size:12px;color:var(--muted);min-width:38px}
+  .btn-foto{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit;margin-top:6px}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .thumb{width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb.ok{border-color:var(--green)}.thumb.uploading{opacity:.5}.thumb.erro{border-color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  th,td{border:1px solid var(--border);padding:5px;text-align:left}
+  th{color:var(--muted);font-weight:600}
+  td input{border:0;background:transparent;padding:4px}
+  .btn{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
+  .btn-primary:disabled{opacity:.5}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+  .ok-msg{text-align:center;padding:32px 16px}.ok-msg .big{font-size:44px}
+  @media print{ body{background:#fff;color:#000;max-width:none} .no-print{display:none!important} .card{border:1px solid #999;break-inside:avoid} .card-b{display:block!important} }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1 id="titulo">Peritagem</h1>
+  <div class="sub" id="subtitulo"></div>
+  <div id="osPill" class="pill-info" style="display:none"></div>
+  <div id="form"></div>
+  <button class="btn-primary no-print" id="btnEnviar" onclick="enviar()">✓ Concluir peritagem</button>
+  <button class="btn no-print" style="width:100%;margin-top:8px" onclick="window.print()">🖨️ Gerar PDF / imprimir</button>
+  <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+</div>
+<div id="okScreen" style="display:none">
+  <div class="ok-msg"><div class="big">✅</div><h1 style="margin-top:10px">Peritagem registrada</h1>
+  <div class="sub" id="okSub"></div>
+  <button class="btn" onclick="window.print()">🖨️ Gerar PDF</button></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+
+// ══ ESQUEMAS (transcritos da ESPEC) ══════════════════════════════════════════
+// c: sn | snnt | escala | med | texto | escolha | foto ; unit p/ med ; opts p/ escolha ; gw restringe ao gateway
+const SCHEMAS = {
+  '09': {
+    tipoForm:'form09', titulo:'Form 03 — Peritagem Mecânica',
+    subtitulo:'Peritagem com desmontagem: estado, causa raiz e orçamento de recuperação.',
+    idExtra:[],
+    gateway:{ k:'tipo_unidade', label:'Tipo de unidade compressora', opts:['Parafuso','Pistão/Alternativo','Palheta','Outro'] },
+    secoes:[
+      { id:'A', t:'A — Dados gerais e motivo', itens:[
+        {k:'defeito',label:'Defeito/falha relatado',c:'texto'},
+        {k:'motivo',label:'Motivo da peritagem (quebra, revisão, orçamento)',c:'texto'},
+        {k:'horas_ultima',label:'Horas desde a última intervenção',c:'med',unit:'h'},
+        {k:'cond_chegada',label:'Condição geral na chegada',c:'escala'},
+        {k:'historico',label:'Histórico de manutenção disponível?',c:'sn'},
+        {k:'foto_a',label:'Foto — estado na chegada / placa',c:'foto'} ]},
+      { id:'B1', t:'B1 — Unidade compressora', itens:[
+        {k:'rotores_desg',label:'Rotores macho/fêmea sem desgaste/riscos',c:'sn',gw:'Parafuso'},
+        {k:'folga_rotores',label:'Folga entre rotores dentro do especificado',c:'sn',gw:'Parafuso'},
+        {k:'folga_axial',label:'Folga axial medida',c:'med',unit:'mm',gw:'Parafuso'},
+        {k:'folga_radial',label:'Folga radial medida',c:'med',unit:'mm',gw:'Parafuso'},
+        {k:'batimento',label:'Batimento do eixo',c:'med',unit:'mm',gw:'Parafuso'},
+        {k:'revestimento',label:'Revestimento/tratamento dos rotores íntegro',c:'sn',gw:'Parafuso'},
+        {k:'contato_rotores',label:'Contato/toque entre rotores (marcas)',c:'sn',gw:'Parafuso'},
+        {k:'cilindro',label:'Cilindro/camisa sem desgaste ou ovalização',c:'sn',gw:'Pistão/Alternativo'},
+        {k:'folga_pistao',label:'Folga pistão-cilindro medida',c:'med',unit:'mm',gw:'Pistão/Alternativo'},
+        {k:'aneis',label:'Anéis de segmento/vedação em condição',c:'sn',gw:'Pistão/Alternativo'},
+        {k:'biela',label:'Biela e pino sem folga anormal',c:'sn',gw:'Pistão/Alternativo'},
+        {k:'placa_valv',label:'Placa de válvulas (palhetas) íntegra',c:'sn',gw:'Pistão/Alternativo'} ]},
+      { id:'B2', t:'B2 — Rolamentos e mancais', itens:[
+        {k:'rol_ruido',label:'Rolamentos sem ruído/aspereza ao girar',c:'sn'},
+        {k:'folga_ax_conj',label:'Folga axial do conjunto',c:'med',unit:'mm'},
+        {k:'folga_rad_conj',label:'Folga radial do conjunto',c:'med',unit:'mm'},
+        {k:'superaq',label:'Sinais de superaquecimento (coloração)',c:'sn'},
+        {k:'gaiola',label:'Gaiola/esferas/pista sem marcas (brinelling, spalling)',c:'sn'},
+        {k:'lubrif',label:'Lubrificação adequada nos mancais',c:'sn'},
+        {k:'foto_b2',label:'Foto — rolamentos/mancais',c:'foto'} ]},
+      { id:'B3', t:'B3 — Acoplamento e transmissão', itens:[
+        {k:'alinhamento',label:'Alinhamento eixo motor–compressor',c:'sn'},
+        {k:'desalinhamento',label:'Desalinhamento medido (se aplicável)',c:'med',unit:'mm'},
+        {k:'elastomero',label:'Elastômero/luva do acoplamento em condição',c:'sn'},
+        {k:'correias',label:'Correias sem desgaste/trinca',c:'snnt'},
+        {k:'tensao_correias',label:'Tensão das correias correta',c:'snnt'},
+        {k:'polias',label:'Polias sem desgaste no canal',c:'snnt'},
+        {k:'engrenagens',label:'Engrenagens sem desgaste/quebra (caixa redutora)',c:'snnt'} ]},
+      { id:'B4', t:'B4 — Vedação e óleo', itens:[
+        {k:'retentores',label:'Retentores/selos sem vazamento',c:'sn'},
+        {k:'vedacao_carcaca',label:'Vedação da carcaça íntegra',c:'sn'},
+        {k:'cor_oleo',label:'Cor do óleo',c:'escolha',opts:['limpo','escuro','leitoso','metálico']},
+        {k:'contaminacao',label:'Contaminação por água/emulsão',c:'sn'},
+        {k:'particulas',label:'Partículas metálicas no óleo/bujão magnético',c:'sn'},
+        {k:'viscosidade',label:'Viscosidade aparente adequada',c:'snnt'},
+        {k:'amostra_oleo',label:'Amostra de óleo coletada para análise',c:'sn'},
+        {k:'foto_b4',label:'Foto — óleo, dreno, retentores',c:'foto'} ]},
+      { id:'B5', t:'B5 — Válvulas', itens:[
+        {k:'v_admissao',label:'Válvula de admissão/sucção operante',c:'snnt'},
+        {k:'v_minima',label:'Válvula de mínima pressão em condição',c:'snnt'},
+        {k:'v_termo',label:'Válvula termostática abre/fecha',c:'snnt'},
+        {k:'v_retencao',label:'Válvula de retenção veda',c:'snnt'},
+        {k:'v_seguranca',label:'Válvula de segurança/alívio tarada e livre',c:'snnt'},
+        {k:'molas',label:'Molas/sedes sem desgaste',c:'sn'} ]},
+      { id:'B6', t:'B6 — Trocadores / resfriamento', itens:[
+        {k:'radiador',label:'Radiador/resfriador de óleo sem obstrução',c:'sn'},
+        {k:'aftercooler',label:'Resfriador de ar (aftercooler) limpo',c:'sn'},
+        {k:'incrustacao',label:'Sem incrustação/entupimento nas colmeias',c:'sn'},
+        {k:'vaz_troc',label:'Sem vazamento nos trocadores',c:'sn'},
+        {k:'ventilador',label:'Ventilador/ventilação em condição',c:'snnt'} ]},
+      { id:'B7', t:'B7 — Estrutura, carcaça e tubulação', itens:[
+        {k:'carcaca',label:'Carcaça sem trincas',c:'sn'},
+        {k:'tubulacoes',label:'Tubulações/mangueiras sem dano ou corrosão',c:'sn'},
+        {k:'fixacoes',label:'Fixações/coxins/amortecedores em condição',c:'sn'},
+        {k:'chassi',label:'Chassi/base sem corrosão estrutural',c:'sn'},
+        {k:'foto_b7',label:'Foto — estrutura e pontos críticos',c:'foto'} ]},
+      { id:'C', t:'C — Diagnóstico / causa raiz', itens:[
+        {k:'comp_falha',label:'Componente(s) com falha identificada',c:'texto'},
+        {k:'causa_raiz',label:'Causa raiz provável',c:'texto'},
+        {k:'recuperavel',label:'Recuperável?',c:'escolha',opts:['recuperar','substituir','inviável']} ]},
+    ],
+    orcamento:true,
+    parecer:{ opts:['Aprovado p/ recuperação','Recuperação com ressalva','Reprovado/substituir'] }
+  },
+  '10': {
+    tipoForm:'form10', titulo:'Form 04 — Peritagem Elétrica',
+    subtitulo:'Peritagem elétrica do conjunto motor + partida + comando.',
+    idExtra:[
+      {k:'potencia',label:'Potência (CV/kW)'},{k:'tensao_nom',label:'Tensão nominal'},
+      {k:'corrente_nom',label:'Corrente nominal (A)'},{k:'classe_isol',label:'Classe de isolação'},
+      {k:'ip',label:'Grau de proteção (IP)'} ],
+    gateway:{ k:'tipo_partida', label:'Tipo de partida', opts:['Direta','Estrela-triângulo','Soft-starter','Inversor (VFD)'] },
+    secoes:[
+      { id:'A', t:'A — Dados gerais', itens:[
+        {k:'sintoma',label:'Sintoma/falha elétrica relatada',c:'texto'},
+        {k:'motor_liga',label:'Motor liga/energiza?',c:'sn'},
+        {k:'atua_protecao',label:'Atua proteção (desarma)?',c:'snnt'},
+        {k:'cond_painel',label:'Condição geral do painel na chegada',c:'escala'},
+        {k:'foto_a',label:'Foto — placa do motor / painel na chegada',c:'foto'} ]},
+      { id:'B1', t:'B1 — Motor elétrico (enrolamentos/isolação)', itens:[
+        {k:'iso_fase_terra',label:'Resistência de isolamento fase–terra',c:'med',unit:'MΩ'},
+        {k:'iso_fase_fase',label:'Resistência de isolamento fase–fase',c:'med',unit:'MΩ'},
+        {k:'indice_pol',label:'Índice de polarização (IP)',c:'med',unit:'ratio'},
+        {k:'ohm_rs',label:'Resistência ôhmica R–S',c:'med',unit:'Ω'},
+        {k:'ohm_st',label:'Resistência ôhmica S–T',c:'med',unit:'Ω'},
+        {k:'ohm_tr',label:'Resistência ôhmica T–R',c:'med',unit:'Ω'},
+        {k:'desequilibrio_enr',label:'Desequilíbrio entre enrolamentos dentro do limite',c:'sn'},
+        {k:'continuidade',label:'Continuidade dos enrolamentos OK',c:'sn'},
+        {k:'queima',label:'Sinais de queima/curto/verniz carbonizado',c:'sn'},
+        {k:'foto_b1',label:'Foto — enrolamentos / teste de isolação',c:'foto'} ]},
+      { id:'B2', t:'B2 — Rolamentos do motor', itens:[
+        {k:'rol_motor_ruido',label:'Rolamentos sem ruído/aspereza',c:'sn'},
+        {k:'corrente_fuga',label:'Sinais de corrente de fuga (estrias/fluting)',c:'sn'},
+        {k:'lubrif_motor',label:'Lubrificação/vedação em condição',c:'sn'} ]},
+      { id:'B3', t:'B3 — Alimentação e proteção', itens:[
+        {k:'tensao_r',label:'Tensão fase R',c:'med',unit:'V'},
+        {k:'tensao_s',label:'Tensão fase S',c:'med',unit:'V'},
+        {k:'tensao_t',label:'Tensão fase T',c:'med',unit:'V'},
+        {k:'deseq_tensao',label:'Desequilíbrio de tensão dentro do limite',c:'sn'},
+        {k:'disjuntor',label:'Disjuntor/seccionadora em condição',c:'sn'},
+        {k:'fusiveis',label:'Fusíveis íntegros e corretos',c:'snnt'},
+        {k:'rele_sobrecarga',label:'Relé de sobrecarga ajustado corretamente',c:'sn'},
+        {k:'contator',label:'Contator — contatos sem desgaste/colagem',c:'sn'},
+        {k:'bobina',label:'Bobina do contator OK',c:'snnt'} ]},
+      { id:'B4', t:'B4 — Partida', itens:[
+        {k:'param_partida',label:'Parâmetros de partida configurados corretamente',c:'snnt'},
+        {k:'falhas_partida',label:'Falhas registradas no equipamento de partida',c:'texto'},
+        {k:'capacitores',label:'Capacitores (partida/correção) em condição',c:'snnt'},
+        {k:'sem_alarme',label:'Soft-starter/inversor sem alarme ativo',c:'snnt'},
+        {k:'rampa',label:'Rampa/tempo de partida adequados',c:'snnt'},
+        {k:'foto_b4',label:'Foto — dispositivo de partida / parâmetros',c:'foto'} ]},
+      { id:'B5', t:'B5 — Comando e sensores', itens:[
+        {k:'pressostato',label:'Pressostato/transdutor de pressão calibrado',c:'snnt'},
+        {k:'sensor_temp',label:'Sensor de temperatura (PT100/termistor) OK',c:'snnt'},
+        {k:'ihm',label:'IHM/controlador sem falha',c:'snnt'},
+        {k:'fiacao',label:'Fiação de comando sem dano/mau contato',c:'sn'},
+        {k:'botoeiras',label:'Botoeiras/sinaleiros funcionando',c:'snnt'} ]},
+      { id:'B6', t:'B6 — Aterramento e segurança', itens:[
+        {k:'aterramento',label:'Continuidade de aterramento OK',c:'sn'},
+        {k:'res_aterramento',label:'Resistência de aterramento (se medida)',c:'med',unit:'Ω'},
+        {k:'torque',label:'Torque das conexões de força conferido',c:'sn'},
+        {k:'prensa_cabos',label:'Prensa-cabos/vedação do painel em condição',c:'sn'},
+        {k:'termografia',label:'Termografia — pontos quentes',c:'snnt'},
+        {k:'maior_temp',label:'Maior temperatura registrada (termografia)',c:'med',unit:'°C'},
+        {k:'foto_b6',label:'Foto — termografia / conexões / aterramento',c:'foto'} ]},
+      { id:'C', t:'C — Diagnóstico / causa raiz elétrica', itens:[
+        {k:'comp_falha',label:'Componente(s) com falha',c:'texto'},
+        {k:'causa_raiz',label:'Causa raiz provável',c:'texto'},
+        {k:'recuperavel',label:'Motor recuperável (rebobinar) ou substituir?',c:'escolha',opts:['recuperar','rebobinar','substituir']} ]},
+    ],
+    orcamento:true,
+    parecer:{ opts:['Aprovado','Aprovado com ressalva','Reprovado'] }
+  }
+};
+const URGENCIAS = ['Normal','Alta','Crítica'];
+
+let SC, _osId='', _tarefaId='', _enviado=false, _gwVal='';
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+const _formUid = pgpUid();
+const state = { fotos:{}, itens:{}, orcamento:[], parecer:{} };
+
+// ══ RENDER ══
+function render(){
+  document.getElementById('titulo').textContent = SC.titulo;
+  document.getElementById('subtitulo').textContent = SC.subtitulo;
+  let h = '';
+  // Identificação
+  h += card('id','Identificação', `
+    <div class="row2"><div><label>Técnico responsável</label><input type="text" id="i_tecnico"></div>
+      <div><label>Data</label><input type="date" id="i_data"></div></div>
+    <div class="row2"><div><label>Nº da OS</label><input type="text" id="i_os"></div>
+      <div><label>Cliente</label><input type="text" id="i_cliente"></div></div>
+    <div class="row2"><div><label>Equipamento / TAG</label><input type="text" id="i_equip"></div>
+      <div><label>Modelo / Série</label><input type="text" id="i_modelo"></div></div>
+    <div class="row2"><div><label>Horímetro</label><input type="number" id="i_horimetro"></div>
+      <div><label>Ano de fabricação</label><input type="number" id="i_ano"></div></div>
+    ${SC.idExtra.map(f=>`<label>${f.label}</label><input type="text" id="ix_${f.k}">`).join('')}
+  `, false);
+  // Gateway
+  h += card('gw', SC.gateway.label, `<div class="pills" id="gwPills">
+    ${SC.gateway.opts.map(o=>`<button onclick="setGw('${esc(o)}',this)">${o}</button>`).join('')}</div>`, false);
+  // Seções
+  SC.secoes.forEach(s=>{ h += card('sec_'+s.id, s.t, s.itens.map(renderItem).join(''), true, 'data-sec="'+s.id+'"'); });
+  // Orçamento
+  if (SC.orcamento) h += card('orc','D — Orçamento (peças + mão de obra)', `
+    <table id="orcTable"><thead><tr><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>MO</th><th>Total</th></tr></thead><tbody></tbody></table>
+    <button class="btn no-print" style="margin-top:8px" onclick="addOrcRow()">+ Item</button>
+    <div style="text-align:right;margin-top:8px;font-weight:700">Total geral: R$ <span id="orcTotal">0,00</span></div>
+    <label>Validade da proposta</label><input type="text" id="orc_validade" placeholder="Ex.: 15 dias">`, true);
+  // Observações
+  h += card('obs','E — Observações e recomendações', `<textarea id="o_obs" placeholder="Texto livre"></textarea>`, true);
+  // Parecer
+  h += card('par','F — Parecer técnico', `
+    <label>Parecer</label><div class="pills" id="parPills">${SC.parecer.opts.map(o=>`<button onclick="setPar('parecer','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Urgência</label><div class="pills" id="urgPills">${URGENCIAS.map(o=>`<button onclick="setPar('urgencia','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Assinatura do responsável (nome)</label><input type="text" id="p_assinatura">`, false);
+  document.getElementById('form').innerHTML = h;
+  applyGwVisibility();
+}
+function card(id,title,body,collapsed,attrs){
+  return `<div class="card ${collapsed?'collapsed':''}" id="card_${id}" ${attrs||''}>
+    <div class="card-h" onclick="this.parentElement.classList.toggle('collapsed')"><span>${title}</span><span>▾</span></div>
+    <div class="card-b">${body}</div></div>`;
+}
+function renderItem(it){
+  let ctrl='';
+  if (it.c==='sn'||it.c==='snnt'){
+    const opts = it.c==='snnt' ? [['Sim','sim'],['Não','nao'],['N/A','na'],['NT','nt']] : [['Sim','sim'],['Não','nao'],['N/A','na']];
+    ctrl = `<div class="pills" data-k="${it.k}">${opts.map(([l,v])=>`<button class="${v}" onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+  } else if (it.c==='escala'){
+    ctrl = `<div class="pills" data-k="${it.k}">${[['Bom','bom'],['Regular','regular'],['Ruim','ruim']].map(([l,v])=>`<button onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+  } else if (it.c==='escolha'){
+    ctrl = `<div class="pills" data-k="${it.k}">${it.opts.map(o=>`<button onclick="setItem('${it.k}','${esc(o)}',this)">${o}</button>`).join('')}</div>`;
+  } else if (it.c==='med'){
+    ctrl = `<div class="med"><input type="number" step="any" onchange="setItem('${it.k}',this.value)"><span class="u">${it.unit||''}</span></div>`;
+  } else if (it.c==='texto'){
+    ctrl = `<textarea onchange="setItem('${it.k}',this.value)"></textarea>`;
+  } else if (it.c==='foto'){
+    state.fotos[it.k]=state.fotos[it.k]||[];
+    ctrl = `<button class="btn-foto no-print" onclick="pickPhoto('${it.k}')">📷 Adicionar foto</button><div class="thumbs" id="thumbs-${it.k}"></div>`;
+  }
+  return `<div class="item" data-gw="${it.gw?esc(it.gw):''}"><div class="item-label">${it.label}</div>${ctrl}</div>`;
+}
+function setItem(k,v,btn){ state.itens[k]=v; if(btn){ const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); } }
+function setGw(v,btn){ _gwVal=v; state.gateway=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); applyGwVisibility(); }
+function setPar(k,v,btn){ state.parecer[k]=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); }
+function applyGwVisibility(){
+  document.querySelectorAll('.item[data-gw]').forEach(el=>{
+    const gw=el.getAttribute('data-gw'); el.style.display = (!gw || gw===_gwVal) ? '' : 'none';
+  });
+}
+
+// ══ Orçamento ══
+function addOrcRow(){
+  const tb=document.querySelector('#orcTable tbody');
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input type="text"></td><td><input type="number" value="1" style="width:44px" oninput="calcOrc()"></td>
+    <td><input type="number" step="any" style="width:70px" oninput="calcOrc()"></td>
+    <td style="text-align:center"><input type="checkbox" oninput="calcOrc()"></td><td class="rowtot">0,00</td>`;
+  tb.appendChild(tr); calcOrc();
+}
+function calcOrc(){
+  let total=0;
+  document.querySelectorAll('#orcTable tbody tr').forEach(tr=>{
+    const q=parseFloat(tr.children[1].querySelector('input').value)||0;
+    const v=parseFloat(tr.children[2].querySelector('input').value)||0;
+    const t=q*v; total+=t; tr.querySelector('.rowtot').textContent=t.toFixed(2).replace('.',',');
+  });
+  document.getElementById('orcTotal').textContent=total.toFixed(2).replace('.',',');
+}
+
+// ══ Fotos ══
+function pickPhoto(secao){
+  const inp=document.getElementById('fileInput');
+  inp.onchange=e=>{ const f=e.target.files[0]; if(f) handlePhoto(secao,f); inp.value=''; };
+  inp.click();
+}
+function handlePhoto(secao,file){
+  const reader=new FileReader();
+  reader.onload=()=>{ const img=new Image(); img.onload=()=>{
+    let {width:w,height:h}=img; if(w>MAX_IMG_PX||h>MAX_IMG_PX){const r=Math.min(MAX_IMG_PX/w,MAX_IMG_PX/h);w=Math.round(w*r);h=Math.round(h*r);}
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    uploadPhoto(secao,cv.toDataURL('image/jpeg',IMG_QUALITY),file.name||'foto.jpg');
+  }; img.src=reader.result; };
+  reader.readAsDataURL(file);
+}
+async function uploadPhoto(secao,dataUrl,fileName){
+  const cont=document.getElementById('thumbs-'+secao);
+  const el=document.createElement('img');el.className='thumb uploading';el.src=dataUrl;cont.appendChild(el);
+  state.fotos[secao]=state.fotos[secao]||[];
+  try{
+    const payload={action:'salvarFotoForm',os:curOs(),cliente:val('i_cliente')||'SemCliente',secao,nomeArquivo:fileName,base64:dataUrl.split(',')[1],mimeType:'image/jpeg',categoria:'foto_'+SC.tipoForm,entity_type:SC.tipoForm};
+    const resp=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
+    const data=JSON.parse(await resp.text());
+    if(!data||data.ok!==true) throw new Error(data.error||'falha');
+    el.className='thumb ok'; state.fotos[secao].push({url:data.url,fileName,status:'ok'});
+  }catch(err){ el.className='thumb erro'; state.fotos[secao].push({url:null,fileName,status:'erro'}); toast('Erro ao enviar foto'); }
+}
+function curOs(){ return val('i_os')||_osId||'SemOS'; }
+
+// ══ Captura + envio ══
+function captura(){
+  state.identificacao={ tecnico:val('i_tecnico'),data:val('i_data'),os:val('i_os'),cliente:val('i_cliente'),
+    equipamento:val('i_equip'),modelo:val('i_modelo'),horimetro:val('i_horimetro'),ano:val('i_ano') };
+  SC.idExtra.forEach(f=>{ state.identificacao[f.k]=val('ix_'+f.k); });
+  state.observacoes=val('o_obs');
+  state.parecer.assinatura=val('p_assinatura');
+  state.orcamento=[];
+  document.querySelectorAll('#orcTable tbody tr').forEach(tr=>{
+    state.orcamento.push({ descricao:tr.children[0].querySelector('input').value, qtd:tr.children[1].querySelector('input').value,
+      vunit:tr.children[2].querySelector('input').value, mo:tr.children[3].querySelector('input').checked });
+  });
+  state.orcamento_validade=val('orc_validade');
+  state.orcamento_total=document.getElementById('orcTotal').textContent;
+}
+async function enviar(){
+  captura();
+  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Enviando…';
+  if(_osId && !_enviado){
+    _enviado=true;
+    var _sess=null;
+    try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+    try{
+      const fotosFlat=[]; Object.keys(state.fotos).forEach(k=>(state.fotos[k]||[]).forEach(f=>fotosFlat.push(Object.assign({secao:k},f))));
+      const payload={action:'saveFormulario',os_id:_osId,tarefa_id:_tarefaId,tipo_formulario:SC.tipoForm,form_uid:_formUid,
+        tecnico_nome:state.identificacao.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'',
+        tecnico_id:(_sess&&_sess.tecnico&&_sess.tecnico.id)||'',campos_json:state,fotos_json:fotosFlat};
+      const r=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
+      const d=JSON.parse(await r.text());
+      if(d.status!=='ok') throw new Error(d.message||'Erro do servidor');
+    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem'; toast('Erro ao enviar: ' + e.message); return; }
+  }
+  document.getElementById('app').style.display='none';
+  const ok=document.getElementById('okScreen'); ok.style.display='';
+  document.getElementById('okSub').textContent=_osId?'A tarefa foi concluída no pipeline. Gere o PDF para anexar ao orçamento.':'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+function val(id){ const e=document.getElementById(id); return e?e.value.trim():''; }
+function esc(s){ return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+
+(function init(){
+  const p=new URLSearchParams(location.search);
+  const tipo=(p.get('tipo')||'09'); SC=SCHEMAS[tipo]||SCHEMAS['09'];
+  _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||''; window._GC=p.get('gc')||window._GC||'';
+  render();
+  if(p.get('cliente')) document.getElementById('i_cliente').value=p.get('cliente');
+  if(p.get('os_numero')) document.getElementById('i_os').value=p.get('os_numero');
+  document.getElementById('i_data').value=new Date().toISOString().slice(0,10);
+  if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId); }
+  addOrcRow();
+})();
+</script>
+</body>
+</html>

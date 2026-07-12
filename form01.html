@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<!--
+form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com etiqueta própria
+  - Novo form_uid (pgpUid(), 1x por sessão) enviado em saveFormulario — GAS
+    (v68) deduplica reenvios sem duplicar a tarefa concluída.
+  - enviar() checa a resposta real do GAS (status==='ok') antes de considerar
+    o envio bem-sucedido; falha mostra o motivo real via toast (mantido o
+    catch existente).
+  - Modo avulso (sem os_id): mensagem final agora deixa explícito que os
+    dados do formulário NÃO ficam no sistema, só as fotos no Drive.
+  - Upload de foto renomeado 'salvarFotoForm08'→'salvarFotoForm', com
+    categoria:'foto_form01'/entity_type:'form01' no payload (GAS mantém
+    'salvarFotoForm08' como case alias da mesma função).
+  - tecnico_id/tecnico_nome agora usam a sessão (proper_session) como
+    fallback, sem sobrescrever valor já digitado no formulário.
+  - Nenhum ID/data-key de UI renomeado.
+
+  Form 01 — Recebimento de máquina (ProperCare, fluxo de oficina).
+  Padrão de integração do form08: roda pelo pipeline via ?os_id=&tarefa_id=,
+  grava em FORMULARIOS com tipo_formulario=form01 (o GAS fecha a tarefa auto:form01)
+  e sobe fotos ao Drive via salvarFotoForm08. ZERO mudança de GAS.
+  Objetivo: registrar o estado de integridade na CHEGADA (protege contra reclamação).
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Form 01 — Recebimento</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:640px;margin:0 auto}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card h2{font-size:16px;margin-bottom:10px;color:#cbd5e1}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=date],textarea,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:64px}
+  .row2{display:flex;gap:8px}.row2>div{flex:1}
+  .sn{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .sn button{flex:1;min-width:64px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px;font-size:13px;font-family:inherit;cursor:pointer}
+  .sn button.sim.on{background:var(--green);border-color:var(--green);color:#07240f}
+  .sn button.nao.on{background:var(--red);border-color:var(--red);color:#2a0a0a}
+  .sn button.na.on{background:var(--muted);border-color:var(--muted);color:#0b0b0b}
+  .item{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .item:first-child{border-top:0;padding-top:0;margin-top:0}
+  .photo-zone{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .btn-foto{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap}
+  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb.ok{border-color:var(--green)}.thumb.uploading{opacity:.5}.thumb.erro{border-color:var(--red)}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
+  .btn-primary:disabled{opacity:.5}
+  .ok-msg{text-align:center;padding:32px 16px}
+  .ok-msg .big{font-size:44px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>📥 Recebimento de máquina</h1>
+  <div class="sub">Registro do estado na chegada à oficina — Form 01</div>
+  <div id="osPill" class="pill-info" style="display:none"></div>
+
+  <div class="card">
+    <h2>Identificação</h2>
+    <div class="row2">
+      <div><label>Técnico/ADM responsável</label><input type="text" id="f_tecnico"></div>
+      <div><label>Data</label><input type="date" id="f_data"></div>
+    </div>
+    <div class="row2">
+      <div><label>Nº da OS</label><input type="text" id="f_os"></div>
+      <div><label>Cliente</label><input type="text" id="f_cliente"></div>
+    </div>
+    <div class="row2">
+      <div><label>Equipamento / TAG</label><input type="text" id="f_equip"></div>
+      <div><label>Modelo / Série</label><input type="text" id="f_modelo"></div>
+    </div>
+    <label>Transportadora / frete</label><input type="text" id="f_frete" placeholder="Quem entregou a máquina">
+  </div>
+
+  <div class="card">
+    <h2>Integridade na chegada</h2>
+    <div id="checklist"></div>
+  </div>
+
+  <div class="card">
+    <h2>Observações e avarias</h2>
+    <label>Descreva qualquer defeito, dano ou falta de componente observado na chegada</label>
+    <textarea id="f_avarias" placeholder="Ex.: carenagem amassada, falta tampa lateral, óleo vazando..."></textarea>
+    <label style="margin-top:10px">Acessórios/itens que acompanham a máquina</label>
+    <textarea id="f_acessorios" placeholder="Ex.: painel, mangueiras, manual..."></textarea>
+  </div>
+
+  <div class="card">
+    <h2>📷 Fotos da chegada</h2>
+    <div class="sub" style="margin-bottom:8px">Registre a máquina por todos os lados + a placa de identificação. Protege contra reclamação posterior.</div>
+    <div class="photo-zone">
+      <button class="btn-foto" onclick="pickPhoto('chegada')">📷 Adicionar foto</button>
+      <div class="thumbs" id="thumbs-chegada"></div>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+  </div>
+
+  <button class="btn-primary" id="btnEnviar" onclick="enviar()">✓ Concluir recebimento</button>
+</div>
+
+<div id="okScreen" style="display:none">
+  <div class="ok-msg">
+    <div class="big">✅</div>
+    <h1 style="margin-top:10px">Recebimento registrado</h1>
+    <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+
+let _osId = '', _tarefaId = '', _enviado = false;
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+const _formUid = pgpUid();
+const state = { fotos: { chegada: [] }, checklist: {} };
+
+const CHECK_ITENS = [
+  { k:'carenagem', label:'Carenagem/gabinete sem danos aparentes' },
+  { k:'placa',     label:'Placa de identificação legível' },
+  { k:'completa',  label:'Máquina completa (sem faltar componentes)' },
+  { k:'vazamento', label:'Sem vazamento de óleo na chegada' },
+  { k:'dano_transp', label:'Sem dano de transporte visível' },
+];
+
+function initChecklist(){
+  const box = document.getElementById('checklist');
+  box.innerHTML = CHECK_ITENS.map(it => `
+    <div class="item">
+      <div>${it.label}</div>
+      <div class="sn" data-k="${it.k}">
+        <button class="sim" onclick="setSN('${it.k}','sim',this)">Sim</button>
+        <button class="nao" onclick="setSN('${it.k}','nao',this)">Não</button>
+        <button class="na"  onclick="setSN('${it.k}','na',this)">N/A</button>
+      </div>
+    </div>`).join('');
+}
+function setSN(k, val, btn){
+  state.checklist[k] = val;
+  const parent = btn.parentElement;
+  parent.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+// ── Fotos ──
+function pickPhoto(secao){
+  const inp = document.getElementById('fileInput');
+  inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(secao, f); inp.value=''; };
+  inp.click();
+}
+function handlePhoto(secao, file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      let { width:w, height:h } = img;
+      if (w > MAX_IMG_PX || h > MAX_IMG_PX){ const r = Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
+      uploadPhoto(secao, dataUrl, file.name || 'foto.jpg');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function uploadPhoto(secao, dataUrl, fileName){
+  const thumbId = 'th-' + Date.now();
+  const cont = document.getElementById('thumbs-' + secao);
+  const el = document.createElement('img'); el.className='thumb uploading'; el.id=thumbId; el.src=dataUrl; cont.appendChild(el);
+  const base64 = dataUrl.split(',')[1];
+  try{
+    const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_form01', entity_type:'form01' };
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+    const data = JSON.parse(await resp.text());
+    if (!data || data.ok !== true) throw new Error(data.error||'falha');
+    el.className='thumb ok';
+    state.fotos[secao].push({ url:data.url, fileName, status:'ok' });
+  }catch(err){
+    el.className='thumb erro';
+    state.fotos[secao].push({ url:null, fileName, status:'erro' });
+    toast('Erro ao enviar foto — tente de novo');
+  }
+}
+function state_os(){ return val('f_os') || _osId || 'SemOS'; }
+
+function captura(){
+  state.identificacao = {
+    tecnico: val('f_tecnico'), data: val('f_data'), os: val('f_os'), cliente: val('f_cliente'),
+    equipamento: val('f_equip'), modelo: val('f_modelo'), frete: val('f_frete')
+  };
+  state.avarias = val('f_avarias');
+  state.acessorios = val('f_acessorios');
+}
+async function enviar(){
+  captura();
+  const btn = document.getElementById('btnEnviar');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  if (_osId && !_enviado){
+    _enviado = true;
+    var _sess = null;
+    try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    try{
+      const payload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'form01', form_uid:_formUid,
+        tecnico_nome: state.identificacao.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
+        tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '', campos_json: state, fotos_json: state.fotos.chegada||[] };
+      const r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      const d = JSON.parse(await r.text());
+      if (d.status !== 'ok') throw new Error(d.message || 'Erro do servidor');
+    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir recebimento'; toast('Erro ao enviar: ' + e.message); return; }
+  }
+  document.getElementById('app').style.display='none';
+  document.getElementById('okScreen').style.display='';
+  document.getElementById('okSub').textContent = _osId ? 'A tarefa de recebimento foi concluída no pipeline.' : 'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+
+(function init(){
+  initChecklist();
+  const p = new URLSearchParams(location.search);
+  _osId = p.get('os_id') || ''; _tarefaId = p.get('tarefa_id') || '';
+  window._GC = p.get('gc') || window._GC || '';
+  if (p.get('cliente')) document.getElementById('f_cliente').value = p.get('cliente');
+  if (p.get('os_numero')) document.getElementById('f_os').value = p.get('os_numero');
+  if (_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: ' + (p.get('os_numero')||_osId); }
+  document.getElementById('f_data').value = new Date().toISOString().slice(0,10);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2349 @@
+<!--
+form02.html — 11/07/2026 — Sprint F: rename form08→form02 + envio robusto
+  - Renomeado de form08.html para form02.html: tipo_formulario, DRAFT_KEY,
+    textos "FORM 08"→"FORM 02", trigger auto:form02 (autoCompletarTarefa já
+    é genérico via 'auto:'+trigger_type, não foi tocado). PCF/PCM/Hub têm
+    aliases legados form08 apontando para as mesmas URLs/labels novas.
+  - action de upload de foto renomeada 'salvarFotoForm08'→'salvarFotoForm'
+    (GAS mantém 'salvarFotoForm08' como case alias da mesma função), com
+    entity_type:'form02'/categoria:'foto_form02' no payload.
+  - Novo form_uid (pgpUid(), 1x por sessão) enviado em saveFormulario —
+    permite ao GAS (v68) deduplicar reenvios sem duplicar a tarefa concluída.
+  - goToFinal() agora é async e checa a resposta real do GAS (status==='ok')
+    antes de considerar o envio bem-sucedido; falha mostra o motivo real via
+    toast e um aviso persistente na tela final, sem travar PDF/fotos locais.
+  - tecnico_id/tecnico_nome agora usam a sessão (proper_session) como
+    fallback, sem sobrescrever valor já digitado no formulário.
+  - Mantido key: inline no payload de saveFormulario (gcBody deste arquivo
+    injeta só google_credential, não key — GAS exige body.key em todo
+    doPost; removê-lo quebraria o envio).
+  - Nenhum ID/data-key de UI renomeado.
+
+form08.html — 08/07/2026 — Modo de teste local (dev bypass)
+  - checkHubSession: em localhost / 127.0.0.1 / file:// (ou ?dev=1 fora de
+    produção) pula o redirect pro ProperHub e injeta sessão fake, permitindo
+    abrir a cópia local pra testar sem commitar. Em grupotap.github.io o gate
+    original é preservado 100% (bypass nunca ativa em produção).
+
+form08.html — 08/07/2026 — FP-05: dedup de envio
+  - goToFinal() só grava em FORMULARIOS uma vez por sessão do form (guard
+    _formularioEnviado). Reabrir/reclicar a tela final não cria mais linhas
+    duplicadas em FORMULARIOS. Envio segue fire-and-forget; falha síncrona
+    libera nova tentativa. Nenhum ID/data-key/nome de função renomeado.
+
+form08.html — 05/07/2026 — Sprint FormsPipeline (FIX 2)
+Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
+  - Form08 passa a honrar os_id/tarefa_id vindos do PCF: novas vars de
+    módulo _osId/_tarefaId lidas de location.search no boot, com
+    pré-preenchimento de #id-os/#id-cliente só quando os campos ainda
+    estão vazios (não sobrescreve rascunho restaurado).
+  - goToFinal() agora dispara (fire-and-forget, sem bloquear PDF/foto
+    locais) uma chamada ao GAS (action de gravação de formulário) quando
+    _osId está presente, reutilizando a mesma key já usada em
+    salvarFotoForm08 — fecha a tarefa auto:form08 no pipeline e persiste
+    o diagnóstico em FORMULARIOS.
+  - Sem ?os_id= (uso avulso), nenhuma chamada nova ao GAS é feita; fluxo
+    de fotos/PDF local segue idêntico ao anterior.
+  - Nenhum ID/data-key/nome de função renomeado.
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#C0392B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>PROPER – Diagnóstico Sem Desmontagem</title>
+  <link id="manifest-link" rel="manifest">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --bg-app:      #111827;
+      --bg-card:     #1F2937;
+      --bg-section:  #374151;
+      --accent:      #C0392B;
+      --btn-sim:     #27AE60;
+      --btn-nao:     #E74C3C;
+      --btn-na:      #7F8C8D;
+      --btn-nt:      #7F8C8D;
+      --btn-idle:    #374151;
+      --text-primary:   #F9FAFB;
+      --text-secondary: #9CA3AF;
+      --touch-min:   52px;
+      --radius:      10px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-primary);
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── APP SHELL ─────────────────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* ── HEADER ────────────────────────────────────────────────────────── */
+    #app-header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg-card);
+      border-bottom: 1px solid #374151;
+      padding: 10px 14px 0;
+    }
+    .header-row {
+      display: flex; align-items: center; gap: 10px; padding-bottom: 10px;
+    }
+    .header-logo {
+      width: 34px; height: 34px; flex-shrink: 0;
+      background: var(--accent); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 17px; color: #fff;
+    }
+    #header-section-name {
+      flex: 1; font-size: 15px; font-weight: 600; color: var(--text-primary);
+    }
+    #header-progress {
+      background: var(--bg-section); border-radius: 20px;
+      padding: 3px 10px; font-size: 12px; font-weight: 600;
+      color: var(--text-secondary);
+    }
+    #progress-bar-outer {
+      height: 4px; background: var(--bg-section); border-radius: 2px;
+      margin: 0 -14px;
+    }
+    #progress-bar-fill {
+      height: 4px; background: var(--accent); border-radius: 2px;
+      width: 0%; transition: width 0.3s ease;
+    }
+
+    /* ── SCREENS ───────────────────────────────────────────────────────── */
+    .screen { display: none; flex-direction: column; flex: 1; padding-bottom: 80px; }
+    .screen.active { display: flex; }
+
+    /* ── CARDS ─────────────────────────────────────────────────────────── */
+    .card { background: var(--bg-card); border-radius: var(--radius); padding: 16px; margin: 12px 12px 0; }
+    .card:last-of-type { margin-bottom: 0; }
+    .section-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--text-primary); }
+    .section-block { background: var(--bg-section); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+
+    /* ── FIELD GROUP ───────────────────────────────────────────────────── */
+    .field-group { margin-bottom: 14px; }
+    .field-group:last-child { margin-bottom: 0; }
+    .field-group label {
+      display: block; font-size: 13px; font-weight: 600;
+      color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .field-group input, .field-group textarea, .field-group select {
+      width: 100%; background: var(--bg-section);
+      border: 1.5px solid #4B5563; border-radius: 8px;
+      color: var(--text-primary); font-family: inherit;
+      font-size: 18px; padding: 12px 14px;
+      min-height: var(--touch-min); appearance: none;
+    }
+    .field-group input:focus, .field-group textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .field-group textarea { min-height: 90px; resize: vertical; font-size: 16px; }
+
+    /* ── TOGGLE BUTTON GROUP ───────────────────────────────────────────── */
+    .item-row { margin-bottom: 12px; }
+    .item-label { font-size: 15px; color: var(--text-primary); margin-bottom: 6px; font-weight: 400; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-toggle {
+      flex: 1; min-height: var(--touch-min); min-width: 52px;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-size: 15px; font-weight: 600; color: var(--text-primary);
+      background: var(--btn-idle); transition: background 0.15s, transform 0.1s;
+      font-family: inherit;
+    }
+    .btn-toggle:active { transform: scale(0.96); }
+    .btn-toggle.active-S  { background: var(--btn-sim); }
+    .btn-toggle.active-N  { background: var(--btn-nao); }
+    .btn-toggle.active-NA { background: var(--btn-na); }
+    .btn-toggle.active-NT { background: var(--btn-nt); }
+    .btn-toggle.active-boa    { background: var(--btn-sim); }
+    .btn-toggle.active-regular { background: #E67E22; }
+    .btn-toggle.active-ruim   { background: var(--btn-nao); }
+
+    /* ── CONDITIONAL ITEMS (gateway no_boot) ───────────────────────────── */
+    .conditional-item { position: relative; transition: opacity 0.2s; }
+    .conditional-item.skipped {
+      opacity: 0.35; pointer-events: none;
+    }
+    .skipped-badge {
+      display: none; position: absolute; top: 4px; right: 4px;
+      background: #4B5563; color: #9CA3AF;
+      font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 4px; letter-spacing: 0.05em;
+    }
+    .conditional-item.skipped .skipped-badge { display: block; }
+
+    /* ── PHOTO ZONE ────────────────────────────────────────────────────── */
+    .photo-zone {
+      background: var(--bg-section); border-radius: var(--radius);
+      padding: 14px; border: 2px dashed #4B5563; margin-top: 14px;
+    }
+    .photo-zone-label {
+      font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; font-weight: 600;
+    }
+    .btn-capture {
+      display: flex; align-items: center; gap: 8px;
+      min-height: var(--touch-min); padding: 0 16px;
+      background: var(--bg-card); border: 1.5px solid #4B5563;
+      border-radius: 8px; color: var(--text-primary);
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      font-family: inherit; width: 100%; justify-content: center;
+    }
+    .photo-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .photo-thumb {
+      width: 72px; height: 72px; object-fit: cover;
+      border-radius: 6px; border: 2px solid #374151;
+      transition: opacity 0.2s;
+    }
+    .photo-thumb.uploading { opacity: 0.5; animation: pulse 1s infinite; }
+    .photo-thumb.confirmado { border-color: var(--btn-sim); }
+    .photo-thumb.erro { border-color: var(--btn-nao); }
+    .photo-thumb.local { border-color: #E67E22; opacity: 0.7; }
+    @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:.9} }
+
+    /* ── FOOTER NAV ────────────────────────────────────────────────────── */
+    .footer-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg-card); border-top: 1px solid #374151;
+      padding: 10px 12px; display: flex; gap: 10px; z-index: 50;
+    }
+    .btn-back {
+      min-height: var(--touch-min); width: 52px; flex-shrink: 0;
+      border: none; border-radius: var(--radius); cursor: pointer;
+      background: var(--bg-section); color: var(--text-primary);
+      font-size: 20px; font-family: inherit;
+    }
+    .btn-next {
+      flex: 1; min-height: var(--touch-min);
+      border: none; border-radius: var(--radius); cursor: pointer;
+      background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 600; font-family: inherit;
+    }
+    .btn-primary {
+      width: 100%; min-height: var(--touch-min);
+      border: none; border-radius: var(--radius); cursor: pointer;
+      background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 600; font-family: inherit;
+      margin-bottom: 10px;
+    }
+    .btn-secondary {
+      width: 100%; min-height: var(--touch-min);
+      border: 1.5px solid #4B5563; border-radius: var(--radius); cursor: pointer;
+      background: transparent; color: var(--text-primary);
+      font-size: 16px; font-weight: 600; font-family: inherit;
+      margin-bottom: 10px;
+    }
+
+    /* ── GATEWAY ───────────────────────────────────────────────────────── */
+    .gateway-intro { font-size: 14px; color: var(--text-secondary); margin: 16px 12px 8px; }
+    .gateway-grid { display: flex; flex-direction: column; gap: 12px; padding: 0 12px 12px; }
+    .gateway-card {
+      min-height: 76px; border-radius: 14px;
+      border: 3px solid #374151; background: var(--bg-card);
+      cursor: pointer; padding: 16px;
+      display: flex; align-items: center; gap: 14px;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .gateway-card:active { transform: scale(0.98); }
+    .gateway-card.selected { border-color: var(--accent); }
+    .gw-icon { font-size: 26px; flex-shrink: 0; }
+    .gw-label { font-size: 16px; font-weight: 700; }
+    .gw-sub   { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+
+    /* ── ACCORDION ─────────────────────────────────────────────────────── */
+    .accordion-item { margin-bottom: 8px; }
+    .accordion-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; background: var(--bg-section);
+      border-radius: 8px; cursor: pointer; user-select: none;
+      font-weight: 600; font-size: 14px; border: 1.5px solid transparent;
+    }
+    .accordion-header.open { border-color: var(--accent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .chevron { font-size: 12px; transition: transform 0.2s; flex-shrink: 0; }
+    .accordion-header.open .chevron { transform: rotate(180deg); }
+    .accordion-body {
+      display: none; padding: 14px;
+      background: #2D3748; border-radius: 0 0 8px 8px;
+      border: 1.5px solid var(--accent); border-top: none;
+    }
+    .accordion-body.open { display: block; }
+
+    /* ── URGÊNCIA PILLS ────────────────────────────────────────────────── */
+    .urgency-row { display: flex; gap: 8px; }
+    .pill-toggle {
+      flex: 1; min-height: 48px; border: none; border-radius: 24px;
+      cursor: pointer; font-size: 14px; font-weight: 700; font-family: inherit;
+      background: var(--bg-section); color: var(--text-secondary);
+      transition: background 0.15s, color 0.15s;
+    }
+    .pill-toggle.active-normal   { background: var(--btn-sim); color: #fff; }
+    .pill-toggle.active-alta     { background: #E67E22; color: #fff; }
+    .pill-toggle.active-critica  { background: var(--btn-nao); color: #fff; }
+
+    /* ── QUOTE TABLE ───────────────────────────────────────────────────── */
+    .quote-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .quote-table { width: 100%; border-collapse: collapse; min-width: 560px; }
+    .quote-table th {
+      font-size: 11px; color: var(--text-secondary); padding: 6px 8px;
+      border-bottom: 1px solid #4B5563; text-align: left; white-space: nowrap;
+    }
+    .quote-table td { padding: 6px 6px; border-bottom: 1px solid #374151; }
+    .quote-table input[type="text"], .quote-table input[type="number"] {
+      background: var(--bg-section); border: 1px solid #4B5563;
+      border-radius: 6px; padding: 6px 8px; color: var(--text-primary);
+      font-family: inherit; font-size: 14px; width: 100%;
+    }
+    .mo-check { width: 22px; height: 22px; accent-color: var(--accent); cursor: pointer; }
+    .total-cell { font-weight: 600; font-size: 14px; white-space: nowrap; }
+    .btn-remove-row {
+      background: transparent; border: none; color: var(--btn-nao);
+      font-size: 18px; cursor: pointer; padding: 4px 8px; line-height: 1;
+    }
+    .btn-add-row {
+      width: 100%; min-height: 44px; background: transparent;
+      border: 2px dashed #4B5563; border-radius: 8px;
+      color: var(--text-secondary); font-size: 14px; font-weight: 600;
+      cursor: pointer; margin-top: 10px; font-family: inherit;
+    }
+    .grand-total-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 12px; padding: 10px 14px; background: var(--bg-section); border-radius: 8px;
+    }
+    .grand-total-label { font-size: 14px; color: var(--text-secondary); }
+    .grand-total-value { font-size: 18px; font-weight: 700; color: var(--btn-sim); }
+    .validity-row { display: flex; gap: 8px; margin-top: 10px; }
+    .validity-pill {
+      flex: 1; min-height: 44px; border: 1.5px solid #4B5563;
+      border-radius: 22px; background: transparent; color: var(--text-secondary);
+      font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .validity-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── APPROVAL BUTTONS ─────────────────────────────────────────────── */
+    .approval-grid { display: flex; flex-direction: column; gap: 10px; }
+    .approval-btn {
+      min-height: 64px; border: 3px solid #374151; border-radius: 14px;
+      background: var(--bg-card); cursor: pointer; font-size: 16px; font-weight: 700;
+      font-family: inherit; color: var(--text-primary); padding: 14px 16px;
+      display: flex; align-items: center; gap: 12px;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .approval-btn:active { transform: scale(0.98); }
+    .approval-btn.active-aprovado    { border-color: var(--btn-sim); }
+    .approval-btn.active-ressalva    { border-color: #E67E22; }
+    .approval-btn.active-reprovado   { border-color: var(--btn-nao); }
+    .appr-icon { font-size: 22px; }
+
+    /* ── FINAL SCREEN ─────────────────────────────────────────────────── */
+    .summary-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #374151; font-size: 14px;
+    }
+    .summary-item:last-child { border-bottom: none; }
+    .summary-key   { color: var(--text-secondary); }
+    .summary-value { font-weight: 600; text-align: right; max-width: 55%; }
+
+    /* ── TOAST ─────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #374151; color: var(--text-primary); padding: 10px 20px;
+      border-radius: 24px; font-size: 14px; font-weight: 600;
+      opacity: 0; pointer-events: none; z-index: 9999;
+      transition: opacity 0.2s, transform 0.2s;
+      white-space: nowrap; max-width: 90vw;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── PRINT ─────────────────────────────────────────────────────────── */
+    @media print {
+      body > * { display: none !important; }
+      #pdf-layout { display: block !important; }
+
+      @page { size: A4 portrait; margin: 7mm 8mm; }
+
+      #pdf-layout {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 7pt;
+        color: #111;
+        background: white;
+        width: 100%;
+      }
+      #pdf-layout * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        color-adjust: exact;
+      }
+      .pdf-sec-head-amber, .pdf-sec-head-blue, .pdf-sec-head-dark { page-break-after: avoid; }
+      tr { page-break-inside: avoid; }
+
+      /* ── HEADER ── */
+      .pdf-header { display: table; width: 100%; border: 1px solid #CCC; border-collapse: collapse; margin-bottom: 4px; }
+      .pdf-header-logo, .pdf-header-title, .pdf-header-fields { display: table-cell; vertical-align: middle; }
+      .pdf-header-logo { width: 54px; border-right: 1px solid #CCC; text-align: center; padding: 6px 4px; }
+      .pdf-logo-circle { display: inline-block; width: 38px; height: 38px; background: #C0392B; border-radius: 50%; color: white; font-weight: 700; font-size: 20pt; line-height: 38px; text-align: center; }
+      .pdf-header-title { background: #3D3D3D; color: white; width: 46%; border-right: 1px solid #555; padding: 6px 8px; }
+      .pdf-form-name { font-size: 9pt; font-weight: 700; display: block; }
+      .pdf-form-sub  { font-size: 7pt; display: block; margin-top: 2px; color: #DDD; }
+      .pdf-form-ver  { font-size: 6.5pt; display: block; margin-top: 4px; color: #BBB; }
+      .pdf-header-fields { padding: 4px 7px; vertical-align: top; font-size: 7pt; }
+      .pdf-id-row { display: flex; gap: 3px; margin-bottom: 2px; align-items: baseline; }
+      .pdf-id-label { color: #555; flex-shrink: 0; }
+      .pdf-id-val { border-bottom: 0.5px solid #999; flex: 1; min-width: 24px; padding-bottom: 1px; }
+
+      /* ── GATEWAY ── */
+      .pdf-gateway { background: #2E2E2E; color: white; padding: 4px 10px; margin-bottom: 4px; font-size: 7.5pt; }
+      .pdf-gateway-title { font-weight: 700; margin-bottom: 3px; }
+      .pdf-gateway-opts { display: flex; gap: 14px; flex-wrap: wrap; }
+
+      /* ── SECTION HEADS ── */
+      .pdf-sec-head-amber { background: #E07B2E; color: white; padding: 3px 8px; font-size: 8.5pt; font-weight: 700; margin-bottom: 3px; }
+      .pdf-sec-head-blue  { background: #2E4057; color: white; padding: 3px 8px; font-size: 8.5pt; font-weight: 700; margin-bottom: 3px; }
+      .pdf-sec-head-dark  { background: #3D3D3D; color: white; padding: 3px 8px; font-size: 8.5pt; font-weight: 700; margin-bottom: 3px; }
+
+      /* ── SECTION A ── */
+      .pdf-sec-a-body { border: 0.5px solid #CCC; padding: 5px 8px; margin-bottom: 4px; font-size: 7pt; }
+      .pdf-sec-a-row  { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; margin-bottom: 3px; }
+      .pdf-field-inline { display: flex; gap: 3px; align-items: baseline; }
+      .pdf-field-inline label { color: #555; white-space: nowrap; font-size: 6.5pt; }
+      .pdf-underline { border-bottom: 0.5px solid #999; min-width: 35px; display: inline-block; padding-bottom: 1px; }
+      .pdf-photo-reminder { background: #2C2C2C; color: #C0392B; font-size: 6pt; padding: 2px 6px; margin: 2px 0; }
+
+      /* ── SECTION B ── */
+      .pdf-b-container { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 4px; }
+      .pdf-b-col { display: table-cell; width: 50%; vertical-align: top; }
+      .pdf-b-col-left  { padding-right: 2px; }
+      .pdf-b-col-right { padding-left:  2px; }
+      .pdf-subsec-head-orange { background: #C0512A; color: white; font-size: 7pt; font-weight: 700; padding: 2px 5px; }
+      .pdf-subsec-head-blue   { background: #2E4057; color: white; font-size: 7pt; font-weight: 700; padding: 2px 5px; }
+      .pdf-check-table { width: 100%; border-collapse: collapse; font-size: 6pt; margin-bottom: 3px; }
+      .pdf-foto-block { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0; }
+      .pdf-foto-img { width: 30mm; height: 22mm; object-fit: cover; border: 0.5px solid #CCC; }
+      .pdf-check-table th { background: #555; color: white; padding: 1.5px 2px; text-align: center; font-size: 6pt; font-weight: 600; }
+      .pdf-check-table th.th-desc { text-align: left; }
+      .pdf-check-table td { padding: 1.5px 2px; border: 0.5px solid #CCC; vertical-align: middle; }
+      .pdf-check-table tr:nth-child(even) td { background: #F5F5F5; }
+      .col-check { width: 18px; text-align: center; }
+      .col-valor { width: 48px; }
+      .pdf-cb { display: inline-block; width: 9px; height: 9px; border: 0.75px solid #555; text-align: center; line-height: 9px; font-size: 7pt; vertical-align: middle; }
+      .pdf-cb.marked::after { content: '✓'; font-weight: 700; }
+      .pdf-cond-skip td { background: #F0F0F0 !important; color: #AAA; font-style: italic; }
+
+      /* ── SECTION C ── */
+      .pdf-sec-c-body { border: 0.5px solid #CCC; padding: 3px 6px; margin-bottom: 4px; font-size: 7pt; }
+      .pdf-c-row { margin-bottom: 4px; }
+      .pdf-diag-area { border: 0.5px solid #CCC; min-height: 10mm; padding: 4px; margin-top: 3px; font-size: 7pt; white-space: pre-wrap; word-wrap: break-word; }
+
+      /* ── SECTION D ── */
+      .pdf-sec-d-body { margin-bottom: 4px; }
+      .pdf-d-table { width: 100%; border-collapse: collapse; font-size: 6.5pt; margin-bottom: 0; }
+      .pdf-d-table th { background: #2E4057; color: white; padding: 2px 4px; text-align: left; }
+      .pdf-d-table td { padding: 2px 4px; border: 0.5px solid #CCC; vertical-align: middle; }
+      .pdf-d-table tr:nth-child(even) td { background: #F5F5F5; }
+      .pdf-d-footer { display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; border: 0.5px solid #CCC; border-top: none; font-size: 7pt; }
+      .pdf-d-total-val { font-weight: 700; }
+      .pdf-d-note { font-size: 6pt; font-style: italic; color: #555; margin-top: 2px; padding: 0 4px; }
+
+      /* ── SECTIONS E + F ── */
+      .pdf-ef-container { display: table; width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 4px; }
+      .pdf-e-col, .pdf-f-col { display: table-cell; vertical-align: top; border: 0.5px solid #CCC; }
+      .pdf-e-col { width: 50%; border-right: none; }
+      .pdf-ef-sec-head { background: #3D3D3D; color: white; padding: 2px 6px; font-size: 7.5pt; font-weight: 700; }
+      .pdf-e-body { padding: 5px 6px; min-height: 18mm; font-size: 7pt; white-space: pre-wrap; word-wrap: break-word; }
+      .pdf-f-body { padding: 5px 6px; font-size: 7pt; }
+      .pdf-f-row { margin-bottom: 4px; }
+      .pdf-sig-line { border-bottom: 0.5px solid #999; width: 100%; height: 14px; display: block; margin: 5px 0 2px; }
+      .pdf-f-footer { font-size: 5.5pt; font-style: italic; text-align: center; color: #555; border-top: 0.5px solid #CCC; padding-top: 3px; margin-top: 4px; }
+
+      /* ── LEGEND ── */
+      .pdf-legend { border-top: 0.5px solid #CCC; padding-top: 3px; font-size: 6.5pt; color: #444; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER (visible on screens A–F and Final) -->
+  <header id="app-header" style="display:none">
+    <div class="header-row">
+      <div class="header-logo">P</div>
+      <span id="header-section-name">Diagnóstico</span>
+      <span id="header-progress">1/7</span>
+    </div>
+    <div id="progress-bar-outer">
+      <div id="progress-bar-fill"></div>
+    </div>
+  </header>
+
+  <!-- ══ SCREEN 0 — IDENTIFICAÇÃO ══════════════════════════════════════ -->
+  <div class="screen active" id="screen-0">
+    <div style="padding:20px 12px 10px; text-align:center;">
+      <div style="width:52px;height:52px;background:var(--accent);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;margin-bottom:10px;">P</div>
+      <div style="font-size:20px;font-weight:700;">FORM 02</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">Diagnóstico Sem Desmontagem</div>
+    </div>
+    <div class="card">
+      <div class="section-title">Identificação do Atendimento</div>
+      <div class="field-group">
+        <label>Técnico Responsável</label>
+        <input type="text" id="id-tecnico" placeholder="Nome completo" autocomplete="name">
+      </div>
+      <div class="field-group">
+        <label>Data</label>
+        <input type="date" id="id-data">
+      </div>
+      <div class="field-group">
+        <label>Nº da OS</label>
+        <input type="text" id="id-os" inputmode="numeric" placeholder="Número da ordem de serviço">
+      </div>
+      <div class="field-group">
+        <label>Cliente</label>
+        <input type="text" id="id-cliente" autocomplete="organization">
+      </div>
+      <div class="field-group">
+        <label>Equipamento / TAG</label>
+        <input type="text" id="id-equipamento">
+      </div>
+      <div class="field-group">
+        <label>Modelo / Série</label>
+        <input type="text" id="id-modelo" placeholder="ex: Atlas Copco GA30, Série 12345">
+      </div>
+      <div class="field-group">
+        <label>Tensão de Alimentação</label>
+        <input type="text" id="id-voltagem" inputmode="decimal" placeholder="ex: 380V trifásico">
+      </div>
+      <div class="field-group">
+        <label>Potência (CV / kW)</label>
+        <input type="text" id="id-cvkw" inputmode="decimal" placeholder="ex: 10 CV / 7,5 kW">
+      </div>
+    </div>
+    <div class="footer-nav" style="position:fixed;">
+      <button class="btn-next" onclick="goToGateway()">Iniciar Diagnóstico →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN GATEWAY ════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-gateway">
+    <p class="gateway-intro">Selecione a situação atual do equipamento:</p>
+    <div class="gateway-grid">
+      <div class="gateway-card" id="gw-sim-opera" onclick="selectGateway('sim_opera')">
+        <span class="gw-icon">✅</span>
+        <div>
+          <div class="gw-label">SIM – Opera normalmente</div>
+          <div class="gw-sub">Equipamento em funcionamento sem falha evidente</div>
+        </div>
+      </div>
+      <div class="gateway-card" id="gw-sim-falha" onclick="selectGateway('sim_falha')">
+        <span class="gw-icon">⚠️</span>
+        <div>
+          <div class="gw-label">SIM – Opera com falha</div>
+          <div class="gw-sub">Liga, mas apresenta alguma anomalia</div>
+        </div>
+      </div>
+      <div class="gateway-card" id="gw-no-boot" onclick="selectGateway('no_boot')">
+        <span class="gw-icon">🔴</span>
+        <div>
+          <div class="gw-label">NÃO LIGA</div>
+          <div class="gw-sub">Sem partida — itens elétricos serão marcados como ⚡ PULADO</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-0')">←</button>
+      <button class="btn-next" onclick="proceedFromGateway()">Avançar →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN A — DADOS GERAIS ════════════════════════════════════════ -->
+  <div class="screen" id="screen-a">
+    <div class="card">
+      <div class="section-title">A — Dados Gerais do Equipamento</div>
+      <div class="field-group">
+        <label>Defeito relatado pelo operador</label>
+        <textarea id="sA-defeito" placeholder="Descreva o defeito conforme relatado..."></textarea>
+      </div>
+      <div class="field-group">
+        <label>Condição física</label>
+        <div class="btn-group">
+          <button class="btn-toggle" data-field="sA-condicao" data-val="boa" onclick="selectRadio(this)">Boa</button>
+          <button class="btn-toggle" data-field="sA-condicao" data-val="regular" onclick="selectRadio(this)">Regular</button>
+          <button class="btn-toggle" data-field="sA-condicao" data-val="ruim" onclick="selectRadio(this)">Ruim</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Horímetro (h)</label>
+        <input type="number" id="sA-horimetro" inputmode="decimal" placeholder="Leitura atual">
+      </div>
+      <div class="field-group">
+        <label>Ano de fabricação</label>
+        <input type="number" id="sA-anoFab" inputmode="numeric" min="1970" max="2035" placeholder="ex: 2018">
+      </div>
+      <div class="field-group">
+        <label>Localização / Planta</label>
+        <input type="text" id="sA-localizacao" placeholder="Setor, linha, planta...">
+      </div>
+      <div class="photo-zone" id="photo-zone-secaoA">
+        <div class="photo-zone-label">📷 Foto geral e condição inicial</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-capture" style="flex:1" onclick="capturePhoto('secaoA')">📷 Câmera</button>
+          <button class="btn-capture" style="flex:1" onclick="galleryPhoto('secaoA')">🖼️ Galeria</button>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="file-secaoA" style="display:none" onchange="onPhotoSelected('secaoA', this)">
+        <input type="file" accept="image/*" id="gallery-secaoA" style="display:none" onchange="onPhotoSelected('secaoA', this)">
+        <div class="photo-thumbs" id="thumbs-secaoA"></div>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-gateway')">←</button>
+      <button class="btn-next" onclick="showScreen('screen-b')">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN B — INSPEÇÃO ════════════════════════════════════════════ -->
+  <div class="screen" id="screen-b">
+    <div class="card">
+      <div class="section-title">B — Inspeção de Campo</div>
+
+      <!-- B1 – Partida e Atuação -->
+      <div class="accordion-item">
+        <div class="accordion-header open" onclick="toggleAccordion(this)">
+          <span>B1 – Partida e Atuação</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body open">
+          <div class="item-row">
+            <div class="item-label">Liga ao acionar chave / botão?</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-ligaChave" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-ligaChave" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-ligaChave" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Partida sem ruído excessivo ou tranco?</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Tempo até pressão máxima de carga (alívio)</div>
+            <input type="text" id="b1-tempoMaxima" inputmode="decimal" placeholder="s / min"
+              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
+              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Pressuriza até pressão máxima de carga configurada</div>
+            <input type="text" id="b1-pressurizaValor" inputmode="decimal" placeholder="bar / PSI"
+              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
+              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Desliga ou alivia automaticamente ao atingir pressão de alívio?</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Rearma corretamente ao cair para pressão mínima?</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b1-rearma" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b1-rearma" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b1-rearma" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b1-rearma" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B2 – Pressão e Vazão -->
+      <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <span>B2 – Pressão e Vazão</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body">
+          <div class="item-row">
+            <div class="item-label">Pressão de trabalho dentro do esperado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Regulagem de pressão funciona</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Válvula de alívio em boas condições</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Pressão de alívio configurada no controlador (bar / PSI)</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="field-group" style="margin-top:10px;">
+            <label>Pressão lida</label>
+            <input type="number" id="b2-pressaoLida" inputmode="decimal" placeholder="bar / psi">
+          </div>
+          <div class="field-group">
+            <label>Pressão esperada / referência</label>
+            <input type="number" id="b2-pressaoEsperada" inputmode="decimal" placeholder="bar / psi">
+          </div>
+          <div class="field-group">
+            <label>Vazão estimada (m³/min)</label>
+            <input type="number" id="b2-vazaoEstimada" inputmode="decimal" placeholder="m³/min">
+          </div>
+          <div class="field-group">
+            <label>Vazão realizada?</label>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b2-vazaoRealizada" data-val="S" onclick="selectToggle(this)">Sim</button>
+              <button class="btn-toggle" data-field="b2-vazaoRealizada" data-val="N" onclick="selectToggle(this)">Não</button>
+            </div>
+          </div>
+          <div id="bloco-vazao" style="display:none">
+            <div class="field-group">
+              <label>Tempo de Enchimento (min)</label>
+              <input type="number" id="b2-tempoEnchimento" inputmode="decimal" placeholder="min">
+            </div>
+            <div class="field-group">
+              <label>Volume Padrão (litros)</label>
+              <input type="number" id="b2-volumePadrao" inputmode="decimal" placeholder="litros">
+            </div>
+            <div class="field-group">
+              <label>Pressão Final (bar)</label>
+              <input type="number" id="b2-pressaoFinal" inputmode="decimal" placeholder="bar">
+            </div>
+            <div class="field-group">
+              <label>Valor m³/h</label>
+              <input type="number" id="b2-vazaoMedida" inputmode="decimal" placeholder="m³/h">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B3 – Temperatura -->
+      <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <span>B3 – Temperatura</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body">
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">Temperatura de descarga dentro do limite</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b3-tempDescarga" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b3-tempDescarga" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b3-tempDescarga" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b3-tempDescarga" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">Temperatura de óleo dentro do limite</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b3-tempOleo" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b3-tempOleo" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b3-tempOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b3-tempOleo" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Temperatura ambiente aceitável</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b3-tempAmbiente" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b3-tempAmbiente" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b3-tempAmbiente" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">Sistema de resfriamento / ventilação OK</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b3-resfriamento" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b3-resfriamento" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b3-resfriamento" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b3-resfriamento" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="field-group" style="margin-top:10px;">
+            <label>Temperatura lida (°C)</label>
+            <input type="number" id="b3-tempLida" inputmode="decimal" placeholder="°C">
+          </div>
+          <div class="photo-zone">
+            <div class="photo-zone-label">📷 Leitura de temperatura e ventilação</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-capture" style="flex:1" onclick="capturePhoto('secaoB_temperatura')">📷 Câmera</button>
+              <button class="btn-capture" style="flex:1" onclick="galleryPhoto('secaoB_temperatura')">🖼️ Galeria</button>
+            </div>
+            <input type="file" accept="image/*" capture="environment" id="file-secaoB_temperatura" style="display:none" onchange="onPhotoSelected('secaoB_temperatura', this)">
+            <input type="file" accept="image/*" id="gallery-secaoB_temperatura" style="display:none" onchange="onPhotoSelected('secaoB_temperatura', this)">
+            <div class="photo-thumbs" id="thumbs-secaoB_temperatura"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B4 – Ruídos, Vibrações e Vazamentos -->
+      <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <span>B4 – Ruídos, Vibrações e Vazamentos</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body">
+          <div class="item-row">
+            <div class="item-label">Ruído anormal identificado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Vibração excessiva</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b4-vibracao" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b4-vibracao" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b4-vibracao" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Vazamento de ar detectado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Vazamento de óleo detectado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Folga mecânica perceptível</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="photo-zone">
+            <div class="photo-zone-label">📷 Vazamentos e pontos críticos de ruído/vibração</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-capture" style="flex:1" onclick="capturePhoto('secaoB_ruidos')">📷 Câmera</button>
+              <button class="btn-capture" style="flex:1" onclick="galleryPhoto('secaoB_ruidos')">🖼️ Galeria</button>
+            </div>
+            <input type="file" accept="image/*" capture="environment" id="file-secaoB_ruidos" style="display:none" onchange="onPhotoSelected('secaoB_ruidos', this)">
+            <input type="file" accept="image/*" id="gallery-secaoB_ruidos" style="display:none" onchange="onPhotoSelected('secaoB_ruidos', this)">
+            <div class="photo-thumbs" id="thumbs-secaoB_ruidos"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B5 – Fluidos e Filtros -->
+      <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <span>B5 – Fluidos e Filtros</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body">
+          <div class="item-row">
+            <div class="item-label">Nível de óleo adequado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b5-nivelOleo" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b5-nivelOleo" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b5-nivelOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Condição do óleo aceitável</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b5-condicaoOleo" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b5-condicaoOleo" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b5-condicaoOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Filtro de ar em boas condições</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b5-filtroAr" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b5-filtroAr" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b5-filtroAr" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Filtro de óleo / separador OK</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b5-filtroOleo" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b5-filtroOleo" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b5-filtroOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b5-filtroOleo" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Dreno automático — funcionando?</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b5-dreno" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b5-dreno" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b5-dreno" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b5-dreno" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="photo-zone">
+            <div class="photo-zone-label">📷 Nível de óleo, condição do fluido e filtros</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-capture" style="flex:1" onclick="capturePhoto('secaoB_fluidos')">📷 Câmera</button>
+              <button class="btn-capture" style="flex:1" onclick="galleryPhoto('secaoB_fluidos')">🖼️ Galeria</button>
+            </div>
+            <input type="file" accept="image/*" capture="environment" id="file-secaoB_fluidos" style="display:none" onchange="onPhotoSelected('secaoB_fluidos', this)">
+            <input type="file" accept="image/*" id="gallery-secaoB_fluidos" style="display:none" onchange="onPhotoSelected('secaoB_fluidos', this)">
+            <div class="photo-thumbs" id="thumbs-secaoB_fluidos"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B6 – Elétrico sem Abertura do Painel -->
+      <div class="accordion-item">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <span>B6 – Elétrico sem Abertura do Painel</span><span class="chevron">▼</span>
+        </div>
+        <div class="accordion-body">
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">Tensão de alimentação dentro do esperado</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="field-group conditional-item" data-cond="true" style="margin-top:4px;">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <label>Tensão lida (V)</label>
+            <input type="number" id="b6-tensaoLida" inputmode="decimal" placeholder="V">
+          </div>
+          <div class="field-group conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <label>Corrente lida (A)</label>
+            <input type="number" id="b6-correnteLida" inputmode="decimal" placeholder="A">
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">Temperatura do painel aceitável</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-tempPainel" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-tempPainel" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-tempPainel" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-tempPainel" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Aterramento visível e íntegro</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-aterramento" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-aterramento" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-aterramento" data-val="NA" onclick="selectToggle(this)">N/A</button>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-label">Condição do cabeamento externo OK</div>
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-cabeamento" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-cabeamento" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-cabeamento" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-cabeamento" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Corrente em carga plena (alicate amperímetro)</div>
+            <input type="text" id="b6-correnteCargaValor" inputmode="decimal" placeholder="A"
+              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
+              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="field-group conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <label>Corrente nominal de plaqueta (A)</label>
+            <input type="text" id="b6-correnteNominal" inputmode="decimal" placeholder="A">
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Desequilíbrio de tensão entre fases</div>
+            <input type="text" id="b6-desequilibrioValor" inputmode="decimal" placeholder="%"
+              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
+              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-desequilibrio" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-desequilibrio" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-desequilibrio" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-desequilibrio" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="item-row conditional-item" data-cond="true">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Display IHM sem código de falha ativo</div>
+            <input type="text" id="b6-displayCodigoValor" placeholder="Código (se houver)"
+              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
+              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="btn-group">
+              <button class="btn-toggle" data-field="b6-displayIHM" data-val="S" onclick="selectToggle(this)">S</button>
+              <button class="btn-toggle" data-field="b6-displayIHM" data-val="N" onclick="selectToggle(this)">N</button>
+              <button class="btn-toggle" data-field="b6-displayIHM" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-displayIHM" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            </div>
+          </div>
+          <div class="photo-zone">
+            <div class="photo-zone-label">📷 Medição elétrica, painel e cabeamento</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-capture" style="flex:1" onclick="capturePhoto('secaoB_eletrico')">📷 Câmera</button>
+              <button class="btn-capture" style="flex:1" onclick="galleryPhoto('secaoB_eletrico')">🖼️ Galeria</button>
+            </div>
+            <input type="file" accept="image/*" capture="environment" id="file-secaoB_eletrico" style="display:none" onchange="onPhotoSelected('secaoB_eletrico', this)">
+            <input type="file" accept="image/*" id="gallery-secaoB_eletrico" style="display:none" onchange="onPhotoSelected('secaoB_eletrico', this)">
+            <div class="photo-thumbs" id="thumbs-secaoB_eletrico"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /card -->
+
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-a')">←</button>
+      <button class="btn-next" onclick="showScreen('screen-c')">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN C — DIAGNÓSTICO ════════════════════════════════════════ -->
+  <div class="screen" id="screen-c">
+    <div class="card">
+      <div class="section-title">C — Diagnóstico e Urgência</div>
+      <div class="field-group">
+        <label>Requer desmontagem?</label>
+        <div class="btn-group">
+          <button class="btn-toggle" data-field="sC-desmontagem" data-val="S" onclick="selectRadio(this)">Sim</button>
+          <button class="btn-toggle" data-field="sC-desmontagem" data-val="N" onclick="selectRadio(this)">Não</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Urgência</label>
+        <div class="urgency-row">
+          <button class="pill-toggle" data-field="sC-urgencia" data-val="normal" onclick="selectPill(this)">Normal</button>
+          <button class="pill-toggle" data-field="sC-urgencia" data-val="alta" onclick="selectPill(this)">Alta</button>
+          <button class="pill-toggle" data-field="sC-urgencia" data-val="critica" onclick="selectPill(this)">Crítica</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Causa provável</label>
+        <textarea id="sC-causa" placeholder="Descreva a causa provável identificada..."></textarea>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-b')">←</button>
+      <button class="btn-next" onclick="showScreen('screen-d')">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN D — ORÇAMENTO ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-d">
+    <div class="card">
+      <div class="section-title">D — Orçamento de Peças</div>
+      <div class="quote-wrap">
+        <table class="quote-table" id="quote-table">
+          <thead>
+            <tr>
+              <th style="min-width:140px">Descrição</th>
+              <th style="width:50px">Qtd</th>
+              <th style="width:90px">Vl. Unit</th>
+              <th style="width:90px">Total</th>
+              <th style="width:36px">M.O.</th>
+              <th style="width:30px"></th>
+            </tr>
+          </thead>
+          <tbody id="quote-tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn-add-row" onclick="addQuoteRow()">+ Adicionar item</button>
+      <div class="grand-total-row">
+        <span class="grand-total-label">Total geral</span>
+        <span class="grand-total-value" id="grand-total">R$ 0,00</span>
+      </div>
+      <div class="field-group" style="margin-top:14px;">
+        <label>Validade do orçamento</label>
+        <div class="validity-row">
+          <button class="validity-pill" data-val="5" onclick="selectValidity(this)">5 dias</button>
+          <button class="validity-pill" data-val="10" onclick="selectValidity(this)">10 dias</button>
+          <button class="validity-pill" data-val="15" onclick="selectValidity(this)">15 dias</button>
+        </div>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-c')">←</button>
+      <button class="btn-next" onclick="showScreen('screen-e')">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN E — OBSERVAÇÕES ════════════════════════════════════════ -->
+  <div class="screen" id="screen-e">
+    <div class="card">
+      <div class="section-title">E — Observações Adicionais</div>
+      <div class="field-group">
+        <label>Observações / Recomendações</label>
+        <textarea id="sE-obs" style="min-height:200px;" placeholder="Registre observações adicionais, recomendações ao cliente ou informações relevantes para o laudo..."></textarea>
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-d')">←</button>
+      <button class="btn-next" onclick="showScreen('screen-f')">Próximo →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN F — APROVAÇÃO ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-f">
+    <div class="card">
+      <div class="section-title">F — Aprovação do Diagnóstico</div>
+      <div class="field-group">
+        <label>Status do diagnóstico</label>
+        <div class="approval-grid">
+          <button class="approval-btn" data-field="sF-aprovacao" data-val="aprovado" onclick="selectApproval(this)">
+            <span class="appr-icon">✅</span>
+            <div>
+              <div style="font-size:15px;font-weight:700;">Aprovado</div>
+              <div style="font-size:12px;color:var(--text-secondary);font-weight:400;">Diagnóstico concluído e aceito</div>
+            </div>
+          </button>
+          <button class="approval-btn" data-field="sF-aprovacao" data-val="ressalva" onclick="selectApproval(this)">
+            <span class="appr-icon">⚠️</span>
+            <div>
+              <div style="font-size:15px;font-weight:700;">Aprovado com Ressalva</div>
+              <div style="font-size:12px;color:var(--text-secondary);font-weight:400;">Aceito com pendências a registrar</div>
+            </div>
+          </button>
+          <button class="approval-btn" data-field="sF-aprovacao" data-val="reprovado" onclick="selectApproval(this)">
+            <span class="appr-icon">❌</span>
+            <div>
+              <div style="font-size:15px;font-weight:700;">Reprovado</div>
+              <div style="font-size:12px;color:var(--text-secondary);font-weight:400;">Diagnóstico não aceito pelo cliente</div>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div class="field-group" style="margin-top:14px;">
+        <label>Nome do Técnico</label>
+        <input type="text" id="sF-tecnico" placeholder="Auto-preenchido da identificação">
+      </div>
+      <div class="field-group">
+        <label>CREA / CFT</label>
+        <input type="text" id="sF-creaCft" placeholder="Registro profissional (opcional)">
+      </div>
+      <div class="field-group">
+        <label>Nome do Cliente / Responsável</label>
+        <input type="text" id="sF-cliente" placeholder="Quem recebeu o diagnóstico">
+      </div>
+      <div class="field-group">
+        <label>Data de Aprovação</label>
+        <input type="date" id="sF-data">
+      </div>
+    </div>
+    <div class="footer-nav">
+      <button class="btn-back" onclick="showScreen('screen-e')">←</button>
+      <button class="btn-next" onclick="goToFinal()">Finalizar →</button>
+    </div>
+  </div>
+
+  <!-- ══ SCREEN FINAL ══════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-final">
+    <div class="card">
+      <div class="section-title">Diagnóstico Concluído</div>
+      <div id="summary-content"></div>
+    </div>
+    <div id="sync-warning" class="card" style="display:none;border:1.5px solid #f59e0b;color:#f59e0b;">
+      Não sincronizado — toque em Finalizar de novo para reenviar.
+    </div>
+    <div class="card">
+      <button class="btn-primary" onclick="saveDraft(); showToast('Rascunho salvo!')">💾 Salvar Rascunho</button>
+      <button class="btn-primary" style="background:#374151;border:1.5px solid #6B7280;" onclick="printAll()">🖨️ Imprimir / Gerar PDF</button>
+      <button class="btn-secondary" onclick="newDiagnostic()">＋ Novo Diagnóstico</button>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<div id="pdf-layout" style="display:none"></div>
+
+<script>
+// ── HUB SESSION CHECK ──────────────────────────────────────────────────────
+(function checkHubSession() {
+  // Modo de teste local (08/07): em localhost / 127.0.0.1 / file:// (ou ?dev=1
+  // fora de produção), pula o gate do Hub e injeta sessão fake — permite abrir o
+  // form direto pra testar sem commitar no GitHub. NUNCA ativa em grupotap.github.io.
+  var host = location.hostname;
+  var isLocal = host === 'localhost' || host === '127.0.0.1' || location.protocol === 'file:';
+  var devFlag = /[?&]dev=1(&|$)/.test(location.search);
+  if (isLocal || (devFlag && host !== 'grupotap.github.io')) {
+    var mock = null;
+    try { mock = JSON.parse(sessionStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    window.PROPER_SESSION = mock || { nome: 'DEV', google_credential: '' };
+    window._GC = (window.PROPER_SESSION && window.PROPER_SESSION.google_credential) || '';
+    return;
+  }
+
+  var raw = sessionStorage.getItem('proper_session');
+  if (!raw) {
+    window.location.href = 'https://grupotap.github.io/ProperHub/';
+    return;
+  }
+  try {
+    var session = JSON.parse(raw);
+    window.PROPER_SESSION = session;
+    window._GC = session.google_credential || '';
+  } catch(e) {
+    window.location.href = 'https://grupotap.github.io/ProperHub/';
+  }
+})();
+// ── END HUB SESSION CHECK ─────────────────────────────────────────────────
+
+// v_novo ─ helpers Google credential
+var _osId = '';
+var _tarefaId = '';
+var _formularioEnviado = false; // FP-05: evita gravar FORMULARIOS de novo ao reabrir a tela final
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+var _formUid = pgpUid();
+function gcBody(obj) {
+  return JSON.stringify(Object.assign({}, obj, { google_credential: window._GC || '' }));
+}
+function gcParam() {
+  return '&google_credential=' + encodeURIComponent(window._GC || '');
+}
+
+// ══ CONSTANTS ════════════════════════════════════════════════════════════
+const DRAFT_KEY  = 'proper_draft_form02';
+const GAS_URL    = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec'; // GAS v29
+const MAX_IMG_PX = 1200;
+const IMG_QUALITY = 0.82;
+
+// ══ SCREEN MAP ════════════════════════════════════════════════════════════
+const SCREENS = [
+  { id:'screen-0',       label:'Identificação',    step:0, total:9 },
+  { id:'screen-gateway', label:'Status do Equip.', step:1, total:9 },
+  { id:'screen-a',       label:'A – Dados Gerais', step:2, total:9 },
+  { id:'screen-b',       label:'B – Inspeção',     step:3, total:9 },
+  { id:'screen-c',       label:'C – Diagnóstico',  step:4, total:9 },
+  { id:'screen-d',       label:'D – Orçamento',    step:5, total:9 },
+  { id:'screen-e',       label:'E – Observações',  step:6, total:9 },
+  { id:'screen-f',       label:'F – Aprovação',    step:7, total:9 },
+  { id:'screen-final',   label:'Concluído',         step:8, total:9 },
+];
+
+// ══ STATE ══════════════════════════════════════════════════════════════════
+const state = {
+  versao: '1.2',
+  identificacao: { tecnico:'', data:'', os:'', cliente:'', equipamento:'', modelo:'', voltagem:'', cvkw:'' },
+  gateway: null,
+  secaoA: { defeito:'', condicao:'', horimetro:'', anoFab:'', localizacao:'' },
+  secaoB: {
+    partida:     { ligaChave:'', partidaSemRuido:'', tempoPressaoMaxima:'', tempoMaximaValor:'', pressurizaMaxima:'', pressurizaValor:'', desligaAlivia:'', rearma:'' },
+    pressao:     { pressaoTrabalho:'', regulagemPressao:'', valvulaAlivio:'', pressaoAlivio:'', pressaoLida:'', pressaoEsperada:'', vazaoEstimada:'', vazaoRealizada:'', tempoEnchimento:'', volumePadrao:'', pressaoFinal:'', vazaoMedida:'' },
+    temperatura: { tempDescarga:'', tempOleo:'', tempAmbiente:'', resfriamento:'', tempLida:'' },
+    ruidos:      { ruidoAnormal:'', vibracao:'', vazamentoAr:'', vazamentoOleo:'', folgaMecanica:'' },
+    fluidos:     { nivelOleo:'', condicaoOleo:'', filtroAr:'', filtroOleo:'', dreno:'' },
+    eletrico:    { tensaoAlimentacao:'', tensaoLida:'', correnteLida:'', tempPainel:'', correnteCarga:'', correnteCargaValor:'', correnteNominal:'', desequilibrio:'', desequilibrioValor:'', displayIHM:'', displayCodigoValor:'', aterramento:'', cabeamento:'' }
+  },
+  secaoC: { desmontagem:'', urgencia:'', causa:'' },
+  secaoD: { itens:[], validade:'' },
+  secaoE: { observacoes:'' },
+  secaoF: { aprovacao:'', tecnico:'', creaCft:'', cliente:'', data:'' },
+  fotos:  { secaoA:[], secaoB_temperatura:[], secaoB_ruidos:[], secaoB_fluidos:[], secaoB_eletrico:[] }
+};
+
+// store in-memory dataUrls for PDF photo blocks (not persisted)
+const _fotoDataUrls = { secaoA:[], secaoB_temperatura:[], secaoB_ruidos:[], secaoB_fluidos:[], secaoB_eletrico:[] };
+
+let _saveTimer = null;
+let _currentScreenId = 'screen-0';
+
+// ══ SCREEN NAVIGATION ══════════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+  _currentScreenId = id;
+
+  const info = SCREENS.find(s => s.id === id);
+  const header = document.getElementById('app-header');
+
+  if (id === 'screen-0') {
+    header.style.display = 'none';
+  } else {
+    header.style.display = 'block';
+    document.getElementById('header-section-name').textContent = info ? info.label : '';
+    const step  = info ? info.step  : 0;
+    const total = info ? info.total : 9;
+    document.getElementById('header-progress').textContent = step + '/' + (total - 1);
+    document.getElementById('progress-bar-fill').style.width = Math.round(step / (total - 1) * 100) + '%';
+  }
+  window.scrollTo(0, 0);
+}
+
+// ══ GATEWAY ════════════════════════════════════════════════════════════════
+function selectGateway(val) {
+  state.gateway = val;
+  document.querySelectorAll('.gateway-card').forEach(c => c.classList.remove('selected'));
+  const map = { sim_opera:'gw-sim-opera', sim_falha:'gw-sim-falha', no_boot:'gw-no-boot' };
+  const el = document.getElementById(map[val]);
+  if (el) el.classList.add('selected');
+  applyGatewayConditions();
+  scheduleSave();
+}
+
+function applyGatewayConditions() {
+  const skip = state.gateway === 'no_boot';
+  document.querySelectorAll('.conditional-item').forEach(el => {
+    el.classList.toggle('skipped', skip);
+  });
+}
+
+function proceedFromGateway() {
+  if (!state.gateway) { showToast('Selecione o status do equipamento'); return; }
+  showScreen('screen-a');
+}
+
+function goToGateway() {
+  captureIdFields();
+  showScreen('screen-gateway');
+}
+
+function captureIdFields() {
+  state.identificacao.tecnico     = document.getElementById('id-tecnico').value;
+  state.identificacao.data        = document.getElementById('id-data').value;
+  state.identificacao.os          = document.getElementById('id-os').value;
+  state.identificacao.cliente     = document.getElementById('id-cliente').value;
+  state.identificacao.equipamento = document.getElementById('id-equipamento').value;
+  state.identificacao.modelo      = document.getElementById('id-modelo').value;
+  state.identificacao.voltagem    = document.getElementById('id-voltagem').value;
+  state.identificacao.cvkw        = document.getElementById('id-cvkw').value;
+  // pre-fill section F
+  if (state.identificacao.tecnico) {
+    document.getElementById('sF-tecnico').value = state.identificacao.tecnico;
+    state.secaoF.tecnico = state.identificacao.tecnico;
+  }
+}
+
+// ══ TOGGLE BUTTONS ════════════════════════════════════════════════════════
+function selectToggle(btn) {
+  const field = btn.dataset.field;
+  const val   = btn.dataset.val;
+  const group = btn.closest('.btn-group');
+  group.querySelectorAll('.btn-toggle').forEach(b => {
+    b.classList.remove('active-S','active-N','active-NA','active-NT');
+  });
+  btn.classList.add('active-' + val);
+  writeStateByField(field, val);
+  scheduleSave();
+}
+
+function selectRadio(btn) {
+  const field = btn.dataset.field;
+  const val   = btn.dataset.val;
+  const group = btn.closest('.btn-group');
+  group.querySelectorAll('.btn-toggle').forEach(b => {
+    b.classList.remove('active-S','active-N','active-NA','active-NT','active-boa','active-regular','active-ruim');
+  });
+  btn.classList.add('active-' + val);
+  writeStateByField(field, val);
+  scheduleSave();
+}
+
+function selectPill(btn) {
+  const field = btn.dataset.field;
+  const val   = btn.dataset.val;
+  const row   = btn.closest('.urgency-row');
+  row.querySelectorAll('.pill-toggle').forEach(b => {
+    b.classList.remove('active-normal','active-alta','active-critica');
+  });
+  btn.classList.add('active-' + val);
+  writeStateByField(field, val);
+  scheduleSave();
+}
+
+function selectApproval(btn) {
+  const val = btn.dataset.val;
+  document.querySelectorAll('.approval-btn').forEach(b => {
+    b.classList.remove('active-aprovado','active-ressalva','active-reprovado');
+  });
+  btn.classList.add('active-' + val);
+  state.secaoF.aprovacao = val;
+  scheduleSave();
+}
+
+function selectValidity(btn) {
+  document.querySelectorAll('.validity-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.secaoD.validade = btn.dataset.val;
+  scheduleSave();
+}
+
+// maps flat field-name (e.g. "b1-ligaChave") to state
+function writeStateByField(field, val) {
+  const map = {
+    'sA-condicao':             () => state.secaoA.condicao = val,
+    'sC-desmontagem':          () => state.secaoC.desmontagem = val,
+    'sC-urgencia':             () => state.secaoC.urgencia = val,
+    'sF-aprovacao':            () => state.secaoF.aprovacao = val,
+    'b1-ligaChave':            () => state.secaoB.partida.ligaChave = val,
+    'b1-partidaSemRuido':      () => state.secaoB.partida.partidaSemRuido = val,
+    'b1-tempoPressaoMaxima':   () => state.secaoB.partida.tempoPressaoMaxima = val,
+    'b1-pressurizaMaxima':     () => state.secaoB.partida.pressurizaMaxima = val,
+    'b1-desligaAlivia':        () => state.secaoB.partida.desligaAlivia = val,
+    'b1-rearma':               () => state.secaoB.partida.rearma = val,
+    'b2-pressaoTrabalho':      () => state.secaoB.pressao.pressaoTrabalho = val,
+    'b2-regulagemPressao':     () => state.secaoB.pressao.regulagemPressao = val,
+    'b2-valvulaAlivio':        () => state.secaoB.pressao.valvulaAlivio = val,
+    'b2-pressaoAlivio':        () => state.secaoB.pressao.pressaoAlivio = val,
+    'b2-vazaoRealizada':       () => { state.secaoB.pressao.vazaoRealizada = val; document.getElementById('bloco-vazao').style.display = val === 'S' ? 'block' : 'none'; },
+    'b3-tempDescarga':         () => state.secaoB.temperatura.tempDescarga = val,
+    'b3-tempOleo':             () => state.secaoB.temperatura.tempOleo = val,
+    'b3-tempAmbiente':         () => state.secaoB.temperatura.tempAmbiente = val,
+    'b3-resfriamento':         () => state.secaoB.temperatura.resfriamento = val,
+    'b4-ruidoAnormal':         () => state.secaoB.ruidos.ruidoAnormal = val,
+    'b4-vibracao':             () => state.secaoB.ruidos.vibracao = val,
+    'b4-vazamentoAr':          () => state.secaoB.ruidos.vazamentoAr = val,
+    'b4-vazamentoOleo':        () => state.secaoB.ruidos.vazamentoOleo = val,
+    'b4-folgaMecanica':        () => state.secaoB.ruidos.folgaMecanica = val,
+    'b5-nivelOleo':            () => state.secaoB.fluidos.nivelOleo = val,
+    'b5-condicaoOleo':         () => state.secaoB.fluidos.condicaoOleo = val,
+    'b5-filtroAr':             () => state.secaoB.fluidos.filtroAr = val,
+    'b5-filtroOleo':           () => state.secaoB.fluidos.filtroOleo = val,
+    'b5-dreno':                () => state.secaoB.fluidos.dreno = val,
+    'b6-tensaoAlimentacao':    () => state.secaoB.eletrico.tensaoAlimentacao = val,
+    'b6-tempPainel':           () => state.secaoB.eletrico.tempPainel = val,
+    'b6-correnteCarga':        () => state.secaoB.eletrico.correnteCarga = val,
+    'b6-desequilibrio':        () => state.secaoB.eletrico.desequilibrio = val,
+    'b6-displayIHM':           () => state.secaoB.eletrico.displayIHM = val,
+    'b6-aterramento':          () => state.secaoB.eletrico.aterramento = val,
+    'b6-cabeamento':           () => state.secaoB.eletrico.cabeamento = val,
+  };
+  if (map[field]) map[field]();
+}
+
+// ══ ACCORDION ══════════════════════════════════════════════════════════════
+function toggleAccordion(header) {
+  const body = header.nextElementSibling;
+  const isOpen = header.classList.contains('open');
+  header.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+}
+
+// ══ DRAFT / SAVE ══════════════════════════════════════════════════════════
+function scheduleSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveDraft, 500);
+}
+
+function saveDraft() {
+  captureAllInputs();
+  // Never store base64 — only Drive URLs (strings)
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function captureAllInputs() {
+  const get = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  state.identificacao.tecnico     = get('id-tecnico');
+  state.identificacao.data        = get('id-data');
+  state.identificacao.os          = get('id-os');
+  state.identificacao.cliente     = get('id-cliente');
+  state.identificacao.equipamento = get('id-equipamento');
+  state.identificacao.modelo      = get('id-modelo');
+  state.identificacao.voltagem    = get('id-voltagem');
+  state.identificacao.cvkw        = get('id-cvkw');
+  state.secaoA.defeito    = get('sA-defeito');
+  state.secaoA.horimetro  = get('sA-horimetro');
+  state.secaoA.anoFab     = get('sA-anoFab');
+  state.secaoA.localizacao = get('sA-localizacao');
+  state.secaoB.partida.tempoMaximaValor  = get('b1-tempoMaxima');
+  state.secaoB.partida.pressurizaValor   = get('b1-pressurizaValor');
+  state.secaoB.pressao.pressaoLida       = get('b2-pressaoLida');
+  state.secaoB.pressao.pressaoEsperada   = get('b2-pressaoEsperada');
+  state.secaoB.pressao.vazaoEstimada     = get('b2-vazaoEstimada');
+  state.secaoB.pressao.tempoEnchimento   = get('b2-tempoEnchimento');
+  state.secaoB.pressao.volumePadrao      = get('b2-volumePadrao');
+  state.secaoB.pressao.pressaoFinal      = get('b2-pressaoFinal');
+  state.secaoB.pressao.vazaoMedida       = get('b2-vazaoMedida');
+  state.secaoB.temperatura.tempLida      = get('b3-tempLida');
+  state.secaoB.eletrico.tensaoLida       = get('b6-tensaoLida');
+  state.secaoB.eletrico.correnteLida     = get('b6-correnteLida');
+  state.secaoB.eletrico.correnteCargaValor  = get('b6-correnteCargaValor');
+  state.secaoB.eletrico.correnteNominal     = get('b6-correnteNominal');
+  state.secaoB.eletrico.desequilibrioValor  = get('b6-desequilibrioValor');
+  state.secaoB.eletrico.displayCodigoValor  = get('b6-displayCodigoValor');
+  state.secaoC.causa       = get('sC-causa');
+  state.secaoE.observacoes = get('sE-obs');
+  state.secaoF.tecnico  = get('sF-tecnico');
+  state.secaoF.creaCft  = get('sF-creaCft');
+  state.secaoF.cliente  = get('sF-cliente');
+  state.secaoF.data     = get('sF-data');
+}
+
+function hydrateUI(saved) {
+  if (!saved) return;
+  Object.assign(state, saved);
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val || ''; };
+  const id = state.identificacao;
+  set('id-tecnico', id.tecnico); set('id-data', id.data); set('id-os', id.os);
+  set('id-cliente', id.cliente); set('id-equipamento', id.equipamento);
+  set('id-modelo', id.modelo);
+  set('id-voltagem', id.voltagem); set('id-cvkw', id.cvkw);
+
+  const sA = state.secaoA;
+  set('sA-defeito', sA.defeito); set('sA-horimetro', sA.horimetro);
+  set('sA-anoFab', sA.anoFab); set('sA-localizacao', sA.localizacao);
+
+  const sB = state.secaoB;
+  set('b1-tempoMaxima', sB.partida.tempoMaximaValor);
+  set('b1-pressurizaValor', sB.partida.pressurizaValor);
+  set('b2-pressaoLida', sB.pressao.pressaoLida);
+  set('b2-pressaoEsperada', sB.pressao.pressaoEsperada);
+  set('b2-vazaoEstimada', sB.pressao.vazaoEstimada);
+  set('b2-tempoEnchimento', sB.pressao.tempoEnchimento);
+  set('b2-volumePadrao', sB.pressao.volumePadrao);
+  set('b2-pressaoFinal', sB.pressao.pressaoFinal);
+  set('b2-vazaoMedida', sB.pressao.vazaoMedida);
+  set('b3-tempLida', sB.temperatura.tempLida);
+  set('b6-tensaoLida', sB.eletrico.tensaoLida);
+  set('b6-correnteLida', sB.eletrico.correnteLida);
+  set('b6-correnteCargaValor', sB.eletrico.correnteCargaValor);
+  set('b6-correnteNominal', sB.eletrico.correnteNominal);
+  set('b6-desequilibrioValor', sB.eletrico.desequilibrioValor);
+  set('b6-displayCodigoValor', sB.eletrico.displayCodigoValor);
+
+  set('sC-causa', state.secaoC.causa);
+  set('sE-obs', state.secaoE.observacoes);
+  set('sF-tecnico', state.secaoF.tecnico);
+  set('sF-creaCft', state.secaoF.creaCft);
+  set('sF-cliente', state.secaoF.cliente);
+  set('sF-data', state.secaoF.data);
+
+  // Restore bloco-vazao visibility
+  if (sB.pressao.vazaoRealizada === 'S') {
+    const bv = document.getElementById('bloco-vazao');
+    if (bv) bv.style.display = 'block';
+  }
+
+  // Restore toggle button states
+  const toggleFields = [
+    ['sA-condicao', sA.condicao],
+    ['sC-desmontagem', state.secaoC.desmontagem],
+    ['sC-urgencia', state.secaoC.urgencia],
+    ['sF-aprovacao', state.secaoF.aprovacao],
+    ['b1-ligaChave', sB.partida.ligaChave],
+    ['b1-partidaSemRuido', sB.partida.partidaSemRuido],
+    ['b1-tempoPressaoMaxima', sB.partida.tempoPressaoMaxima],
+    ['b1-pressurizaMaxima', sB.partida.pressurizaMaxima],
+    ['b1-desligaAlivia', sB.partida.desligaAlivia],
+    ['b1-rearma', sB.partida.rearma],
+    ['b2-pressaoTrabalho', sB.pressao.pressaoTrabalho],
+    ['b2-regulagemPressao', sB.pressao.regulagemPressao],
+    ['b2-valvulaAlivio', sB.pressao.valvulaAlivio],
+    ['b2-pressaoAlivio', sB.pressao.pressaoAlivio],
+    ['b2-vazaoRealizada', sB.pressao.vazaoRealizada],
+    ['b3-tempDescarga', sB.temperatura.tempDescarga],
+    ['b3-tempOleo', sB.temperatura.tempOleo],
+    ['b3-tempAmbiente', sB.temperatura.tempAmbiente],
+    ['b3-resfriamento', sB.temperatura.resfriamento],
+    ['b4-ruidoAnormal', sB.ruidos.ruidoAnormal],
+    ['b4-vibracao', sB.ruidos.vibracao],
+    ['b4-vazamentoAr', sB.ruidos.vazamentoAr],
+    ['b4-vazamentoOleo', sB.ruidos.vazamentoOleo],
+    ['b4-folgaMecanica', sB.ruidos.folgaMecanica],
+    ['b5-nivelOleo', sB.fluidos.nivelOleo],
+    ['b5-condicaoOleo', sB.fluidos.condicaoOleo],
+    ['b5-filtroAr', sB.fluidos.filtroAr],
+    ['b5-filtroOleo', sB.fluidos.filtroOleo],
+    ['b5-dreno', sB.fluidos.dreno],
+    ['b6-tensaoAlimentacao', sB.eletrico.tensaoAlimentacao],
+    ['b6-tempPainel', sB.eletrico.tempPainel],
+    ['b6-correnteCarga', sB.eletrico.correnteCarga],
+    ['b6-desequilibrio', sB.eletrico.desequilibrio],
+    ['b6-displayIHM', sB.eletrico.displayIHM],
+    ['b6-aterramento', sB.eletrico.aterramento],
+    ['b6-cabeamento', sB.eletrico.cabeamento],
+  ];
+  toggleFields.forEach(([field, val]) => {
+    if (!val) return;
+    const btn = document.querySelector(`[data-field="${field}"][data-val="${val}"]`);
+    if (btn) btn.classList.add('active-' + val);
+  });
+
+  // Restore gateway
+  if (state.gateway) {
+    const map = { sim_opera:'gw-sim-opera', sim_falha:'gw-sim-falha', no_boot:'gw-no-boot' };
+    const el = document.getElementById(map[state.gateway]);
+    if (el) el.classList.add('selected');
+    applyGatewayConditions();
+  }
+
+  // Restore approval
+  if (state.secaoF.aprovacao) {
+    const ab = document.querySelector(`.approval-btn[data-val="${state.secaoF.aprovacao}"]`);
+    if (ab) ab.classList.add('active-' + state.secaoF.aprovacao);
+  }
+
+  // Restore validity
+  if (state.secaoD.validade) {
+    const vp = document.querySelector(`.validity-pill[data-val="${state.secaoD.validade}"]`);
+    if (vp) vp.classList.add('active');
+  }
+
+  // Restore quote rows
+  state.secaoD.itens.forEach((item, idx) => injectQuoteRow(idx, item));
+  calcGrandTotal();
+
+  // Restore photo thumbnails (URLs or local placeholders)
+  Object.keys(state.fotos).forEach(secao => {
+    (state.fotos[secao] || []).forEach(entry => {
+      if (entry && entry.url) createThumbnail(secao, entry.url, 'confirmado', null);
+      else if (entry && entry.status === 'local') createLocalPlaceholder(secao, entry.fileName);
+    });
+  });
+}
+
+function wireAllInputs() {
+  document.querySelectorAll('input, textarea').forEach(el => {
+    el.addEventListener('input', scheduleSave);
+  });
+}
+
+// ══ QUOTE TABLE ════════════════════════════════════════════════════════════
+function addQuoteRow() {
+  const idx  = state.secaoD.itens.length;
+  const item = { descricao:'', qty:1, valorUnit:0, mo:false };
+  state.secaoD.itens.push(item);
+  injectQuoteRow(idx, item);
+  scheduleSave();
+}
+
+function injectQuoteRow(idx, item) {
+  const tbody = document.getElementById('quote-tbody');
+  const tr = document.createElement('tr');
+  tr.id = 'qr-' + idx;
+  tr.innerHTML = `
+    <td><input type="text" value="${item.descricao || ''}" oninput="state.secaoD.itens[${idx}].descricao=this.value;scheduleSave()" placeholder="Descrição"></td>
+    <td><input type="number" value="${item.qty || 1}" min="0" style="width:50px" oninput="state.secaoD.itens[${idx}].qty=+this.value;calcRowTotal(${idx})"></td>
+    <td><input type="number" value="${item.valorUnit || 0}" min="0" step="0.01" style="width:88px" oninput="state.secaoD.itens[${idx}].valorUnit=+this.value;calcRowTotal(${idx})"></td>
+    <td class="total-cell" id="qt-${idx}">${formatCurrency((item.qty||1)*(item.valorUnit||0))}</td>
+    <td><input type="checkbox" class="mo-check" ${item.mo?'checked':''} onchange="state.secaoD.itens[${idx}].mo=this.checked;scheduleSave()"></td>
+    <td><button class="btn-remove-row" onclick="removeQuoteRow(${idx})">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function removeQuoteRow(idx) {
+  state.secaoD.itens.splice(idx, 1);
+  // Re-render all rows
+  const tbody = document.getElementById('quote-tbody');
+  tbody.innerHTML = '';
+  state.secaoD.itens.forEach((item, i) => injectQuoteRow(i, item));
+  calcGrandTotal();
+  scheduleSave();
+}
+
+function calcRowTotal(idx) {
+  const item  = state.secaoD.itens[idx];
+  const total = (item.qty || 0) * (item.valorUnit || 0);
+  item.total  = total;
+  const cell  = document.getElementById('qt-' + idx);
+  if (cell) cell.textContent = formatCurrency(total);
+  calcGrandTotal();
+  scheduleSave();
+}
+
+function calcGrandTotal() {
+  const total = state.secaoD.itens.reduce((s, it) => s + ((it.qty||0)*(it.valorUnit||0)), 0);
+  document.getElementById('grand-total').textContent = formatCurrency(total);
+}
+
+function formatCurrency(n) {
+  return Number(n||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+}
+
+// ══ PHOTOS ════════════════════════════════════════════════════════════════
+function capturePhoto(secao) {
+  if (!GAS_URL) {
+    showToast('Configure GAS_URL para enviar fotos ao Drive');
+  }
+  document.getElementById('file-' + secao).click();
+}
+
+function galleryPhoto(secao) {
+  document.getElementById('gallery-' + secao).click();
+}
+
+function onPhotoSelected(secao, input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = ''; // reset so same file can be selected again
+  compressImage(file).then(compressed => uploadPhoto(secao, compressed));
+}
+
+function createLocalPlaceholder(secao, fileName) {
+  const container = document.getElementById('thumbs-' + secao);
+  if (!container) return;
+  const div = document.createElement('div');
+  div.style.cssText = `
+    width:72px;height:72px;border-radius:6px;border:2px solid #E67E22;
+    background:var(--bg-section);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;padding:4px;
+  `;
+  div.innerHTML = `
+    <span style="font-size:20px">📷</span>
+    <span style="font-size:9px;color:#E67E22;text-align:center;line-height:1.1;">
+      Local<br>sem envio
+    </span>
+  `;
+  div.title = fileName || 'Foto local';
+  container.appendChild(div);
+}
+
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > MAX_IMG_PX || h > MAX_IMG_PX) {
+          if (w > h) { h = Math.round(h * MAX_IMG_PX / w); w = MAX_IMG_PX; }
+          else       { w = Math.round(w * MAX_IMG_PX / h); h = MAX_IMG_PX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl  = canvas.toDataURL('image/jpeg', IMG_QUALITY);
+        const base64   = dataUrl.split(',')[1];
+        const ts       = Date.now();
+        const baseName = (file.name || 'foto').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        resolve({ base64, mimeType:'image/jpeg', fileName: ts + '_' + baseName, dataUrl });
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadPhoto(secao, compressed) {
+  const { base64, mimeType, fileName, dataUrl } = compressed;
+  const os      = state.identificacao.os      || 'SemOS';
+  const cliente = state.identificacao.cliente || 'SemCliente';
+  const thumbId = 'thumb-' + secao + '-' + Date.now();
+
+  // 1. Show local thumbnail immediately
+  createThumbnail(secao, dataUrl, 'uploading', thumbId);
+
+  // Store dataUrl for PDF generation
+  if (!_fotoDataUrls[secao]) _fotoDataUrls[secao] = [];
+  _fotoDataUrls[secao].push(dataUrl);
+
+  if (!GAS_URL) {
+    updateThumbState(thumbId, 'local');
+    // Store placeholder (no base64 in state/localStorage)
+    if (!state.fotos[secao]) state.fotos[secao] = [];
+    state.fotos[secao].push({ url: null, fileName, status:'local' });
+    saveDraft();
+    return;
+  }
+
+  // 2. Upload to GAS
+  try {
+    const payload = {
+      action: 'salvarFotoForm',
+      key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+      os, cliente, secao, nomeArquivo: fileName, base64, mimeType,
+      entity_type: 'form02', categoria: 'foto_form02'
+    };
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+    const text = await resp.text();
+    const data = JSON.parse(text);
+    if (!data || data.ok !== true) throw new Error(data.error || 'Falha no upload');
+
+    updateThumbState(thumbId, 'confirmado');
+    if (!state.fotos[secao]) state.fotos[secao] = [];
+    state.fotos[secao].push({ url: data.url, fileName, status:'ok' });
+    saveDraft();
+  } catch(err) {
+    updateThumbState(thumbId, 'erro');
+    showToast('Erro no envio da foto. Tente novamente.');
+  }
+}
+
+function createThumbnail(secao, src, cssClass, thumbId) {
+  const container = document.getElementById('thumbs-' + secao);
+  if (!container) return;
+  const img = document.createElement('img');
+  img.className = 'photo-thumb ' + (cssClass || '');
+  img.src = src;
+  if (thumbId) img.id = thumbId;
+  img.alt = 'Foto';
+  container.appendChild(img);
+}
+
+function updateThumbState(thumbId, cssClass) {
+  const img = document.getElementById(thumbId);
+  if (!img) return;
+  img.className = 'photo-thumb ' + cssClass;
+}
+
+// ══ FINAL SCREEN ══════════════════════════════════════════════════════════
+async function goToFinal() {
+  captureAllInputs();
+
+  if (_osId && !_formularioEnviado) {
+    _formularioEnviado = true; // FP-05: grava em FORMULARIOS uma vez só por sessão do form
+    var _sess = null;
+    try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    try {
+      var _payload = {
+        action: 'saveFormulario',
+        key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+        os_id: _osId,
+        tarefa_id: _tarefaId,
+        tipo_formulario: 'form02',
+        form_uid: _formUid,
+        tecnico_nome: state.identificacao.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
+        tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '',
+        campos_json: state,
+        fotos_json: state.fotos || []
+      };
+      const r = await fetch(GAS_URL, { method: 'POST', body: gcBody(_payload) });
+      const d = JSON.parse(await r.text());
+      if (d.status !== 'ok') throw new Error(d.message || 'Erro do servidor');
+    } catch (e) {
+      _formularioEnviado = false; // falha real — libera nova tentativa
+      showToast('Erro ao enviar: ' + e.message);
+      var _syncWarn = document.getElementById('sync-warning');
+      if (_syncWarn) _syncWarn.style.display = 'block';
+    }
+  }
+
+  renderSummary();
+  showScreen('screen-final');
+}
+
+function renderSummary() {
+  const id  = state.identificacao;
+  const gwMap = { sim_opera:'Opera normalmente', sim_falha:'Opera com falha', no_boot:'Não liga', '':'-' };
+  const urgMap = { normal:'Normal', alta:'Alta', critica:'Crítica', '':'-' };
+  const aprMap = { aprovado:'Aprovado', ressalva:'Aprovado com ressalva', reprovado:'Reprovado', '':'-' };
+  const totalFotos = Object.values(state.fotos).reduce((s,a) => s + (a||[]).length, 0);
+
+  const items = [
+    ['OS',            id.os        || '-'],
+    ['Cliente',       id.cliente   || '-'],
+    ['Equipamento',   id.equipamento || '-'],
+    ['Técnico',       id.tecnico   || '-'],
+    ['Status Equip.', gwMap[state.gateway||'']],
+    ['Urgência',      urgMap[state.secaoC.urgencia||'']],
+    ['Aprovação',     aprMap[state.secaoF.aprovacao||'']],
+    ['Fotos tiradas', totalFotos],
+    ['Itens orçados', state.secaoD.itens.length],
+  ];
+
+  document.getElementById('summary-content').innerHTML = items.map(([k,v]) =>
+    `<div class="summary-item"><span class="summary-key">${k}</span><span class="summary-value">${v}</span></div>`
+  ).join('');
+}
+
+// ══ PDF LAYOUT BUILDER ════════════════════════════════════════════════════
+
+function getPdfToggleValue(field) {
+  const btns = document.querySelectorAll(`[data-field="${field}"]`);
+  for (const btn of btns) {
+    for (const cls of btn.classList) {
+      if (cls.startsWith('active-')) return cls.replace('active-', '');
+    }
+  }
+  return null;
+}
+
+function pdfCb(val, target) {
+  return `<span class="pdf-cb${val === target ? ' marked' : ''}"></span>`;
+}
+
+function pdfCheckRow(label, field, valorId, skipped) {
+  const val  = getPdfToggleValue(field);
+  const valor = valorId ? (document.getElementById(valorId)?.value || '') : '';
+  const rowCls = skipped ? ' class="pdf-cond-skip"' : '';
+  return `<tr${rowCls}>
+    <td>${label}${skipped ? ' <em>(pulado)</em>' : ''}</td>
+    <td class="col-valor">${valor}</td>
+    <td class="col-check">${pdfCb(val,'S')}</td>
+    <td class="col-check">${pdfCb(val,'N')}</td>
+    <td class="col-check">${pdfCb(val,'NA')}</td>
+    <td class="col-check">${pdfCb(val,'NT')}</td>
+  </tr>`;
+}
+
+function pdfCheckHead(col1, col2, col3, col4) {
+  col1 = col1||'SIM'; col2 = col2||'NÃO'; col3 = col3||'N/A'; col4 = col4||'N/T';
+  return `<tr>
+    <th class="th-desc">Verificação</th>
+    <th>Valor medido</th>
+    <th>${col1}</th><th>${col2}</th><th>${col3}</th><th>${col4}</th>
+  </tr>`;
+}
+
+function pdfPhoto(zone) {
+  const count = (state.fotos[zone] || []).length;
+  return `<div class="pdf-photo-reminder">📷 ${count} foto(s) registrada(s) — ver Drive</div>`;
+}
+
+function pdfFotoBlock(zone) {
+  const dataUrls = _fotoDataUrls[zone] || [];
+  const driveEntries = (state.fotos[zone] || []).filter(e => e && e.url);
+  if (dataUrls.length === 0 && driveEntries.length === 0) {
+    const count = (state.fotos[zone] || []).length;
+    if (count === 0) return '';
+    return `<div class="pdf-photo-reminder">📷 ${count} foto(s) registrada(s) — ver Drive</div>`;
+  }
+  let imgs = dataUrls.map(url => `<img class="pdf-foto-img" src="${url}" alt="foto">`).join('');
+  if (driveEntries.length > 0 && dataUrls.length === 0) {
+    imgs = driveEntries.map(e => `<img class="pdf-foto-img" src="${e.url}" alt="foto">`).join('');
+  }
+  return `<div class="pdf-foto-block">${imgs}</div>`;
+}
+
+function buildPdfLayout() {
+  const id   = state.identificacao;
+  const sA   = state.secaoA;
+  const sB   = state.secaoB;
+  const sC   = state.secaoC;
+  const sD   = state.secaoD;
+  const sE   = state.secaoE;
+  const sF   = state.secaoF;
+  const gw   = state.gateway;
+  const skip = gw === 'no_boot';
+
+  const fmtDate = d => d ? d.split('-').reverse().join('/') : '___';
+  const brl = n => Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+
+  /* helpers for gateway checkboxes */
+  const gwCb = target => pdfCb(gw, target);
+  const estadoFisico = getPdfToggleValue('sA-condicao');
+  const desmontagem  = getPdfToggleValue('sC-desmontagem');
+  const urgencia     = getPdfToggleValue('sC-urgencia');
+  const aprovacao    = getPdfToggleValue('sF-aprovacao');
+
+  /* ── Seção D rows ── */
+  const MAX_ROWS = 7;
+  const dRows = [];
+  for (let i = 0; i < MAX_ROWS; i++) {
+    const it = sD.itens[i] || {};
+    const total = ((it.qty||0)*(it.valorUnit||0));
+    const moCb  = val => `<span class="pdf-cb${it.mo===val ? ' marked':''}" style="font-size:6pt;"></span>`;
+    dRows.push(`<tr>
+      <td style="width:18px;text-align:center">${i+1}</td>
+      <td>${it.descricao||''}</td>
+      <td style="width:30px;text-align:center">${it.qty||''}</td>
+      <td style="width:55px;text-align:right">${it.valorUnit ? 'R$ '+brl(it.valorUnit) : ''}</td>
+      <td style="width:55px;text-align:right">${total ? 'R$ '+brl(total) : ''}</td>
+      <td style="width:60px;text-align:center">${moCb(true)} Sim ${moCb(false)} Não</td>
+    </tr>`);
+  }
+  const grandTotal = sD.itens.reduce((s,it)=>s+((it.qty||0)*(it.valorUnit||0)),0);
+  const valCb = v => `<span class="pdf-cb${sD.validade===v?' marked':''}"></span>`;
+
+  /* ── BUILD HTML ── */
+  const html = `
+
+  <header class="pdf-header">
+    <div class="pdf-header-logo">
+      <div class="pdf-logo-circle">P</div>
+    </div>
+    <div class="pdf-header-title">
+      <span class="pdf-form-name">FORM 02 — DIAGNÓSTICO SEM DESMONTAGEM</span>
+      <span class="pdf-form-sub">Avaliação Funcional · Compressores de Parafuso</span>
+      <span class="pdf-form-ver">Versão 3.0 | Revisão: ___ | Aprovação: ___</span>
+    </div>
+    <div class="pdf-header-fields">
+      <div class="pdf-id-row">
+        <span class="pdf-id-label">OS Nº</span><span class="pdf-id-val">${id.os}</span>
+        <span class="pdf-id-label">Data:</span><span class="pdf-id-val">${fmtDate(id.data)}</span>
+      </div>
+      <div class="pdf-id-row">
+        <span class="pdf-id-label">Cliente:</span><span class="pdf-id-val">${id.cliente}</span>
+      </div>
+      <div class="pdf-id-row">
+        <span class="pdf-id-label">Equipamento:</span><span class="pdf-id-val">${id.equipamento}</span>
+      </div>
+      <div class="pdf-id-row">
+        <span class="pdf-id-label">Modelo/Série:</span><span class="pdf-id-val">${id.modelo||''}</span>
+      </div>
+      <div class="pdf-id-row">
+        <span class="pdf-id-label">Técnico:</span><span class="pdf-id-val">${id.tecnico}</span>
+        <span class="pdf-id-label">CV/kW:</span><span class="pdf-id-val">${id.cvkw}</span>
+        <span class="pdf-id-label">Tensão:</span><span class="pdf-id-val">${id.voltagem}</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="pdf-gateway">
+    <div class="pdf-gateway-title">◆ GATEWAY — MÁQUINA LIGA?</div>
+    <div class="pdf-gateway-opts">
+      <span>${gwCb('sim_opera')} SIM — liga e opera normalmente</span>
+      <span>${gwCb('sim_falha')} SIM — liga com falha</span>
+      <span>${gwCb('no_boot')} NÃO LIGA</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO A -->
+  <div class="pdf-sec-head-amber">A — CONDIÇÃO DE ENTRADA DO EQUIPAMENTO</div>
+  <div class="pdf-sec-a-body">
+    <div class="pdf-sec-a-row">
+      <div class="pdf-field-inline" style="flex:1">
+        <label>Defeito relatado:</label>
+        <span class="pdf-underline" style="min-width:120px">${sA.defeito||''}</span>
+      </div>
+      <div class="pdf-field-inline">
+        <label>Estado físico:</label>
+        ${pdfCb(estadoFisico,'boa')} Bom
+        ${pdfCb(estadoFisico,'regular')} Regular
+        ${pdfCb(estadoFisico,'ruim')} Ruim
+      </div>
+    </div>
+    <div class="pdf-sec-a-row">
+      <div class="pdf-field-inline">
+        <label>Horímetro:</label><span class="pdf-underline">${sA.horimetro||''}</span>
+      </div>
+      <div class="pdf-field-inline">
+        <label>Ano Fab.:</label><span class="pdf-underline">${sA.anoFab||''}</span>
+      </div>
+      <div class="pdf-field-inline" style="flex:1">
+        <label>Local de atendimento:</label><span class="pdf-underline" style="min-width:60px">${sA.localizacao||''}</span>
+      </div>
+    </div>
+    ${pdfFotoBlock('secaoA')}
+  </div>
+
+  <!-- SEÇÃO B -->
+  <div class="pdf-sec-head-blue">B — TESTES FUNCIONAIS ${skip ? '(⚡ itens condicionais PULADOS — NÃO LIGA)' : '(⚡ = pular se NÃO LIGA)'}</div>
+
+  <div class="pdf-b-container">
+    <div class="pdf-b-col pdf-b-col-left">
+
+      <div class="pdf-subsec-head-orange">PARTIDA E ACIONAMENTO</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead()}
+        ${pdfCheckRow('Liga ao acionar chave / botão?',                   'b1-ligaChave',         null,                  false)}
+        ${pdfCheckRow('⚡ Partida sem ruído excessivo ou tranco?',        'b1-partidaSemRuido',   null,                  skip)}
+        ${pdfCheckRow('⚡ Tempo até pressão máxima (alívio)',             'b1-tempoPressaoMaxima','b1-tempoMaxima',      skip)}
+        ${pdfCheckRow('⚡ Pressuriza até pressão máxima config.',         'b1-pressurizaMaxima',  'b1-pressurizaValor',  skip)}
+        ${pdfCheckRow('⚡ Desliga/alivia automaticamente na pressão?',    'b1-desligaAlivia',     null,                  skip)}
+        ${pdfCheckRow('⚡ Rearma corretamente na pressão mínima?',        'b1-rearma',            null,                  skip)}
+      </table>
+
+      <div class="pdf-subsec-head-orange">PRESSÃO E VAZÃO</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead('OK','Ñ OK','N/A','N/T')}
+        ${pdfCheckRow('⚡ Pressão de trabalho dentro do esperado',        'b2-pressaoTrabalho',  'b2-pressaoLida',      skip)}
+        ${pdfCheckRow('Regulagem de pressão funciona',                    'b2-regulagemPressao', 'b2-pressaoEsperada',  false)}
+        ${pdfCheckRow('Válvula de alívio em boas condições',              'b2-valvulaAlivio',    null,                  false)}
+        ${pdfCheckRow('⚡ Pressão de alívio conf. no controlador',        'b2-pressaoAlivio',    null,                  skip)}
+        <tr><td colspan="2" style="font-size:6pt;color:#666">Vazão estimada (m³/min):</td>
+            <td colspan="4">${sB.pressao.vazaoEstimada||''}</td></tr>
+        ${sB.pressao.vazaoRealizada === 'S' ? `<tr>
+          <td colspan="6" style="font-size:6pt;padding:1px 2px;">
+            <strong>Medição de Vazão:</strong>
+            Tempo: ${sB.pressao.tempoEnchimento||'___'} min &nbsp;|&nbsp;
+            Volume: ${sB.pressao.volumePadrao||'___'} L &nbsp;|&nbsp;
+            P. Final: ${sB.pressao.pressaoFinal||'___'} bar &nbsp;|&nbsp;
+            Valor: ${sB.pressao.vazaoMedida||'___'} m³/h
+          </td>
+        </tr>` : ''}
+      </table>
+
+      <div class="pdf-subsec-head-orange">TEMPERATURA</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead()}
+        ${pdfCheckRow('⚡ Temp. descarga dentro do limite', 'b3-tempDescarga', 'b3-tempLida', skip)}
+        ${pdfCheckRow('⚡ Temp. de óleo dentro do limite',  'b3-tempOleo',     null,          skip)}
+        ${pdfCheckRow('Temp. ambiente aceitável',           'b3-tempAmbiente', null,          false)}
+        ${pdfCheckRow('⚡ Resfriamento / ventilação OK',    'b3-resfriamento', null,          skip)}
+      </table>
+      ${pdfFotoBlock('secaoB_temperatura')}
+
+    </div>
+    <div class="pdf-b-col pdf-b-col-right">
+
+      <div class="pdf-subsec-head-blue">RUÍDOS, VIBRAÇÃO E VAZAMENTOS</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead()}
+        ${pdfCheckRow('Ruído anormal identificado',    'b4-ruidoAnormal',   null, false)}
+        ${pdfCheckRow('Vibração excessiva',            'b4-vibracao',       null, false)}
+        ${pdfCheckRow('Vazamento de ar detectado',     'b4-vazamentoAr',    null, false)}
+        ${pdfCheckRow('Vazamento de óleo detectado',   'b4-vazamentoOleo',  null, false)}
+        ${pdfCheckRow('Folga mecânica perceptível',    'b4-folgaMecanica',  null, false)}
+      </table>
+      ${pdfFotoBlock('secaoB_ruidos')}
+
+      <div class="pdf-subsec-head-blue">FLUIDOS E FILTROS</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead()}
+        ${pdfCheckRow('Nível de óleo adequado',           'b5-nivelOleo',    null, false)}
+        ${pdfCheckRow('Condição do óleo aceitável',       'b5-condicaoOleo', null, false)}
+        ${pdfCheckRow('Filtro de ar em boas condições',   'b5-filtroAr',     null, false)}
+        ${pdfCheckRow('Filtro de óleo / separador OK',    'b5-filtroOleo',   null, false)}
+        ${pdfCheckRow('⚡ Dreno automático — funcionando?','b5-dreno',       null, skip)}
+      </table>
+      ${pdfFotoBlock('secaoB_fluidos')}
+
+      <div class="pdf-subsec-head-blue">ELÉTRICO — SEM ABERTURA DE PAINEL</div>
+      <table class="pdf-check-table">
+        ${pdfCheckHead()}
+        ${pdfCheckRow('⚡ Tensão de alimentação dentro do esperado', 'b6-tensaoAlimentacao', 'b6-tensaoLida',         skip)}
+        ${pdfCheckRow('⚡ Corrente em carga plena (amperímetro)',    'b6-correnteCarga',     'b6-correnteCargaValor', skip)}
+        <tr${skip ? ' class="pdf-cond-skip"' : ''}>
+          <td>Corrente nominal de plaqueta</td>
+          <td class="col-valor">${sB.eletrico.correnteNominal||''} A</td>
+          <td class="col-check"></td><td class="col-check"></td>
+          <td class="col-check"></td><td class="col-check"></td>
+        </tr>
+        ${pdfCheckRow('⚡ Desequilíbrio de tensão entre fases',      'b6-desequilibrio',     'b6-desequilibrioValor', skip)}
+        ${pdfCheckRow('⚡ Display IHM sem código de falha ativo',    'b6-displayIHM',        'b6-displayCodigoValor', skip)}
+        ${pdfCheckRow('Aterramento visível e íntegro',               'b6-aterramento',        null,                  false)}
+        ${pdfCheckRow('Condição do cabeamento externo OK',           'b6-cabeamento',         null,                  false)}
+      </table>
+      ${pdfFotoBlock('secaoB_eletrico')}
+
+    </div>
+  </div>
+
+  <!-- SEÇÃO C -->
+  <div class="pdf-sec-head-dark">C — DIAGNÓSTICO CONSOLIDADO</div>
+  <div class="pdf-sec-c-body">
+    <div class="pdf-c-row">
+      <strong>Necessita desmontagem?</strong>
+      &nbsp;&nbsp;${pdfCb(desmontagem,'N')} NÃO — orçar por este formulário
+      &nbsp;&nbsp;${pdfCb(desmontagem,'S')} SIM — encaminhar para FORM 09 / 10
+    </div>
+    <div class="pdf-c-row">
+      <strong>Urgência:</strong>
+      &nbsp;&nbsp;${pdfCb(urgencia,'normal')} Normal
+      &nbsp;&nbsp;${pdfCb(urgencia,'alta')} Alta — cliente sem produção
+      &nbsp;&nbsp;${pdfCb(urgencia,'critica')} Crítica — risco de dano progressivo
+    </div>
+    <div><strong>Causa provável / diagnóstico:</strong>
+      <div class="pdf-diag-area">${sC.causa||''}</div>
+    </div>
+  </div>
+
+  <!-- SEÇÃO D -->
+  <div class="pdf-sec-head-dark">D — PRÉ-ORÇAMENTO (SEM DESMONTAGEM)</div>
+  <div class="pdf-sec-d-body">
+    <table class="pdf-d-table">
+      <thead>
+        <tr>
+          <th style="width:18px">#</th>
+          <th>Item / Serviço</th>
+          <th style="width:30px">Qtde</th>
+          <th style="width:55px">Vlr. Unit. (R$)</th>
+          <th style="width:55px">Vlr. Total (R$)</th>
+          <th style="width:60px">M.O.?</th>
+        </tr>
+      </thead>
+      <tbody>${dRows.join('')}</tbody>
+    </table>
+    <div class="pdf-d-footer">
+      <span>Validade: ${valCb('5')} 5d &nbsp; ${valCb('10')} 10d &nbsp; ${valCb('15')} 15d</span>
+      <span class="pdf-d-total-val">TOTAL R$: ${brl(grandTotal)}</span>
+    </div>
+    <div class="pdf-d-note">* Pré-orçamento baseado em avaliação funcional sem desmontagem. Caso a execução revele itens adicionais, novo orçamento complementar será apresentado ao cliente antes de prosseguir.</div>
+  </div>
+
+  <!-- SEÇÕES E + F -->
+  <div class="pdf-ef-container">
+    <div class="pdf-e-col">
+      <div class="pdf-ef-sec-head">E — OBSERVAÇÕES ADICIONAIS DO TÉCNICO</div>
+      <div class="pdf-e-body">${sE.observacoes||''}</div>
+    </div>
+    <div class="pdf-f-col">
+      <div class="pdf-ef-sec-head">F — APROVAÇÃO E ASSINATURAS</div>
+      <div class="pdf-f-body">
+        <div class="pdf-f-row">
+          ${pdfCb(aprovacao,'aprovado')} Aprovado — iniciar serviço
+          &nbsp; ${pdfCb(aprovacao,'ressalva')} Aprovado c/ ressalva
+          &nbsp; ${pdfCb(aprovacao,'reprovado')} Reprovado
+        </div>
+        <div class="pdf-f-row">
+          <strong>Assinatura do Técnico:</strong>
+          <span class="pdf-sig-line"></span>
+          <div class="pdf-field-inline">
+            <label>Nome:</label><span class="pdf-underline" style="min-width:70px">${sF.tecnico||''}</span>
+            &nbsp;<label>CREA/CFT:</label><span class="pdf-underline" style="min-width:50px">${sF.creaCft||''}</span>
+          </div>
+        </div>
+        <div class="pdf-f-row">
+          <strong>Aprovação do Cliente:</strong>
+          <span class="pdf-sig-line"></span>
+          <div class="pdf-field-inline">
+            <label>Nome:</label><span class="pdf-underline" style="min-width:70px">${sF.cliente||''}</span>
+            &nbsp;<label>Data:</label><span class="pdf-underline" style="min-width:40px">${fmtDate(sF.data)}</span>
+          </div>
+        </div>
+        <div class="pdf-f-footer">Preencher com caneta permanente &bull; propercompressores.com.br &bull; FORM 02 v/8.0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pdf-legend">
+    <strong>Legenda:</strong>
+    ☐ SIM = Conforme / OK &nbsp;&nbsp;
+    ☐ NÃO = Não conforme &nbsp;&nbsp;
+    ☐ N/A = Não se aplica ao equipamento &nbsp;&nbsp;
+    ☐ N/T = Não testado (item não verificado nesta inspeção)
+  </div>
+`;
+
+  document.getElementById('pdf-layout').innerHTML = html;
+}
+
+function printAll() {
+  captureAllInputs();
+  buildPdfLayout();
+  window.print();
+}
+
+function newDiagnostic() {
+  if (!confirm('Iniciar novo diagnóstico? O rascunho atual será apagado.')) return;
+  localStorage.removeItem(DRAFT_KEY);
+  location.reload();
+}
+
+// ══ TOAST ══════════════════════════════════════════════════════════════════
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ══ PWA MANIFEST ══════════════════════════════════════════════════════════
+function installPWAManifest() {
+  const manifest = {
+    name: 'PROPER – Diagnóstico 08',
+    short_name: 'Diag 08',
+    start_url: './',
+    display: 'standalone',
+    background_color: '#111827',
+    theme_color: '#C0392B',
+    icons: [{
+      src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23C0392B'/%3E%3Ctext y='.9em' x='50%25' text-anchor='middle' font-size='62' fill='white' font-family='Inter,sans-serif' font-weight='700'%3EP%3C/text%3E%3C/svg%3E",
+      sizes: 'any', type: 'image/svg+xml'
+    }]
+  };
+  try {
+    const blob = new Blob([JSON.stringify(manifest)], { type:'application/manifest+json' });
+    const link = document.getElementById('manifest-link');
+    if (link) link.href = URL.createObjectURL(blob);
+  } catch(e) {}
+}
+
+// ══ INIT ══════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Auto-fill today's date
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('id-data').value = today;
+  document.getElementById('sF-data').value = today;
+
+  // Load draft if exists
+  const draft = loadDraft();
+  if (draft) {
+    hydrateUI(draft);
+    showToast('Rascunho restaurado');
+  }
+
+  // Pipeline: ler os_id/tarefa_id da URL e pré-preencher OS/cliente
+  var _p = new URLSearchParams(location.search);
+  _osId     = _p.get('os_id')     || '';
+  _tarefaId = _p.get('tarefa_id') || '';
+  var _cli  = _p.get('cliente')   || _p.get('client')     || '';
+  var _num  = _p.get('os_numero') || _p.get('os')         || '';
+  if (_num) { var eOs = document.getElementById('id-os');      if (eOs && !eOs.value) eOs.value = _num; }
+  if (_cli) { var eCl = document.getElementById('id-cliente'); if (eCl && !eCl.value) eCl.value = _cli; }
+
+  // Wire all inputs for auto-save
+  wireAllInputs();
+
+  // PWA manifest
+  installPWAManifest();
+
+  // Start on screen 0
+  showScreen('screen-0');
+});
+</script>
+</body>
+</html>
