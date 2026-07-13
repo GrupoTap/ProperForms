@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<!--
+form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do peritagem.html)
+  - Arquivo autônomo com APENAS o esquema elétrico. Gêmeo: form03.html (Mecânica).
+    Motor idêntico ao peritagem.html.
+  - NUMERAÇÃO PRÓPRIA: tipo_formulario=form04 (antes era form10). Grava em
+    FORMULARIOS como form04 e o GAS fecha auto:form04 genericamente (autoCompletarTarefa
+    v37 já não tem lista fixa). ZERO mudança de GAS. REQUER: a tarefa de peritagem
+    elétrica no PIPELINE_TEMPLATES ter Tipo='auto:form04' e Form_URL=form04.html.
+  - Fotos sobem ao Drive via salvarFotoForm (categoria foto_form04 / entity_type form04).
+  - Cabeçalho auto (Equipamento/TAG, Modelo/Série, Horímetro, Ano): URL tem
+    prioridade (equipamento|equip|tag, modelo, serie|serial, horimetro, ano) e,
+    se não vier, busca via getMaquinasByOS(os_id) — igual form01. Nunca sobrescreve
+    campo já preenchido. Técnico pré-preenchido pela proper_session.
+  - Fotos: A, B1, B2, B3, B4, B5, B6 e C (defeitos aparentes). Sem seção de
+    orçamento (Observações = "D", Parecer = "E").
+  - peritagem.html?tipo=10 continua funcionando (vira redirecionador para cá).
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Form 04 — Peritagem Elétrica</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:680px;margin:0 auto}
+  h1{font-size:22px;font-weight:700}.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+  .card-h{padding:12px 14px;font-size:16px;font-weight:700;color:#cbd5e1;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .card-b{padding:0 14px 14px}
+  .card.collapsed .card-b{display:none}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=date],textarea,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:56px}
+  .row2{display:flex;gap:8px}.row2>div{flex:1}
+  .item{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .item:first-child{border-top:0;padding-top:0;margin-top:0}
+  .item-label{font-size:14px;margin-bottom:2px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .pills button{flex:1;min-width:56px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;cursor:pointer}
+  .pills button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .pills button.sim.on{background:var(--green);border-color:var(--green);color:#07240f}
+  .pills button.nao.on{background:var(--red);border-color:var(--red);color:#2a0a0a}
+  .pills button.na.on,.pills button.nt.on{background:var(--muted);border-color:var(--muted);color:#0b0b0b}
+  .med{display:flex;gap:6px;align-items:center}.med input{flex:1}.med .u{font-size:12px;color:var(--muted);min-width:38px}
+  .btn-foto{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit;margin-top:6px}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .thumb{width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb.ok{border-color:var(--green)}.thumb.uploading{opacity:.5}.thumb.erro{border-color:var(--red)}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  th,td{border:1px solid var(--border);padding:5px;text-align:left}
+  th{color:var(--muted);font-weight:600}
+  td input{border:0;background:transparent;padding:4px}
+  .btn{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
+  .btn-primary:disabled{opacity:.5}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+  .ok-msg{text-align:center;padding:32px 16px}.ok-msg .big{font-size:44px}
+  @media print{ body{background:#fff;color:#000;max-width:none} .no-print{display:none!important} .card{border:1px solid #999;break-inside:avoid} .card-b{display:block!important} }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1 id="titulo">Peritagem</h1>
+  <div class="sub" id="subtitulo"></div>
+  <div id="osPill" class="pill-info" style="display:none"></div>
+  <div id="form"></div>
+  <button class="btn-primary no-print" id="btnEnviar" onclick="enviar()">✓ Concluir peritagem</button>
+  <button class="btn no-print" style="width:100%;margin-top:8px" onclick="window.print()">🖨️ Gerar PDF / imprimir</button>
+  <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+</div>
+<div id="okScreen" style="display:none">
+  <div class="ok-msg"><div class="big">✅</div><h1 style="margin-top:10px">Peritagem registrada</h1>
+  <div class="sub" id="okSub"></div>
+  <button class="btn" onclick="window.print()">🖨️ Gerar PDF</button></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+
+// ══ ESQUEMA — Peritagem Elétrica (Form 04) ═══════════════════════════════════
+// c: sn | snnt | escala | med | texto | escolha | foto ; unit p/ med ; opts p/ escolha ; gw restringe ao gateway
+const SCHEMAS = {
+  '04': {
+    tipoForm:'form04', titulo:'Form 04 — Peritagem Elétrica',
+    subtitulo:'Peritagem elétrica do conjunto motor + partida + comando.',
+    idExtra:[
+      {k:'potencia',label:'Potência (CV/kW)'},{k:'tensao_nom',label:'Tensão nominal'},
+      {k:'corrente_nom',label:'Corrente nominal (A)'},{k:'classe_isol',label:'Classe de isolação'},
+      {k:'ip',label:'Grau de proteção (IP)'} ],
+    gateway:{ k:'tipo_partida', label:'Tipo de partida', opts:['Direta','Estrela-triângulo','Soft-starter','Inversor (VFD)'] },
+    secoes:[
+      { id:'A', t:'A — Dados gerais', itens:[
+        {k:'sintoma',label:'Sintoma/falha elétrica relatada',c:'texto'},
+        {k:'motor_liga',label:'Motor liga/energiza?',c:'sn'},
+        {k:'atua_protecao',label:'Atua proteção (desarma)?',c:'snnt'},
+        {k:'cond_painel',label:'Condição geral do painel na chegada',c:'escala'},
+        {k:'foto_a',label:'Foto — placa do motor / painel na chegada',c:'foto'} ]},
+      { id:'B1', t:'B1 — Motor elétrico (enrolamentos/isolação)', itens:[
+        {k:'iso_fase_terra',label:'Resistência de isolamento fase–terra',c:'med',unit:'MΩ'},
+        {k:'iso_fase_fase',label:'Resistência de isolamento fase–fase',c:'med',unit:'MΩ'},
+        {k:'indice_pol',label:'Índice de polarização (IP)',c:'med',unit:'ratio'},
+        {k:'ohm_rs',label:'Resistência ôhmica R–S',c:'med',unit:'Ω'},
+        {k:'ohm_st',label:'Resistência ôhmica S–T',c:'med',unit:'Ω'},
+        {k:'ohm_tr',label:'Resistência ôhmica T–R',c:'med',unit:'Ω'},
+        {k:'desequilibrio_enr',label:'Desequilíbrio entre enrolamentos dentro do limite',c:'sn'},
+        {k:'continuidade',label:'Continuidade dos enrolamentos OK',c:'sn'},
+        {k:'queima',label:'Sinais de queima/curto/verniz carbonizado',c:'sn'},
+        {k:'foto_b1',label:'Foto — enrolamentos / teste de isolação',c:'foto'} ]},
+      { id:'B2', t:'B2 — Rolamentos do motor', itens:[
+        {k:'rol_motor_ruido',label:'Rolamentos sem ruído/aspereza',c:'sn'},
+        {k:'corrente_fuga',label:'Sinais de corrente de fuga (estrias/fluting)',c:'sn'},
+        {k:'lubrif_motor',label:'Lubrificação/vedação em condição',c:'sn'},
+        {k:'foto_b2',label:'Foto — rolamentos do motor',c:'foto'} ]},
+      { id:'B3', t:'B3 — Alimentação e proteção', itens:[
+        {k:'tensao_r',label:'Tensão fase R',c:'med',unit:'V'},
+        {k:'tensao_s',label:'Tensão fase S',c:'med',unit:'V'},
+        {k:'tensao_t',label:'Tensão fase T',c:'med',unit:'V'},
+        {k:'deseq_tensao',label:'Desequilíbrio de tensão dentro do limite',c:'sn'},
+        {k:'disjuntor',label:'Disjuntor/seccionadora em condição',c:'sn'},
+        {k:'fusiveis',label:'Fusíveis íntegros e corretos',c:'snnt'},
+        {k:'rele_sobrecarga',label:'Relé de sobrecarga ajustado corretamente',c:'sn'},
+        {k:'contator',label:'Contator — contatos sem desgaste/colagem',c:'sn'},
+        {k:'bobina',label:'Bobina do contator OK',c:'snnt'},
+        {k:'foto_b3',label:'Foto — alimentação / proteção / contator',c:'foto'} ]},
+      { id:'B4', t:'B4 — Partida', itens:[
+        {k:'param_partida',label:'Parâmetros de partida configurados corretamente',c:'snnt'},
+        {k:'falhas_partida',label:'Falhas registradas no equipamento de partida',c:'texto'},
+        {k:'capacitores',label:'Capacitores (partida/correção) em condição',c:'snnt'},
+        {k:'sem_alarme',label:'Soft-starter/inversor sem alarme ativo',c:'snnt'},
+        {k:'rampa',label:'Rampa/tempo de partida adequados',c:'snnt'},
+        {k:'foto_b4',label:'Foto — dispositivo de partida / parâmetros',c:'foto'} ]},
+      { id:'B5', t:'B5 — Comando e sensores', itens:[
+        {k:'pressostato',label:'Pressostato/transdutor de pressão calibrado',c:'snnt'},
+        {k:'sensor_temp',label:'Sensor de temperatura (PT100/termistor) OK',c:'snnt'},
+        {k:'ihm',label:'IHM/controlador sem falha',c:'snnt'},
+        {k:'fiacao',label:'Fiação de comando sem dano/mau contato',c:'sn'},
+        {k:'botoeiras',label:'Botoeiras/sinaleiros funcionando',c:'snnt'},
+        {k:'foto_b5',label:'Foto — comando / sensores / fiação',c:'foto'} ]},
+      { id:'B6', t:'B6 — Aterramento e segurança', itens:[
+        {k:'aterramento',label:'Continuidade de aterramento OK',c:'sn'},
+        {k:'res_aterramento',label:'Resistência de aterramento (se medida)',c:'med',unit:'Ω'},
+        {k:'torque',label:'Torque das conexões de força conferido',c:'sn'},
+        {k:'prensa_cabos',label:'Prensa-cabos/vedação do painel em condição',c:'sn'},
+        {k:'termografia',label:'Termografia — pontos quentes',c:'snnt'},
+        {k:'maior_temp',label:'Maior temperatura registrada (termografia)',c:'med',unit:'°C'},
+        {k:'foto_b6',label:'Foto — termografia / conexões / aterramento',c:'foto'} ]},
+      { id:'C', t:'C — Diagnóstico / causa raiz elétrica', itens:[
+        {k:'comp_falha',label:'Componente(s) com falha',c:'texto'},
+        {k:'causa_raiz',label:'Causa raiz provável',c:'texto'},
+        {k:'recuperavel',label:'Motor recuperável (rebobinar) ou substituir?',c:'escolha',opts:['recuperar','rebobinar','substituir']},
+        {k:'foto_c',label:'Foto — defeitos aparentes (se houver)',c:'foto'} ]},
+    ],
+    orcamento:false,
+    parecer:{ opts:['Aprovado','Aprovado com ressalva','Reprovado'] }
+  }
+};
+const URGENCIAS = ['Normal','Alta','Crítica'];
+
+let SC, _osId='', _tarefaId='', _enviado=false, _gwVal='';
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+const _formUid = pgpUid();
+const state = { fotos:{}, itens:{}, parecer:{} };
+
+// ══ RENDER ══
+function render(){
+  document.getElementById('titulo').textContent = SC.titulo;
+  document.getElementById('subtitulo').textContent = SC.subtitulo;
+  let h = '';
+  // Identificação
+  h += card('id','Identificação', `
+    <div id="maqSelWrap" style="display:none"><label>Máquina desta OS</label><select id="i_maqSel" onchange="selMaquina()"></select></div>
+    <div class="row2"><div><label>Técnico responsável</label><input type="text" id="i_tecnico"></div>
+      <div><label>Data</label><input type="date" id="i_data"></div></div>
+    <div class="row2"><div><label>Nº da OS</label><input type="text" id="i_os"></div>
+      <div><label>Cliente</label><input type="text" id="i_cliente"></div></div>
+    <div class="row2"><div><label>Equipamento / TAG</label><input type="text" id="i_equip"></div>
+      <div><label>Modelo / Série</label><input type="text" id="i_modelo"></div></div>
+    <div class="row2"><div><label>Horímetro</label><input type="number" id="i_horimetro"></div>
+      <div><label>Ano de fabricação</label><input type="number" id="i_ano"></div></div>
+    ${SC.idExtra.map(f=>`<label>${f.label}</label><input type="text" id="ix_${f.k}">`).join('')}
+  `, false);
+  // Gateway
+  h += card('gw', SC.gateway.label, `<div class="pills" id="gwPills">
+    ${SC.gateway.opts.map(o=>`<button onclick="setGw('${esc(o)}',this)">${o}</button>`).join('')}</div>`, false);
+  // Seções
+  SC.secoes.forEach(s=>{ h += card('sec_'+s.id, s.t, s.itens.map(renderItem).join(''), true, 'data-sec="'+s.id+'"'); });
+  // Observações
+  h += card('obs','D — Observações e recomendações', `<textarea id="o_obs" placeholder="Texto livre"></textarea>`, true);
+  // Parecer
+  h += card('par','E — Parecer técnico', `
+    <label>Parecer</label><div class="pills" id="parPills">${SC.parecer.opts.map(o=>`<button onclick="setPar('parecer','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Urgência</label><div class="pills" id="urgPills">${URGENCIAS.map(o=>`<button onclick="setPar('urgencia','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Assinatura do responsável (nome)</label><input type="text" id="p_assinatura">`, false);
+  document.getElementById('form').innerHTML = h;
+  applyGwVisibility();
+}
+function card(id,title,body,collapsed,attrs){
+  return `<div class="card ${collapsed?'collapsed':''}" id="card_${id}" ${attrs||''}>
+    <div class="card-h" onclick="this.parentElement.classList.toggle('collapsed')"><span>${title}</span><span>▾</span></div>
+    <div class="card-b">${body}</div></div>`;
+}
+function renderItem(it){
+  let ctrl='';
+  if (it.c==='sn'||it.c==='snnt'){
+    const opts = it.c==='snnt' ? [['Sim','sim'],['Não','nao'],['N/A','na'],['NT','nt']] : [['Sim','sim'],['Não','nao'],['N/A','na']];
+    ctrl = `<div class="pills" data-k="${it.k}">${opts.map(([l,v])=>`<button class="${v}" onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+  } else if (it.c==='escala'){
+    ctrl = `<div class="pills" data-k="${it.k}">${[['Bom','bom'],['Regular','regular'],['Ruim','ruim']].map(([l,v])=>`<button onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+  } else if (it.c==='escolha'){
+    ctrl = `<div class="pills" data-k="${it.k}">${it.opts.map(o=>`<button onclick="setItem('${it.k}','${esc(o)}',this)">${o}</button>`).join('')}</div>`;
+  } else if (it.c==='med'){
+    ctrl = `<div class="med"><input type="number" step="any" onchange="setItem('${it.k}',this.value)"><span class="u">${it.unit||''}</span></div>`;
+  } else if (it.c==='texto'){
+    ctrl = `<textarea onchange="setItem('${it.k}',this.value)"></textarea>`;
+  } else if (it.c==='foto'){
+    state.fotos[it.k]=state.fotos[it.k]||[];
+    ctrl = `<button class="btn-foto no-print" onclick="pickPhoto('${it.k}')">📷 Adicionar foto</button><div class="thumbs" id="thumbs-${it.k}"></div>`;
+  }
+  return `<div class="item" data-gw="${it.gw?esc(it.gw):''}"><div class="item-label">${it.label}</div>${ctrl}</div>`;
+}
+function setItem(k,v,btn){ state.itens[k]=v; if(btn){ const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); } }
+function setGw(v,btn){ _gwVal=v; state.gateway=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); applyGwVisibility(); }
+function setPar(k,v,btn){ state.parecer[k]=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); }
+function applyGwVisibility(){
+  document.querySelectorAll('.item[data-gw]').forEach(el=>{
+    const gw=el.getAttribute('data-gw'); el.style.display = (!gw || gw===_gwVal) ? '' : 'none';
+  });
+}
+
+// ══ Fotos ══
+function pickPhoto(secao){
+  const inp=document.getElementById('fileInput');
+  inp.onchange=e=>{ const f=e.target.files[0]; if(f) handlePhoto(secao,f); inp.value=''; };
+  inp.click();
+}
+function handlePhoto(secao,file){
+  const reader=new FileReader();
+  reader.onload=()=>{ const img=new Image(); img.onload=()=>{
+    let {width:w,height:h}=img; if(w>MAX_IMG_PX||h>MAX_IMG_PX){const r=Math.min(MAX_IMG_PX/w,MAX_IMG_PX/h);w=Math.round(w*r);h=Math.round(h*r);}
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    uploadPhoto(secao,cv.toDataURL('image/jpeg',IMG_QUALITY),file.name||'foto.jpg');
+  }; img.src=reader.result; };
+  reader.readAsDataURL(file);
+}
+async function uploadPhoto(secao,dataUrl,fileName){
+  const cont=document.getElementById('thumbs-'+secao);
+  const el=document.createElement('img');el.className='thumb uploading';el.src=dataUrl;cont.appendChild(el);
+  state.fotos[secao]=state.fotos[secao]||[];
+  try{
+    const payload={action:'salvarFotoForm',os:curOs(),cliente:val('i_cliente')||'SemCliente',secao,nomeArquivo:fileName,base64:dataUrl.split(',')[1],mimeType:'image/jpeg',categoria:'foto_'+SC.tipoForm,entity_type:SC.tipoForm};
+    const resp=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
+    const data=JSON.parse(await resp.text());
+    if(!data||data.ok!==true) throw new Error(data.error||'falha');
+    el.className='thumb ok'; state.fotos[secao].push({url:data.url,fileName,status:'ok'});
+  }catch(err){ el.className='thumb erro'; state.fotos[secao].push({url:null,fileName,status:'erro'}); toast('Erro ao enviar foto'); }
+}
+function curOs(){ return val('i_os')||_osId||'SemOS'; }
+
+// ══ Captura + envio ══
+function captura(){
+  state.identificacao={ tecnico:val('i_tecnico'),data:val('i_data'),os:val('i_os'),cliente:val('i_cliente'),
+    equipamento:val('i_equip'),modelo:val('i_modelo'),horimetro:val('i_horimetro'),ano:val('i_ano') };
+  SC.idExtra.forEach(f=>{ state.identificacao[f.k]=val('ix_'+f.k); });
+  state.observacoes=val('o_obs');
+  state.parecer.assinatura=val('p_assinatura');
+}
+async function enviar(){
+  captura();
+  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Enviando…';
+  if(_osId && !_enviado){
+    _enviado=true;
+    var _sess=null;
+    try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+    try{
+      const fotosFlat=[]; Object.keys(state.fotos).forEach(k=>(state.fotos[k]||[]).forEach(f=>fotosFlat.push(Object.assign({secao:k},f))));
+      const payload={action:'saveFormulario',os_id:_osId,tarefa_id:_tarefaId,tipo_formulario:SC.tipoForm,form_uid:_formUid,
+        tecnico_nome:state.identificacao.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'',
+        tecnico_id:(_sess&&_sess.tecnico&&_sess.tecnico.id)||'',campos_json:state,fotos_json:fotosFlat};
+      const r=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
+      const d=JSON.parse(await r.text());
+      if(d.status!=='ok') throw new Error(d.message||'Erro do servidor');
+    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem'; toast('Erro ao enviar: ' + e.message); return; }
+  }
+  document.getElementById('app').style.display='none';
+  const ok=document.getElementById('okScreen'); ok.style.display='';
+  document.getElementById('okSub').textContent=_osId?'A tarefa foi concluída no pipeline. Gere o PDF para anexar ao laudo.':'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+function val(id){ const e=document.getElementById(id); return e?e.value.trim():''; }
+function esc(s){ return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+function escHtml(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+
+// ══ Auto-carga do cabeçalho (URL tem prioridade; senão getMaquinasByOS — igual form01) ══
+let _maquinas=[];
+function setIfEmpty(id,v){ var el=document.getElementById(id); if(el && !el.value.trim() && v) el.value=v; }
+function maqEquip(m){ return m.tag||m.type||m.tipo||m.brand||''; }
+function maqModelo(m){ var l=[m.brand,m.model].filter(Boolean).join(' '); return l+(m.serial?(l?' / ':'')+'Série '+m.serial:''); }
+function maqLabel(m){
+  var base=[m.brand,m.model].filter(Boolean).join(' '); var extra=[];
+  if(m.serial) extra.push('Série '+m.serial); if(m.tag) extra.push(m.tag);
+  return (base||'Máquina')+(extra.length?' · '+extra.join(' · '):'');
+}
+function prefillFromUrl(p){
+  var equip=p.get('equipamento')||p.get('equip')||p.get('tag')||'';
+  var modelo=p.get('modelo')||p.get('modelo_serie')||'';
+  var serie=p.get('serie')||p.get('serial')||'';
+  if(serie) modelo = modelo ? (modelo+' / Série '+serie) : ('Série '+serie);
+  setIfEmpty('i_equip',equip);
+  setIfEmpty('i_modelo',modelo);
+  setIfEmpty('i_horimetro',p.get('horimetro')||p.get('hor')||'');
+  setIfEmpty('i_ano',p.get('ano')||p.get('year')||'');
+}
+function aplicarMaquina(m){
+  if(!m) return;
+  setIfEmpty('i_equip',maqEquip(m));
+  setIfEmpty('i_modelo',maqModelo(m));
+  setIfEmpty('i_horimetro',m.hourTotal?String(m.hourTotal):'');
+  setIfEmpty('i_ano',m.year?String(m.year):'');
+}
+function selMaquina(){
+  var idx=document.getElementById('i_maqSel').value; if(idx==='') return;
+  var m=_maquinas[parseInt(idx,10)]; if(!m) return;
+  // seleção manual sobrescreve os campos de máquina
+  document.getElementById('i_equip').value=maqEquip(m);
+  document.getElementById('i_modelo').value=maqModelo(m);
+  document.getElementById('i_horimetro').value=m.hourTotal?String(m.hourTotal):'';
+  document.getElementById('i_ano').value=m.year?String(m.year):'';
+}
+async function carregarMaquinasOS(){
+  if(!_osId) return;
+  try{
+    const resp=await fetch(GAS_URL,{method:'POST',body:gcBody({action:'getMaquinasByOS',id_os:_osId})});
+    const data=JSON.parse(await resp.text());
+    const machines=(data&&data.machines)||[]; if(!machines.length) return;
+    _maquinas=machines;
+    if(machines.length===1){ aplicarMaquina(machines[0]); }
+    else{
+      const wrap=document.getElementById('maqSelWrap'), sel=document.getElementById('i_maqSel');
+      if(sel){ sel.innerHTML='<option value="">— selecione a máquina —</option>'+
+        machines.map(function(m,i){ return '<option value="'+i+'">'+escHtml(maqLabel(m))+'</option>'; }).join('');
+        wrap.style.display=''; }
+    }
+  }catch(e){ /* silencioso — técnico preenche à mão */ }
+}
+function preencherResponsavelSessao(){
+  var el=document.getElementById('i_tecnico'); if(!el||el.value.trim()) return;
+  try{ var s=JSON.parse(localStorage.getItem('proper_session')||'null'); if(s&&s.tecnico&&s.tecnico.nome) el.value=s.tecnico.nome; }catch(e){}
+}
+
+(function init(){
+  const p=new URLSearchParams(location.search);
+  SC=SCHEMAS['04'];
+  _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||''; window._GC=p.get('gc')||window._GC||'';
+  render();
+  if(p.get('cliente')) document.getElementById('i_cliente').value=p.get('cliente');
+  if(p.get('os_numero')) document.getElementById('i_os').value=p.get('os_numero');
+  prefillFromUrl(p);                 // cabeçalho por URL (prioridade)
+  document.getElementById('i_data').value=new Date().toISOString().slice(0,10);
+  if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId); }
+  preencherResponsavelSessao();
+  carregarMaquinasOS();              // preenche o que a URL não trouxe
+})();
+</script>
+</body>
+</html>
