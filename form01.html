@@ -1,5 +1,14 @@
 <!DOCTYPE html>
 <!--
+form01.html — 13/07/2026 — Auto-preenchimento da OS (ADITIVO)
+  - Ao abrir com ?os_id=, busca getMaquinasByOS(os_id) e preenche
+    Equipamento/TAG + Modelo/Série da máquina da OS (recebimento = 1 máquina;
+    só OS externas têm >1 → mostra seletor #f_maqSel). Não sobrescreve campo
+    já digitado. Responsável (Técnico/ADM) pré-preenchido pela proper_session.
+  - Auth key-only (checkKey) — getMaquinasByOS já é aceito por POST no GAS.
+  - Nenhum ID/data-key de UI renomeado; funções novas: carregarMaquinasOS,
+    aplicarMaquina, selMaquina, maqLabel, esc, preencherResponsavelSessao.
+  ----------------------------------------------------------------------------
 form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com etiqueta própria
   - Novo form_uid (pgpUid(), 1x por sessão) enviado em saveFormulario — GAS
     (v68) deduplica reenvios sem duplicar a tarefa concluída.
@@ -67,6 +76,10 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
 
   <div class="card">
     <h2>Identificação</h2>
+    <div id="maqSelWrap" style="display:none">
+      <label>Máquina desta OS</label>
+      <select id="f_maqSel" onchange="selMaquina()"></select>
+    </div>
     <div class="row2">
       <div><label>Técnico/ADM responsável</label><input type="text" id="f_tecnico"></div>
       <div><label>Data</label><input type="date" id="f_data"></div>
@@ -231,6 +244,68 @@ async function enviar(){
 function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
 
+// ── Puxa dados da máquina/OS automaticamente (13/07) ──────────────────────────
+// Recebimento é sempre 1 máquina (OS de oficina). Só OS externas têm >1: nesse
+// caso mostramos um seletor. Preenche Equipamento/TAG + Modelo/Série da OS aberta
+// no PCM, sem sobrescrever o que o técnico já digitou.
+let _maquinas = [];
+function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+function maqLabel(m){
+  var base = [m.brand, m.model].filter(Boolean).join(' ');
+  var extra = [];
+  if (m.serial) extra.push('Série ' + m.serial);
+  if (m.tag) extra.push(m.tag);
+  return (base || 'Máquina') + (extra.length ? ' · ' + extra.join(' · ') : '');
+}
+function aplicarMaquina(m){
+  if (!m) return;
+  var equip  = m.tag || m.tipoEquip || m.tipo || m.brand || '';
+  var modLbl = [m.brand, m.model].filter(Boolean).join(' ');
+  var modelo = modLbl + (m.serial ? (modLbl ? ' / ' : '') + 'Série ' + m.serial : '');
+  var eqEl = document.getElementById('f_equip');
+  var mdEl = document.getElementById('f_modelo');
+  if (eqEl && !eqEl.value.trim()) eqEl.value = equip;
+  if (mdEl && !mdEl.value.trim()) mdEl.value = modelo;
+}
+function selMaquina(){
+  var idx = document.getElementById('f_maqSel').value;
+  if (idx === '') return;
+  // seletor manual: sobrescreve os dois campos de identificação da máquina
+  var m = _maquinas[parseInt(idx, 10)];
+  if (!m) return;
+  var equip  = m.tag || m.tipoEquip || m.tipo || m.brand || '';
+  var modLbl = [m.brand, m.model].filter(Boolean).join(' ');
+  document.getElementById('f_equip').value  = equip;
+  document.getElementById('f_modelo').value = modLbl + (m.serial ? (modLbl ? ' / ' : '') + 'Série ' + m.serial : '');
+}
+async function carregarMaquinasOS(){
+  if (!_osId) return;
+  try{
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
+    const data = JSON.parse(await resp.text());
+    const machines = (data && data.machines) || [];
+    if (!machines.length) return;
+    _maquinas = machines;
+    if (machines.length === 1){
+      aplicarMaquina(machines[0]);
+    } else {
+      const wrap = document.getElementById('maqSelWrap');
+      const sel  = document.getElementById('f_maqSel');
+      sel.innerHTML = '<option value="">— selecione a máquina —</option>' +
+        machines.map(function(m,i){ return '<option value="' + i + '">' + esc(maqLabel(m)) + '</option>'; }).join('');
+      wrap.style.display = '';
+    }
+  }catch(e){ /* silencioso — técnico pode preencher à mão */ }
+}
+function preencherResponsavelSessao(){
+  var el = document.getElementById('f_tecnico');
+  if (!el || el.value.trim()) return;
+  try{
+    var s = JSON.parse(localStorage.getItem('proper_session') || 'null');
+    if (s && s.tecnico && s.tecnico.nome) el.value = s.tecnico.nome;
+  }catch(e){}
+}
+
 (function init(){
   initChecklist();
   const p = new URLSearchParams(location.search);
@@ -240,6 +315,8 @@ function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.
   if (p.get('os_numero')) document.getElementById('f_os').value = p.get('os_numero');
   if (_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: ' + (p.get('os_numero')||_osId); }
   document.getElementById('f_data').value = new Date().toISOString().slice(0,10);
+  preencherResponsavelSessao();
+  carregarMaquinasOS();
 })();
 </script>
 </body>
