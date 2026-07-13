@@ -1,4 +1,14 @@
 <!--
+form02.html — 13/07/2026 — Auto-preenchimento da OS (ADITIVO)
+  - Ao abrir com ?os_id=, busca getMaquinasByOS(os_id) e preenche Equipamento/TAG,
+    Modelo/Série, Tensão de Alimentação, Potência (CV/kW) e Ano de fabricação da
+    máquina/modelo (tensão/potência via join MODELOS no GAS v69). Diagnóstico = 1
+    máquina; só OS externa tem >1 → seletor #f_maqSel (aplicarMaquina force=true).
+    Não sobrescreve rascunho nem valor já digitado. Técnico Responsável vem da
+    proper_session. key inline no payload (gcBody deste arquivo não injeta key).
+  - Funções novas: carregarMaquinasOS/aplicarMaquina/selMaquina/maqLabel/escOpt/
+    _setSeVazio/_mEquip/_mModelo/preencherResponsavelSessao. Nenhum id/data-key renomeado.
+  ----------------------------------------------------------------------------
 form02.html — 11/07/2026 — Sprint F: rename form08→form02 + envio robusto
   - Renomeado de form08.html para form02.html: tipo_formulario, DRAFT_KEY,
     textos "FORM 08"→"FORM 02", trigger auto:form02 (autoCompletarTarefa já
@@ -494,6 +504,10 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
     </div>
     <div class="card">
       <div class="section-title">Identificação do Atendimento</div>
+      <div class="field-group" id="maqSelWrap" style="display:none">
+        <label>Máquina desta OS</label>
+        <select id="f_maqSel" onchange="selMaquina()"></select>
+      </div>
       <div class="field-group">
         <label>Técnico Responsável</label>
         <input type="text" id="id-tecnico" placeholder="Nome completo" autocomplete="name">
@@ -2312,6 +2326,78 @@ function installPWAManifest() {
   } catch(e) {}
 }
 
+// ══ AUTO-PREENCHIMENTO DA OS (13/07) ═══════════════════════════════════════
+// Puxa dados da máquina/OS aberta no PCM. Diagnóstico é 1 máquina (OS de oficina);
+// só OS externas têm >1 → mostra seletor. Tensão/potência vêm do MODELO (join no
+// getMaquinasByOS, GAS v69). Não sobrescreve rascunho nem valor já digitado.
+var _maquinas = [];
+var FORM_KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+function escOpt(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+function maqLabel(m){
+  var base = [m.brand, m.model].filter(Boolean).join(' ');
+  var extra = [];
+  if (m.serial) extra.push('Série ' + m.serial);
+  if (m.tag) extra.push(m.tag);
+  return (base || 'Máquina') + (extra.length ? ' · ' + extra.join(' · ') : '');
+}
+function _setSeVazio(id, valor){
+  var el = document.getElementById(id);
+  if (el && !String(el.value || '').trim() && valor) el.value = valor;
+}
+function _mEquip(m){ return m.tag || m.type || m.tipo || m.brand || ''; }
+function _mModelo(m){
+  var modLbl = [m.brand, m.model].filter(Boolean).join(' ');
+  return modLbl + (m.serial ? (modLbl ? ' / ' : '') + 'Série ' + m.serial : '');
+}
+function aplicarMaquina(m, forcar){
+  if (!m) return;
+  if (forcar){
+    document.getElementById('id-equipamento').value = _mEquip(m);
+    document.getElementById('id-modelo').value      = _mModelo(m);
+    document.getElementById('id-voltagem').value    = m.voltage || '';
+    document.getElementById('id-cvkw').value         = m.power || m.potencia || '';
+    var _af = document.getElementById('sA-anoFab'); if (_af) _af.value = m.year || '';
+  } else {
+    _setSeVazio('id-equipamento', _mEquip(m));
+    _setSeVazio('id-modelo',      _mModelo(m));
+    _setSeVazio('id-voltagem',    m.voltage || '');
+    _setSeVazio('id-cvkw',        m.power || m.potencia || '');
+    _setSeVazio('sA-anoFab',      m.year || '');
+  }
+}
+function selMaquina(){
+  var idx = document.getElementById('f_maqSel').value;
+  if (idx === '') return;
+  aplicarMaquina(_maquinas[parseInt(idx, 10)], true);
+}
+async function carregarMaquinasOS(){
+  if (!_osId) return;
+  try{
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', key: FORM_KEY, id_os:_osId }) });
+    const data = JSON.parse(await resp.text());
+    const machines = (data && data.machines) || [];
+    if (!machines.length) return;
+    _maquinas = machines;
+    if (machines.length === 1){
+      aplicarMaquina(machines[0], false);
+    } else {
+      const wrap = document.getElementById('maqSelWrap');
+      const sel  = document.getElementById('f_maqSel');
+      sel.innerHTML = '<option value="">— selecione a máquina —</option>' +
+        machines.map(function(m,i){ return '<option value="' + i + '">' + escOpt(maqLabel(m)) + '</option>'; }).join('');
+      wrap.style.display = '';
+    }
+  }catch(e){ /* silencioso — técnico pode preencher à mão */ }
+}
+function preencherResponsavelSessao(){
+  var el = document.getElementById('id-tecnico');
+  if (!el || el.value.trim()) return;
+  try{
+    var s = JSON.parse(localStorage.getItem('proper_session') || 'null');
+    if (s && s.tecnico && s.tecnico.nome) el.value = s.tecnico.nome;
+  }catch(e){}
+}
+
 // ══ INIT ══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   // Auto-fill today's date
@@ -2334,6 +2420,11 @@ document.addEventListener('DOMContentLoaded', () => {
   var _num  = _p.get('os_numero') || _p.get('os')         || '';
   if (_num) { var eOs = document.getElementById('id-os');      if (eOs && !eOs.value) eOs.value = _num; }
   if (_cli) { var eCl = document.getElementById('id-cliente'); if (eCl && !eCl.value) eCl.value = _cli; }
+
+  // Auto-preenchimento da OS: responsável (sessão) + máquina (equipamento/modelo/
+  // série/tensão/potência/ano via getMaquinasByOS). Depois do draft, não sobrescreve.
+  preencherResponsavelSessao();
+  carregarMaquinasOS();
 
   // Wire all inputs for auto-save
   wireAllInputs();
