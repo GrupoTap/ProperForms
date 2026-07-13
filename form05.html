@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<!--
+form05.html — 13/07/2026 — Termo de Desmontagem (novo form ProperForms)
+  Fluxo de oficina: acionado quando o Form 02 (diagnóstico) indica que a máquina
+  precisa ser desmontada para diagnosticar. Roda pelo pipeline via
+  ?os_id=&tarefa_id= e fecha a tarefa auto:form05 (motor form-agnóstico — ZERO
+  mudança de GAS no núcleo).
+  - Lê os_id/tarefa_id/cliente/os_numero da URL.
+  - Puxa AUTOMATICAMENTE máquina (marca/modelo/série) e cliente (nome/CNPJ) via
+    getMaquinasByOS (GAS v69 anexa cliente_cnpj ao objeto os + specs de modelo).
+  - Único campo variável: "Previsão de dias úteis para entrega após aprovação do
+    orçamento" (número). Valor do diagnóstico vem R$ 1.500,00 e é editável.
+  - Gera o PDF do termo (jsPDF), salva na pasta da OS no Drive (salvarPdfDrive) e
+    fecha a tarefa (saveFormulario, tipo_formulario:form05). O técnico baixa o PDF
+    para enviar ao cliente pela Assinafy (assinatura eletrônica).
+  - key inline nos payloads (checkKey no doPost). Nenhum id/data-key renomeado.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Form 05 — Termo de Desmontagem</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#C0392B;--green:#22c55e;--red:#ef4444;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:640px;margin:0 auto}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card h2{font-size:15px;margin-bottom:10px;color:#cbd5e1;text-transform:uppercase;letter-spacing:.04em}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=number]{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 12px;font-size:16px;font-family:inherit}
+  input:focus{outline:none;border-color:var(--accent)}
+  .dado{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:14px}
+  .dado:first-child{border-top:0}
+  .dado .k{color:var(--muted)}
+  .dado .v{font-weight:600;text-align:right;max-width:60%}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px}
+  .btn-primary:disabled{opacity:.5}
+  .btn-ghost{width:100%;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:10px}
+  .ok-msg{text-align:center;padding:32px 16px}
+  .ok-msg .big{font-size:44px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>📄 Termo de Desmontagem</h1>
+  <div class="sub">Form 05 — gerado quando o diagnóstico exige desmontagem</div>
+  <div id="osPill" class="pill-info" style="display:none"></div>
+
+  <div class="card">
+    <h2>Dados puxados da OS</h2>
+    <div id="dadosBox">
+      <div class="dado"><span class="k">Carregando…</span><span class="v"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Preencher</h2>
+    <label>Previsão de dias úteis para entrega após aprovação do orçamento</label>
+    <input type="number" id="f_dias" inputmode="numeric" min="1" placeholder="ex: 15">
+    <div class="hint">Contado em dias úteis a partir da aprovação do orçamento (não da chegada da máquina).</div>
+
+    <label>Valor do diagnóstico (R$)</label>
+    <input type="text" id="f_valor" inputmode="decimal" value="1.500,00">
+    <div class="hint">Vem R$ 1.500,00 por padrão — ajuste se necessário (ex.: só elétrico ou só mecânico).</div>
+
+    <label>Responsável pelo recebimento na Proper</label>
+    <input type="text" id="f_resp" placeholder="Nome de quem recebeu a máquina">
+  </div>
+
+  <button class="btn-primary" id="btnGerar" onclick="gerar()">📄 Gerar termo e salvar na OS</button>
+</div>
+
+<div id="okScreen" style="display:none">
+  <div class="ok-msg">
+    <div class="big">✅</div>
+    <h1 style="margin-top:10px">Termo gerado</h1>
+    <div class="sub" id="okSub">Salvo na pasta da OS no Drive.</div>
+    <button class="btn-primary" onclick="baixarPdf()">⬇️ Baixar PDF (para enviar pela Assinafy)</button>
+    <div class="sub" style="margin-top:14px">Envie o PDF ao cliente pela Assinafy (assinatura eletrônica). O link chega por e-mail e vale juridicamente (Lei 14.063/2020).</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+
+const LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCADwAPADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDwWiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKA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jo2Bke1XYPiD41g1K41KLxJerdXKJHM+VxIE+7lcbSRk4OMigD0fR/DfhnT9Rv8ASNS8N6Za6pNrj20EGrzXD28sO1NsFvdRjasuWzucdGX3rOfR9E8Oaj4V8PXPgq31STXXP22W4lkeeNjcvCYYXRgoaMLycHJ68Vwul+OvGOlvdvY+JNRha8mM9w3m7i8p6yZbOH/2hg03SPG3i7SNPlsNN8Q39tbSuzsiyZwzfeZSeVJ7kEE0AevReB/C1pplvaT6doF1YQ2OpT39891INRKwTzoksMathgNkf8JHXNc94l03wrZWfhzTIdK0We4vbXTHube0huW1R/NRHkZGz5RLcgAc/MO9ebWviLXLWWylt9UuY3sYZLe1Ib/VRyFi6D2be2Qeu41duPHHi+40eLSJvEF61hCkaRQ7gAix4KAEDI27RjntQB1nxU0vQm8Pf2x4c0zRUsoNTNobjT2niliBUlYbiCbJEnyk71OOCPSvMa3PEni7xN4khih13Wru/ihYuiSsMbiMFiABlsfxHJrDoAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/9k=';
+
+let _osId = '', _tarefaId = '', _osNumero = '', _sent = false, _pdfDoc = null, _pdfName = 'termo.pdf';
+const _formUid = pgpUid();
+const state = { maquina: null, os: null };
+
+function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
+function fmtData(iso){ if(!iso) return ''; try{ var d=new Date(iso); if(isNaN(d)) return String(iso).slice(0,10).split('-').reverse().join('/'); return d.toLocaleDateString('pt-BR'); }catch(e){ return ''; } }
+function equipStr(m){ return m ? [m.brand, m.model].filter(Boolean).join(' ') : ''; }
+
+function renderDados(){
+  var m = state.maquina || {}, os = state.os || {};
+  var linhas = [
+    ['Cliente', os.cliente_nome || os.cliente || _clienteUrl || '—'],
+    ['CNPJ', os.cliente_cnpj || '—'],
+    ['Nº da OS', _osNumero || os.numero_os || '—'],
+    ['Equipamento', equipStr(m) || (m.tag || '—')],
+    ['Série', m.serial || '—'],
+    ['TAG', m.tag || '—'],
+    ['Data de entrada', fmtData(os.data_abertura) || fmtData(new Date().toISOString())]
+  ];
+  document.getElementById('dadosBox').innerHTML = linhas.map(function(l){
+    return '<div class="dado"><span class="k">' + l[0] + '</span><span class="v">' + escHtml(l[1]) + '</span></div>';
+  }).join('');
+}
+function escHtml(s){ return String(s==null?'':s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+
+var _clienteUrl = '';
+async function carregarDados(){
+  if (!_osId) { renderDados(); return; }
+  try{
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
+    const data = JSON.parse(await resp.text());
+    state.os = data && data.os ? data.os : null;
+    var machines = (data && data.machines) || [];
+    state.maquina = machines.length ? machines[0] : null;
+  }catch(e){ /* silencioso */ }
+  renderDados();
+}
+
+// ── Geração do PDF (jsPDF) ────────────────────────────────────────────────────
+const CLAUSULAS = [
+  'Para a correta elaboração do orçamento técnico, foi necessária a desmontagem parcial ou total do equipamento, visando análise detalhada de componentes internos e periféricos.',
+  'Em caso de não aprovação do orçamento ou solicitação de retirada do equipamento sem realização do serviço, o compressor será devolvido nas mesmas condições em que se encontra após a desmontagem.',
+  'A remontagem do equipamento sem a execução da manutenção pode ser técnica e operacionalmente inviável, uma vez que alguns componentes identificados como danificados, desgastados ou comprometidos durante a desmontagem não permitem reinstalação segura ou funcional.',
+  'A remontagem do equipamento só será realizada mediante a aprovação do orçamento e respectivo pagamento dos valores acordados.',
+  'A empresa não se responsabiliza por danos decorrentes da montagem inadequada feita por terceiros ou pelo uso do equipamento em condição não recomendada.',
+  'Caso o cliente solicite a remontagem sem realização da manutenção, será emitido um novo orçamento exclusivo para esse fim — cuja viabilidade será previamente avaliada.'
+];
+const RESPONS = [
+  'O cliente declara estar ciente e de acordo com os termos acima, reconhecendo que a devolução do equipamento sem remontagem não caracteriza má prestação de serviço por parte da Proper Compressores.',
+  'O cliente também reconhece que, a partir da devolução, o risco e responsabilidade sobre o equipamento retornam integralmente à sua posse.',
+  'O cliente está ciente de que o equipamento será desmontado para diagnóstico técnico e que o retorno à condição anterior poderá não ser possível sem a execução do serviço orçado.'
+];
+const ASSINAFY = 'Este documento será encaminhado ao cliente para assinatura eletrônica por meio da plataforma Assinafy (www.assinafy.com.br). O signatário receberá um link por e-mail, podendo assinar digitalmente pelo celular, tablet ou computador — inclusive com o dedo ou caneta touch diretamente na tela. A assinatura eletrônica coletada possui validade jurídica nos termos da Lei nº 14.063/2020 e gera automaticamente um Certificado de Assinatura Digital com registro de data, hora, IP e código de verificação, dispensando o preenchimento manual do campo de assinatura acima.';
+
+function buildPdf(dias, valor, resp){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const ML = 14, MR = 196, W = MR - ML; // margens
+  var y = 14;
+  function pageBreak(need){ if (y + (need||6) > 283){ doc.addPage(); y = 16; } }
+  function para(txt, size, style, gap){
+    doc.setFont('helvetica', style||'normal'); doc.setFontSize(size||10);
+    var lines = doc.splitTextToSize(txt, W);
+    for (var i=0;i<lines.length;i++){ pageBreak(5.5); doc.text(lines[i], ML, y); y += (size>=11?5.4:4.8); }
+    y += (gap==null?2:gap);
+  }
+  function numItem(n, txt){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    var lines = doc.splitTextToSize(txt, W-7);
+    for (var i=0;i<lines.length;i++){ pageBreak(5.5); if(i===0) doc.text(n+'.', ML, y); doc.text(lines[i], ML+7, y); y += 4.8; }
+    y += 2;
+  }
+  function head(txt){ pageBreak(9); doc.setFillColor(192,57,43); doc.rect(ML, y-4, W, 6.5, 'F'); doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.text(txt, ML+2, y); doc.setTextColor(0,0,0); y += 6; }
+
+  // ── Cabeçalho com logo ──
+  try { doc.addImage(LOGO, 'JPEG', ML, y-2, 20, 20); } catch(e){}
+  doc.setTextColor(0,0,0);
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.text('TERMO DE DESMONTAGEM', ML+24, y+4);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+  doc.text('PROPER COMPRESSORES · Form 05 · IT-03 · Setor: Oficina', ML+24, y+9);
+  doc.setTextColor(0,0,0);
+  y += 22;
+
+  // ── Bloco de identificação ──
+  var m = state.maquina || {}, os = state.os || {};
+  var cliente = os.cliente_nome || os.cliente || _clienteUrl || '';
+  var cnpj = os.cliente_cnpj || '';
+  var equip = equipStr(m) || m.tag || '';
+  var serie = m.serial || '';
+  var dataEntrada = fmtData(os.data_abertura) || fmtData(new Date().toISOString());
+  doc.setDrawColor(180,180,180); doc.setLineWidth(0.2);
+  var boxTop = y-4;
+  doc.setFontSize(9.5);
+  function kv(label, value, x, yy){ doc.setFont('helvetica','bold'); doc.text(label, x, yy); var lw=doc.getTextWidth(label); doc.setFont('helvetica','normal'); doc.text(String(value||'—'), x+lw+1.5, yy); }
+  kv('Cliente: ', cliente, ML+2, y);      kv('Nº da OS: ', _osNumero || os.numero_os || '', ML+100, y); y+=5;
+  kv('CNPJ: ', cnpj, ML+2, y);            kv('Data de entrada: ', dataEntrada, ML+100, y); y+=5;
+  kv('Equipamento: ', equip, ML+2, y);    kv('Série: ', serie, ML+100, y); y+=5.5;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  var prevTxt = 'Previsão de entrega após aprovação do orçamento: ' + dias + ' dias úteis';
+  var pl = doc.splitTextToSize(prevTxt, W-4);
+  for (var i=0;i<pl.length;i++){ doc.text(pl[i], ML+2, y); y+=5; }
+  doc.rect(ML, boxTop, W, (y-2)-boxTop);
+  y += 4;
+
+  // ── Cláusulas ──
+  para('Pelo presente termo, o cliente declara ciência das condições abaixo relativas à desmontagem do equipamento para diagnóstico técnico:', 10, 'normal', 3);
+  for (var c=0;c<CLAUSULAS.length;c++){ numItem(c+1, CLAUSULAS[c]); }
+
+  // ── Valores de diagnóstico ──
+  head('VALORES DE DIAGNÓSTICO');
+  pageBreak(14);
+  doc.setDrawColor(150,150,150);
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5);
+  doc.rect(ML, y-4, W-40, 7); doc.rect(MR-40, y-4, 40, 7);
+  doc.text('Serviço', ML+2, y); doc.text('Valor (R$)', MR-38, y); y+=7;
+  doc.setFont('helvetica','normal');
+  doc.rect(ML, y-4, W-40, 7); doc.rect(MR-40, y-4, 40, 7);
+  doc.text('Diagnóstico Elétrico/Mecânico', ML+2, y); doc.text('R$ ' + valor, MR-38, y); y+=9;
+  para('Observação: Os valores de diagnóstico acima não serão cobrados caso a proposta de manutenção seja aprovada pelo cliente.', 9, 'italic', 3);
+
+  // ── Responsabilidades ──
+  head('RESPONSABILIDADES');
+  for (var r=0;r<RESPONS.length;r++){ para(RESPONS[r], 10, 'normal', 2.5); }
+
+  // ── Assinaturas ──
+  head('ASSINATURAS');
+  y += 2;
+  function sigLine(label, value){
+    pageBreak(12);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text(label, ML, y);
+    var lx = Math.max(ML+62, ML + doc.getTextWidth(label) + 3); // linha começa depois do rótulo
+    doc.setDrawColor(120,120,120);
+    doc.line(lx, y+0.5, MR, y+0.5);
+    if (value){ doc.setFont('helvetica','bold'); doc.text(String(value), lx+2, y-0.5); }
+    y += 10;
+  }
+  sigLine('Responsável pelo recebimento na Proper:', resp);
+  sigLine('Cliente:', cliente);
+  sigLine('CNPJ:', cnpj);
+  sigLine('Responsável no Cliente:', '');
+  sigLine('Assinatura:', '');
+
+  // ── Nota Assinafy ──
+  y += 2; head('SOBRE A ASSINATURA DESTE DOCUMENTO');
+  para(ASSINAFY, 8, 'italic', 0);
+
+  return doc;
+}
+
+async function gerar(){
+  var dias = val('f_dias');
+  if (!dias || parseInt(dias,10) < 1){ toast('Informe a previsão de dias úteis'); return; }
+  var valor = val('f_valor') || '1.500,00';
+  var resp = val('f_resp');
+  var btn = document.getElementById('btnGerar');
+  btn.disabled = true; btn.textContent = 'Gerando…';
+
+  try{
+    _pdfDoc = buildPdf(dias, valor, resp);
+  }catch(e){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('Erro ao montar PDF: ' + e.message); return; }
+
+  var m = state.maquina || {}, os = state.os || {};
+  var cliente = os.cliente_nome || os.cliente || _clienteUrl || 'SemCliente';
+  _pdfName = 'Termo_Desmontagem_' + (_osNumero || _osId || 's_os') + '.pdf';
+
+  // Salva na OS/Drive (se vier do pipeline) + fecha a tarefa
+  if (_osId){
+    try{
+      var base64 = _pdfDoc.output('datauristring').split(',')[1];
+      var pdfPayload = { action:'salvarPdfDrive', os_id:_osId, os_numero:_osNumero, cliente:cliente,
+        maquina_id: m.id || '', maquina_label: (equipStr(m) || m.tag || ''),
+        base64: base64, fileName: _pdfName, categoria:'pdf_termo_desmontagem', caption:'Termo de Desmontagem (Form 05)' };
+      var r1 = await fetch(GAS_URL, { method:'POST', body: gcBody(pdfPayload) });
+      var d1 = JSON.parse(await r1.text());
+      if (!d1 || d1.status !== 'ok') throw new Error((d1 && d1.error) || 'falha ao salvar PDF');
+    }catch(e){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('Erro ao salvar no Drive: ' + e.message); return; }
+
+    if (!_sent){
+      _sent = true;
+      var _sess = null; try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+      try{
+        var formPayload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'form05', form_uid:_formUid,
+          tecnico_nome: resp || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
+          tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '',
+          campos_json: { dias_uteis_entrega: dias, valor_diagnostico: valor, responsavel_recebimento: resp } };
+        var r2 = await fetch(GAS_URL, { method:'POST', body: gcBody(formPayload) });
+        var d2 = JSON.parse(await r2.text());
+        if (d2.status !== 'ok') throw new Error(d2.message || 'Erro do servidor');
+      }catch(e){ _sent=false; btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('PDF salvo, mas falhou ao fechar a tarefa: ' + e.message); return; }
+    }
+  }
+
+  document.getElementById('app').style.display='none';
+  document.getElementById('okScreen').style.display='';
+  document.getElementById('okSub').textContent = _osId ? 'Salvo na pasta da OS no Drive e tarefa concluída.' : 'PDF gerado. Sem OS vinculada, nada foi salvo no sistema.';
+  baixarPdf();
+}
+function baixarPdf(){ if (_pdfDoc) _pdfDoc.save(_pdfName); }
+
+(function init(){
+  const p = new URLSearchParams(location.search);
+  _osId = p.get('os_id') || ''; _tarefaId = p.get('tarefa_id') || '';
+  _osNumero = p.get('os_numero') || p.get('os') || '';
+  _clienteUrl = p.get('cliente') || '';
+  window._GC = p.get('gc') || window._GC || '';
+  if (_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: ' + (_osNumero || _osId); }
+  // Responsável pré-preenchido pela sessão
+  try{ var s = JSON.parse(localStorage.getItem('proper_session') || 'null'); if (s && s.tecnico && s.tecnico.nome) document.getElementById('f_resp').value = s.tecnico.nome; }catch(e){}
+  carregarDados();
+})();
+</script>
+</body>
+</html>
