@@ -1,5 +1,14 @@
 <!DOCTYPE html>
 <!--
+form01.html — 15/07/2026 — PDF do recebimento → Drive/Gestão de Documentos (ADITIVO)
+  - No envio (enviar, se houver os_id), monta o #pdf-layout (novo, layout do termo
+    de recebimento), captura com html2canvas, pagina num PDF A4 (jsPDF) e sobe via
+    salvarPdfDrive (ação já existente no GAS v68+). Aparece na Gestão de Documentos
+    na hora — sem finalizar a OS. ZERO mudança de GAS. Guard _pdfEnviado (1x/sessão);
+    falha não bloqueia a conclusão. CDNs jspdf 2.5.1 + html2canvas 1.4.1.
+  - Novos: #pdf-layout (+CSS .p1-*), buildPdfLayout, enviarPdfParaDrive, _cb,
+    _CHK_LABEL, _maqAtual/_pdfEnviado. Nenhum id/data-key/função renomeado.
+  ----------------------------------------------------------------------------
 form01.html — 13/07/2026 — Auto-preenchimento da OS (ADITIVO)
   - Ao abrir com ?os_id=, busca getMaquinasByOS(os_id) e preenche
     Equipamento/TAG + Modelo/Série da máquina da OS (recebimento = 1 máquina;
@@ -66,7 +75,40 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
   #toast.show{opacity:1}
   .pill-info{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+
+  /* ── Layout do PDF de recebimento (capturado por html2canvas p/ subir ao Drive).
+     Fica display:none na tela; a captura o mostra fora do viewport via .pdf-capturing.
+     Cores/estilo claros pois vira documento impresso. ADITIVO. ────────────────── */
+  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:11px;line-height:1.35}
+  #pdf-layout.pdf-capturing{display:block}
+  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .p1-header{display:table;width:100%;border:1px solid #ccc;margin-bottom:8px}
+  .p1-logo,.p1-title,.p1-fields{display:table-cell;vertical-align:middle}
+  .p1-logo{width:60px;border-right:1px solid #ccc;text-align:center;padding:8px 4px}
+  .p1-logo-circle{display:inline-block;width:42px;height:42px;background:#C0392B;border-radius:50%;color:#fff;font-weight:700;font-size:24px;line-height:42px}
+  .p1-title{background:#3D3D3D;color:#fff;width:44%;border-right:1px solid #555;padding:8px 10px}
+  .p1-form-name{font-size:14px;font-weight:700;display:block}
+  .p1-form-sub{font-size:10px;display:block;margin-top:2px;color:#ddd}
+  .p1-fields{padding:6px 10px;font-size:11px}
+  .p1-id-row{display:flex;gap:4px;margin-bottom:3px}
+  .p1-id-label{color:#555;flex-shrink:0}
+  .p1-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px}
+  .p1-sec-head{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:12px;font-weight:700;margin:8px 0 0}
+  .p1-body{border:1px solid #ccc;border-top:0;padding:8px}
+  .p1-grid{display:flex;flex-wrap:wrap;gap:4px 16px}
+  .p1-grid>div{min-width:45%}
+  #pdf-layout table{width:100%;border-collapse:collapse;font-size:11px}
+  #pdf-layout th,#pdf-layout td{border:.5px solid #bbb;padding:3px 6px;text-align:left}
+  #pdf-layout th{background:#eee}
+  .p1-cb{display:inline-block;width:11px;height:11px;border:1px solid #333;text-align:center;line-height:11px;font-size:9px;margin-right:3px;vertical-align:middle}
+  .p1-cb.marked{background:#333;color:#fff}
+  .p1-obs{white-space:pre-wrap;word-wrap:break-word;min-height:28px}
+  .p1-sig{border-bottom:.5px solid #999;height:16px;margin:8px 0 2px}
+  .p1-footer{font-size:9px;font-style:italic;text-align:center;color:#555;border-top:.5px solid #ccc;padding-top:4px;margin-top:8px}
 </style>
+<!-- Geração do PDF de recebimento para subir ao Drive (Gestão de Documentos). Aditivo. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -129,6 +171,7 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
   </div>
 </div>
 
+<div id="pdf-layout"></div>
 <div id="toast"></div>
 
 <script>
@@ -236,9 +279,110 @@ async function enviar(){
       if (d.status !== 'ok') throw new Error(d.message || 'Erro do servidor');
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir recebimento'; toast('Erro ao enviar: ' + e.message); return; }
   }
+  // Gera o PDF do recebimento e sobe ao Drive → aparece na Gestão de Documentos
+  // na hora, sem depender de "finalizar a OS". Não bloqueia a tela de conclusão.
+  if (_osId) { enviarPdfParaDrive(); }
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
   document.getElementById('okSub').textContent = _osId ? 'A tarefa de recebimento foi concluída no pipeline.' : 'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+// ══ PDF → DRIVE (Gestão de Documentos) ═════════════════════════════════════
+// Monta o layout #pdf-layout com os dados do recebimento, captura com html2canvas,
+// pagina num PDF A4 (jsPDF) e envia via salvarPdfDrive (ação já existente no GAS
+// v68+). ADITIVO: sem mudança de GAS; roda 1x por sessão do form (_pdfEnviado).
+const _CHK_LABEL = { sim:'SIM', nao:'NÃO', na:'N/A' };
+function _cb(v, target){ return '<span class="p1-cb' + (v===target?' marked':'') + '">' + (v===target?'✓':'') + '</span>'; }
+function buildPdfLayout(){
+  const id = state.identificacao || {};
+  const c  = state.checklist || {};
+  const fotos = (state.fotos && state.fotos.chegada) || [];
+  const linhas = CHECK_ITENS.map(function(it){
+    const v = c[it.k] || '';
+    return '<tr><td>' + esc(it.label) + '</td><td style="white-space:nowrap">'
+      + _cb(v,'sim') + 'Sim &nbsp;' + _cb(v,'nao') + 'Não &nbsp;' + _cb(v,'na') + 'N/A</td></tr>';
+  }).join('');
+  const html = ''
+    + '<div class="p1-header">'
+    +   '<div class="p1-logo"><span class="p1-logo-circle">P</span></div>'
+    +   '<div class="p1-title"><span class="p1-form-name">FORM 01 — RECEBIMENTO DE MÁQUINA</span>'
+    +     '<span class="p1-form-sub">Registro do estado na chegada à oficina</span></div>'
+    +   '<div class="p1-fields">'
+    +     '<div class="p1-id-row"><span class="p1-id-label">OS Nº</span><span class="p1-id-val">' + esc(id.os||'') + '</span>'
+    +       '<span class="p1-id-label">Data:</span><span class="p1-id-val">' + esc(id.data||'') + '</span></div>'
+    +     '<div class="p1-id-row"><span class="p1-id-label">Cliente:</span><span class="p1-id-val">' + esc(id.cliente||'') + '</span></div>'
+    +     '<div class="p1-id-row"><span class="p1-id-label">Responsável:</span><span class="p1-id-val">' + esc(id.tecnico||'') + '</span></div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="p1-sec-head">IDENTIFICAÇÃO DO EQUIPAMENTO</div>'
+    + '<div class="p1-body"><div class="p1-grid">'
+    +   '<div><b>Equipamento / TAG:</b> ' + esc(id.equipamento||'—') + '</div>'
+    +   '<div><b>Modelo / Série:</b> ' + esc(id.modelo||'—') + '</div>'
+    +   '<div><b>Transportadora / frete:</b> ' + esc(id.frete||'—') + '</div>'
+    + '</div></div>'
+    + '<div class="p1-sec-head">INTEGRIDADE NA CHEGADA</div>'
+    + '<div class="p1-body" style="padding:0"><table><thead><tr><th>Item verificado</th><th style="width:150px">Situação</th></tr></thead><tbody>' + linhas + '</tbody></table></div>'
+    + '<div class="p1-sec-head">OBSERVAÇÕES E AVARIAS</div>'
+    + '<div class="p1-body"><div class="p1-obs">' + (esc(state.avarias||'') || '—') + '</div>'
+    +   '<div style="margin-top:6px"><b>Acessórios/itens que acompanham:</b><div class="p1-obs">' + (esc(state.acessorios||'') || '—') + '</div></div></div>'
+    + '<div class="p1-sec-head">REGISTRO FOTOGRÁFICO</div>'
+    + '<div class="p1-body">' + fotos.length + ' foto(s) registrada(s) na chegada — arquivos na pasta da OS no Drive.</div>'
+    + '<div class="p1-body" style="border-top:1px solid #ccc;margin-top:8px">'
+    +   '<div style="display:flex;gap:24px"><div style="flex:1"><div class="p1-sig"></div>Responsável pelo recebimento</div>'
+    +   '<div style="flex:1"><div class="p1-sig"></div>Cliente / transportador</div></div></div>'
+    + '<div class="p1-footer">propercompressores.com.br &bull; FORM 01 — Recebimento &bull; documento gerado automaticamente</div>';
+  document.getElementById('pdf-layout').innerHTML = html;
+}
+async function enviarPdfParaDrive(){
+  if (_pdfEnviado || !_osId) return;
+  if (!window.jspdf || !window.html2canvas) return; // CDN indisponível → segue sem PDF
+  _pdfEnviado = true;
+  var el = document.getElementById('pdf-layout');
+  try{
+    buildPdfLayout();
+    el.classList.add('pdf-capturing');
+    el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+    var canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    el.classList.remove('pdf-capturing');
+    el.style.cssText = 'display:none';
+
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    var pageW = 210, pageH = 297, imgW = pageW;
+    var imgH = canvas.height * imgW / canvas.width;
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var heightLeft = imgH, position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+    heightLeft -= pageH;
+    while (heightLeft > 0){
+      position = heightLeft - imgH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+    }
+
+    var id = state.identificacao || {};
+    var _sess = null; try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    var _num = id.os || '';
+    var base64 = pdf.output('datauristring').split(',')[1];
+    var payload = {
+      action:'salvarPdfDrive', key: KEY,
+      os_id:_osId, os_numero:_num, cliente: id.cliente || 'SemCliente',
+      maquina_id: (_maqAtual && _maqAtual.id) || '',
+      maquina_label: (_maqAtual ? maqLabel(_maqAtual) : (id.equipamento || '')),
+      base64: base64, fileName: 'Recebimento_Form01_' + (_num || _osId || 's_os') + '.pdf',
+      categoria:'pdf_form01', caption:'Recebimento de máquina (Form 01)',
+      createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
+    };
+    var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+    var d = JSON.parse(await r.text());
+    if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
+    toast('PDF do recebimento salvo no Drive');
+  }catch(e){
+    _pdfEnviado = false;
+    if (el){ el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none'; }
+    toast('Recebimento enviado; PDF ao Drive falhou: ' + e.message);
+  }
 }
 
 function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
@@ -249,6 +393,8 @@ function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.
 // caso mostramos um seletor. Preenche Equipamento/TAG + Modelo/Série da OS aberta
 // no PCM, sem sobrescrever o que o técnico já digitou.
 let _maquinas = [];
+let _maqAtual = null;     // máquina aplicada (etiqueta o PDF no Drive)
+let _pdfEnviado = false;  // sobe o PDF ao Drive 1x por sessão do form
 function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
 function maqLabel(m){
   var base = [m.brand, m.model].filter(Boolean).join(' ');
@@ -259,6 +405,7 @@ function maqLabel(m){
 }
 function aplicarMaquina(m){
   if (!m) return;
+  _maqAtual = m; // guarda a máquina aplicada p/ etiquetar o PDF no Drive (aditivo)
   var equip  = m.tag || m.tipoEquip || m.tipo || m.brand || '';
   var modLbl = [m.brand, m.model].filter(Boolean).join(' ');
   var modelo = modLbl + (m.serial ? (modLbl ? ' / ' : '') + 'Série ' + m.serial : '');
@@ -273,6 +420,7 @@ function selMaquina(){
   // seletor manual: sobrescreve os dois campos de identificação da máquina
   var m = _maquinas[parseInt(idx, 10)];
   if (!m) return;
+  _maqAtual = m; // máquina escolhida no seletor → etiqueta o PDF no Drive (aditivo)
   var equip  = m.tag || m.tipoEquip || m.tipo || m.brand || '';
   var modLbl = [m.brand, m.model].filter(Boolean).join(' ');
   document.getElementById('f_equip').value  = equip;

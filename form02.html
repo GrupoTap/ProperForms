@@ -1,4 +1,15 @@
 <!--
+form02.html — 15/07/2026 — PDF do diagnóstico → Drive/Gestão de Documentos (ADITIVO)
+  - No envio (goToFinal, se houver os_id), captura o #pdf-layout com html2canvas,
+    monta um PDF A4 paginado (jsPDF) e sobe via salvarPdfDrive (ação já existente
+    no GAS v68+). Aparece na Gestão de Documentos na hora — sem finalizar a OS.
+  - ZERO mudança de GAS. Guard _pdfEnviado (1x/sessão); falha não bloqueia a tela
+    final (só o print local continua disponível). CDNs jspdf 2.5.1 + html2canvas 1.4.1.
+  - CSS: as regras do #pdf-layout saíram de "@media print" para "@media print, screen"
+    (dormentes na tela, pois o layout fica display:none), viabilizando a captura sem
+    duplicar CSS. Saída de impressão inalterada. _maqAtual etiqueta a máquina no Drive.
+  - Nenhum id/data-key/função renomeado.
+  ----------------------------------------------------------------------------
 form02.html — 13/07/2026 — Auto-preenchimento da OS (ADITIVO)
   - Ao abrir com ?os_id=, busca getMaquinasByOS(os_id) e preenche Equipamento/TAG,
     Modelo/Série, Tensão de Alimentação, Potência (CV/kW) e Ano de fabricação da
@@ -378,9 +389,15 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
     @media print {
       body > * { display: none !important; }
       #pdf-layout { display: block !important; }
-
       @page { size: A4 portrait; margin: 7mm 8mm; }
-
+    }
+    /* Estilo do layout PDF — disponível na IMPRESSÃO e durante a captura html2canvas.
+       Fora desses dois casos o #pdf-layout fica display:none, então as regras ficam
+       dormentes na tela normal. ADITIVO: não altera a saída de impressão (as mesmas
+       regras que antes viviam só em @media print). A captura usa a classe .pdf-capturing
+       no #pdf-layout para torná-lo visível fora da tela. */
+    @media print, screen {
+      #pdf-layout.pdf-capturing { display: block !important; }
       #pdf-layout {
         font-family: Arial, Helvetica, sans-serif;
         font-size: 7pt;
@@ -479,6 +496,10 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
       .pdf-legend { border-top: 0.5px solid #CCC; padding-top: 3px; font-size: 6.5pt; color: #444; }
     }
   </style>
+  <!-- Geração de PDF do diagnóstico para subir ao Drive (Gestão de Documentos).
+       Aditivo: só usado no envio quando a OS está vinculada. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -1904,8 +1925,80 @@ async function goToFinal() {
     }
   }
 
+  // Gera o PDF do diagnóstico e sobe ao Drive → aparece na Gestão de Documentos
+  // na hora, sem depender de "finalizar a OS". Não bloqueia a tela final.
+  if (_osId) { enviarPdfParaDrive(); }
+
   renderSummary();
   showScreen('screen-final');
+}
+
+// ══ PDF → DRIVE (Gestão de Documentos) ═════════════════════════════════════
+// Captura o layout de impressão (#pdf-layout) com html2canvas, monta um PDF A4
+// paginado com jsPDF e envia via salvarPdfDrive (ação já existente no GAS v68+).
+// ADITIVO: sem mudança de GAS; roda 1x por sessão do form (_pdfEnviado).
+async function enviarPdfParaDrive() {
+  if (_pdfEnviado || !_osId) return;
+  if (!window.jspdf || !window.html2canvas) return; // CDN indisponível → só o print local
+  _pdfEnviado = true;
+  var el = document.getElementById('pdf-layout');
+  try {
+    buildPdfLayout();
+    // Torna o layout renderável fora da tela, com largura de página A4 (~794px @96dpi).
+    var _prevStyle = el.getAttribute('style') || '';
+    el.classList.add('pdf-capturing');
+    el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+
+    var canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+
+    // Restaura o estado escondido do layout.
+    el.classList.remove('pdf-capturing');
+    el.setAttribute('style', _prevStyle || 'display:none');
+
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    var pageW = 210, pageH = 297;
+    var imgW = pageW;
+    var imgH = canvas.height * imgW / canvas.width;
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var heightLeft = imgH, position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+    heightLeft -= pageH;
+    while (heightLeft > 0) {
+      position = heightLeft - imgH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+    }
+
+    var id = state.identificacao || {};
+    var _sess = null; try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    var _num = id.os || '';
+    var fileName = 'Diagnostico_Form02_' + (_num || _osId || 's_os') + '.pdf';
+    var base64 = pdf.output('datauristring').split(',')[1];
+    var payload = {
+      action: 'salvarPdfDrive',
+      key: FORM_KEY,
+      os_id: _osId,
+      os_numero: _num,
+      cliente: id.cliente || 'SemCliente',
+      maquina_id: (_maqAtual && _maqAtual.id) || '',
+      maquina_label: (_maqAtual ? maqLabel(_maqAtual) : (id.equipamento || '')),
+      base64: base64,
+      fileName: fileName,
+      categoria: 'pdf_form02',
+      caption: 'Diagnóstico sem desmontagem (Form 02)',
+      createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
+    };
+    var r = await fetch(GAS_URL, { method: 'POST', body: gcBody(payload) });
+    var d = JSON.parse(await r.text());
+    if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
+    showToast('PDF do diagnóstico salvo no Drive');
+  } catch (e) {
+    _pdfEnviado = false; // libera nova tentativa numa próxima finalização
+    if (el) { el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none'; }
+    showToast('Diagnóstico enviado; PDF ao Drive falhou: ' + e.message);
+  }
 }
 
 function renderSummary() {
@@ -2331,6 +2424,8 @@ function installPWAManifest() {
 // só OS externas têm >1 → mostra seletor. Tensão/potência vêm do MODELO (join no
 // getMaquinasByOS, GAS v69). Não sobrescreve rascunho nem valor já digitado.
 var _maquinas = [];
+var _maqAtual = null;     // máquina aplicada (etiqueta o PDF no Drive)
+var _pdfEnviado = false;  // sobe o PDF ao Drive 1x por sessão do form
 var FORM_KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 function escOpt(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
 function maqLabel(m){
@@ -2351,6 +2446,7 @@ function _mModelo(m){
 }
 function aplicarMaquina(m, forcar){
   if (!m) return;
+  _maqAtual = m; // guarda a máquina aplicada p/ etiquetar o PDF no Drive (aditivo)
   if (forcar){
     document.getElementById('id-equipamento').value = _mEquip(m);
     document.getElementById('id-modelo').value      = _mModelo(m);
