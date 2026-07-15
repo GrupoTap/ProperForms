@@ -1,5 +1,14 @@
 <!DOCTYPE html>
 <!--
+form04.html — 15/07/2026 — PDF da peritagem → Drive/Gestão de Documentos (ADITIVO)
+  - Gêmeo do form03: no envio (enviar, se houver os_id), monta #pdf-layout no ESTILO
+    do Form 02 (cabeçalho Proper, seções do schema em tabela com badges, parecer),
+    captura com html2canvas → PDF A4 (jsPDF) → salvarPdfDrive (categoria pdf_form04).
+    Aparece na Gestão de Documentos na hora — sem finalizar a OS. ZERO mudança de GAS.
+    Guard _pdfEnviado; falha não bloqueia a conclusão. CDNs jspdf 2.5.1 + html2canvas
+    1.4.1. Print local mantido. Novos: #pdf-layout (+CSS .pl-*), buildPdfLayout,
+    _pdfResHtml, enviarPdfParaDrive, _maqAtual/_pdfEnviado. Nada renomeado.
+  ----------------------------------------------------------------------------
 form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do peritagem.html)
   - Arquivo autônomo com APENAS o esquema elétrico. Gêmeo: form03.html (Mecânica).
     Motor idêntico ao peritagem.html.
@@ -60,7 +69,41 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
   #toast.show{opacity:1}
   .ok-msg{text-align:center;padding:32px 16px}.ok-msg .big{font-size:44px}
   @media print{ body{background:#fff;color:#000;max-width:none} .no-print{display:none!important} .card{border:1px solid #999;break-inside:avoid} .card-b{display:block!important} }
+
+  /* ── Layout PDF (estilo Form 02) capturado por html2canvas p/ subir ao Drive.
+     Fica display:none na tela; a captura o mostra fora do viewport (.pdf-capturing).
+     ADITIVO — independente do print da tela. ──────────────────────────────────── */
+  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:9pt;line-height:1.35}
+  #pdf-layout.pdf-capturing{display:block}
+  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  .pl-header{display:table;width:100%;border:1px solid #ccc;margin-bottom:6px}
+  .pl-logo,.pl-title,.pl-fields{display:table-cell;vertical-align:middle}
+  .pl-logo{width:54px;border-right:1px solid #ccc;text-align:center;padding:6px 4px}
+  .pl-logo-circle{display:inline-block;width:38px;height:38px;background:#C0392B;border-radius:50%;color:#fff;font-weight:700;font-size:20pt;line-height:38px}
+  .pl-title{background:#3D3D3D;color:#fff;width:44%;border-right:1px solid #555;padding:6px 8px}
+  .pl-form-name{font-size:11pt;font-weight:700;display:block}
+  .pl-form-sub{font-size:7.5pt;display:block;margin-top:2px;color:#ddd}
+  .pl-fields{padding:5px 8px;font-size:8pt}
+  .pl-id-row{display:flex;gap:4px;margin-bottom:2px}
+  .pl-id-label{color:#555;flex-shrink:0}
+  .pl-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px}
+  .pl-gw{background:#2E2E2E;color:#fff;padding:4px 10px;margin-bottom:6px;font-size:8.5pt;font-weight:700}
+  .pl-sec-head{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin-top:6px}
+  #pdf-layout table{width:100%;border-collapse:collapse;font-size:8pt}
+  #pdf-layout th,#pdf-layout td{border:.5px solid #bbb;padding:3px 6px;text-align:left;vertical-align:top}
+  #pdf-layout td.pl-res{white-space:nowrap;font-weight:700;width:120px}
+  .pl-obs{border:1px solid #ccc;border-top:0;padding:6px;white-space:pre-wrap;word-wrap:break-word;min-height:24px;font-size:8.5pt}
+  .pl-parecer{border:1px solid #ccc;padding:6px;font-size:8.5pt}
+  .pl-sig{border-bottom:.5px solid #999;height:16px;margin:10px 0 2px}
+  .pl-footer{font-size:6.5pt;font-style:italic;text-align:center;color:#555;border-top:.5px solid #ccc;padding-top:4px;margin-top:8px}
+  .pl-badge{display:inline-block;padding:1px 6px;border-radius:8px;font-weight:700;font-size:7.5pt}
+  .pl-badge.ok{background:#e6f4ea;color:#137333}
+  .pl-badge.no{background:#fce8e6;color:#c5221f}
+  .pl-badge.na{background:#eee;color:#555}
 </style>
+<!-- Geração do PDF da peritagem para subir ao Drive (Gestão de Documentos). Aditivo. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -77,6 +120,7 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
   <div class="sub" id="okSub"></div>
   <button class="btn" onclick="window.print()">🖨️ Gerar PDF</button></div>
 </div>
+<div id="pdf-layout"></div>
 <div id="toast"></div>
 
 <script>
@@ -165,6 +209,7 @@ const SCHEMAS = {
 const URGENCIAS = ['Normal','Alta','Crítica'];
 
 let SC, _osId='', _tarefaId='', _enviado=false, _gwVal='';
+let _maqAtual=null, _pdfEnviado=false;   // etiqueta máquina + sobe PDF 1x/sessão
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 const _formUid = pgpUid();
 const state = { fotos:{}, itens:{}, parecer:{} };
@@ -289,9 +334,108 @@ async function enviar(){
       if(d.status!=='ok') throw new Error(d.message||'Erro do servidor');
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem'; toast('Erro ao enviar: ' + e.message); return; }
   }
+  // Gera o PDF da peritagem (estilo Form 02) e sobe ao Drive → Gestão de Documentos
+  // na hora, sem depender de finalizar a OS. Não bloqueia a tela de conclusão.
+  if(_osId){ enviarPdfParaDrive(); }
   document.getElementById('app').style.display='none';
   const ok=document.getElementById('okScreen'); ok.style.display='';
   document.getElementById('okSub').textContent=_osId?'A tarefa foi concluída no pipeline. Gere o PDF para anexar ao laudo.':'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+// ══ PDF (estilo Form 02) → DRIVE (Gestão de Documentos) ══════════════════════
+// Monta um #pdf-layout com o cabeçalho Proper + seções do schema + parecer,
+// captura com html2canvas, pagina num PDF A4 (jsPDF) e sobe via salvarPdfDrive
+// (ação já existente no GAS v68+). ADITIVO: sem mudança de GAS; 1x/sessão.
+function _pdfResHtml(it){
+  var v = state.itens[it.k];
+  if (it.c==='foto'){ var arr=state.fotos[it.k]||[]; return arr.length ? (arr.length+' foto(s)') : '—'; }
+  if (v==null || v==='') return '—';
+  if (it.c==='sn' || it.c==='snnt'){
+    var lbl = {sim:'Sim',nao:'Não',na:'N/A',nt:'NT'}[v] || v;
+    var cls = v==='sim' ? 'ok' : (v==='nao' ? 'no' : 'na');
+    return '<span class="pl-badge '+cls+'">'+escHtml(lbl)+'</span>';
+  }
+  if (it.c==='escala'){ return {bom:'Bom',regular:'Regular',ruim:'Ruim'}[v] || escHtml(v); }
+  if (it.c==='med'){ return escHtml(v) + (it.unit ? (' '+escHtml(it.unit)) : ''); }
+  return escHtml(v);
+}
+function buildPdfLayout(){
+  var id = state.identificacao || {};
+  var secHtml = SC.secoes.map(function(s){
+    var rows = s.itens.filter(function(it){ return !(it.gw && _gwVal && it.gw!==_gwVal); }).map(function(it){
+      return '<tr><td>'+escHtml(it.label)+'</td><td class="pl-res">'+_pdfResHtml(it)+'</td></tr>';
+    }).join('');
+    if (!rows) return '';
+    return '<div class="pl-sec-head">'+escHtml(s.t)+'</div><table><tbody>'+rows+'</tbody></table>';
+  }).join('');
+  var html = ''
+    + '<div class="pl-header">'
+    +   '<div class="pl-logo"><span class="pl-logo-circle">P</span></div>'
+    +   '<div class="pl-title"><span class="pl-form-name">'+escHtml(String(SC.titulo).toUpperCase())+'</span><span class="pl-form-sub">'+escHtml(SC.subtitulo||'')+'</span></div>'
+    +   '<div class="pl-fields">'
+    +     '<div class="pl-id-row"><span class="pl-id-label">OS Nº</span><span class="pl-id-val">'+escHtml(id.os||'')+'</span><span class="pl-id-label">Data:</span><span class="pl-id-val">'+escHtml(id.data||'')+'</span></div>'
+    +     '<div class="pl-id-row"><span class="pl-id-label">Cliente:</span><span class="pl-id-val">'+escHtml(id.cliente||'')+'</span></div>'
+    +     '<div class="pl-id-row"><span class="pl-id-label">Equip./TAG:</span><span class="pl-id-val">'+escHtml(id.equipamento||'')+'</span></div>'
+    +     '<div class="pl-id-row"><span class="pl-id-label">Modelo/Série:</span><span class="pl-id-val">'+escHtml(id.modelo||'')+'</span></div>'
+    +     '<div class="pl-id-row"><span class="pl-id-label">Horímetro:</span><span class="pl-id-val">'+escHtml(id.horimetro||'')+'</span><span class="pl-id-label">Ano:</span><span class="pl-id-val">'+escHtml(id.ano||'')+'</span></div>'
+    +     '<div class="pl-id-row"><span class="pl-id-label">Técnico:</span><span class="pl-id-val">'+escHtml(id.tecnico||'')+'</span></div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="pl-gw">◆ '+escHtml(SC.gateway.label)+': '+escHtml(_gwVal||'—')+'</div>'
+    + secHtml
+    + '<div class="pl-sec-head">D — Observações e recomendações</div><div class="pl-obs">'+(escHtml(state.observacoes||'') || '—')+'</div>'
+    + '<div class="pl-sec-head">E — Parecer técnico</div><div class="pl-parecer">'
+    +   '<div><b>Parecer:</b> '+escHtml(state.parecer.parecer||'—')+'</div>'
+    +   '<div><b>Urgência:</b> '+escHtml(state.parecer.urgencia||'—')+'</div>'
+    +   '<div style="display:flex;gap:24px;margin-top:8px"><div style="flex:1"><div class="pl-sig"></div>'+escHtml(state.parecer.assinatura||'Responsável técnico')+'</div><div style="flex:1"><div class="pl-sig"></div>Cliente / ciência</div></div>'
+    + '</div>'
+    + '<div class="pl-footer">propercompressores.com.br &bull; '+escHtml(SC.titulo)+' &bull; documento gerado automaticamente</div>';
+  document.getElementById('pdf-layout').innerHTML = html;
+}
+async function enviarPdfParaDrive(){
+  if (_pdfEnviado || !_osId) return;
+  if (!window.jspdf || !window.html2canvas) return;
+  _pdfEnviado = true;
+  var el = document.getElementById('pdf-layout');
+  try{
+    buildPdfLayout();
+    el.classList.add('pdf-capturing');
+    el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+    var canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none';
+
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    var pageW = 210, pageH = 297, imgW = pageW;
+    var imgH = canvas.height * imgW / canvas.width;
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    var heightLeft = imgH, position = 0;
+    pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH;
+    while (heightLeft > 0){ position = heightLeft - imgH; pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH; }
+
+    var id = state.identificacao || {};
+    var _sess = null; try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}
+    var _num = id.os || '';
+    var nomeCurto = SC.tipoForm==='form04' ? 'Peritagem_Eletrica' : 'Peritagem_Mecanica';
+    var base64 = pdf.output('datauristring').split(',')[1];
+    var payload = {
+      action:'salvarPdfDrive', key: KEY,
+      os_id:_osId, os_numero:_num, cliente: id.cliente || 'SemCliente',
+      maquina_id: (_maqAtual && _maqAtual.id) || '',
+      maquina_label: (_maqAtual ? maqLabel(_maqAtual) : (id.equipamento || '')),
+      base64: base64, fileName: nomeCurto + '_' + SC.tipoForm + '_' + (_num || _osId || 's_os') + '.pdf',
+      categoria: 'pdf_' + SC.tipoForm, caption: SC.titulo,
+      createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
+    };
+    var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+    var d = JSON.parse(await r.text());
+    if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
+    toast('PDF da peritagem salvo no Drive');
+  }catch(e){
+    _pdfEnviado = false;
+    if (el){ el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none'; }
+    toast('Peritagem enviada; PDF ao Drive falhou: ' + e.message);
+  }
 }
 
 function val(id){ const e=document.getElementById(id); return e?e.value.trim():''; }
@@ -321,6 +465,7 @@ function prefillFromUrl(p){
 }
 function aplicarMaquina(m){
   if(!m) return;
+  _maqAtual=m;
   setIfEmpty('i_equip',maqEquip(m));
   setIfEmpty('i_modelo',maqModelo(m));
   setIfEmpty('i_horimetro',m.hourTotal?String(m.hourTotal):'');
@@ -329,6 +474,7 @@ function aplicarMaquina(m){
 function selMaquina(){
   var idx=document.getElementById('i_maqSel').value; if(idx==='') return;
   var m=_maquinas[parseInt(idx,10)]; if(!m) return;
+  _maqAtual=m;
   // seleção manual sobrescreve os campos de máquina
   document.getElementById('i_equip').value=maqEquip(m);
   document.getElementById('i_modelo').value=maqModelo(m);
