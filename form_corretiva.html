@@ -63,6 +63,18 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   #toast.show{opacity:1}
   .pill-info{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
   .assin-status{text-align:center;font-size:12px;color:var(--muted);margin-top:8px}
+  .field-hint{font-size:11px;color:var(--muted);margin-top:3px}
+  .field-hint b{color:var(--accent)}
+  /* Regime de trabalho — turnos */
+  .turno-row{display:flex;align-items:flex-end;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;flex-wrap:wrap}
+  .turno-row .col{flex:1;min-width:78px}
+  .turno-row label{margin:0 0 3px}
+  .turno-del{background:transparent;border:1px solid var(--border);color:var(--red);border-radius:6px;padding:8px 10px;cursor:pointer;font-family:inherit}
+  .custom-days{display:none;flex-basis:100%;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .custom-days.show{display:flex}
+  .custom-days label{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);margin:0}
+  .custom-days input{width:16px;height:16px;accent-color:var(--orange)}
+  .btn-add-turno{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit}
 
   /* ── ASSINATURAS EM CAMPO (motor portado do PCF V63) — overlay full-screen:
      etapa 1 = nome (retrato); etapa 2 = assinatura em PAISAGEM. Em telas retrato
@@ -159,6 +171,19 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
       <div><label>Equipamento / TAG</label><input type="text" id="f_equip"></div>
       <div><label>Modelo / Série</label><input type="text" id="f_modelo"></div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Dados da máquina</h2>
+    <div class="sub" style="margin-bottom:6px">Vêm do cadastro quando existem; se não, o técnico lança pra aproveitar a visita e atualizar a máquina.</div>
+    <label>Horímetro total (h)</label>
+    <input type="number" id="f_horimetro" inputmode="numeric" placeholder="Leitura atual do horímetro">
+    <div class="field-hint" id="hint_horimetro"></div>
+
+    <div class="grp-title" style="margin-top:14px">Regime de trabalho (turnos)</div>
+    <div id="regimeTurnos"></div>
+    <button type="button" class="btn-add-turno" onclick="addTurno()">＋ Adicionar turno</button>
+    <div class="field-hint" id="hint_regime"></div>
   </div>
 
   <div class="card">
@@ -335,11 +360,23 @@ const MOTIVOS = [
 // ── Estado (vira campos_json no saveFormulario e o rascunho local) ──
 const state = {
   atendimento: {}, identificacao: {},
+  maquina: {},            // horímetro + regime (auto-preenchido do cadastro; técnico atualiza)
   motivos: {}, motivoOutro: '',
   parametros: {}, protecoes: {}, diagnostico: {},
   fotos: { maquina:[], rele:[], oleo:[], ambiente:[], extra:[] },
   assinaturas: { tecnico: null, responsavel: null }
 };
+
+// ── Regime de trabalho — turnos (mesma forma do PCF: {dias,inicio,fim,customDays})
+// para gravar direto em MAQUINAS.Regime_JSON via saveMachine. ──
+const DIAS_OPTS = [
+  { v:'', t:'Selecionar…' }, { v:'seg-qui', t:'Seg–Qui (4d)' }, { v:'seg-sex', t:'Seg–Sex (5d)' },
+  { v:'seg-sab', t:'Seg–Sáb (6d)' }, { v:'seg-dom', t:'Seg–Dom (7d)' },
+  { v:'sex', t:'Sex (1d)' }, { v:'sab', t:'Sáb (1d)' }, { v:'dom', t:'Dom (1d)' },
+  { v:'custom', t:'Personalizado' }
+];
+const DIAS_LABEL = { 'seg-qui':'Seg–Qui','seg-sex':'Seg–Sex','seg-sab':'Seg–Sáb','seg-dom':'Seg–Dom','sex':'Sex','sab':'Sáb','dom':'Dom','custom':'Dias específicos' };
+const DOW = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 
 function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
@@ -417,6 +454,69 @@ async function uploadPhoto(secao, dataUrl, fileName){
 }
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
 function fotosFlat(){ var out=[]; Object.keys(state.fotos).forEach(function(k){ (state.fotos[k]||[]).forEach(function(f){ out.push(f); }); }); return out; }
+
+// ══ REGIME (turnos) + HORÍMETRO ════════════════════════════════════════════
+let _turnoSeq = 0;
+function addTurno(t){
+  t = t || {};
+  const wrap = document.getElementById('regimeTurnos'); if(!wrap) return;
+  const id = 'trn' + (_turnoSeq++);
+  const opts = DIAS_OPTS.map(function(o){ return '<option value="'+o.v+'"'+(o.v===(t.dias||'')?' selected':'')+'>'+o.t+'</option>'; }).join('');
+  const cds = Array.isArray(t.customDays) ? t.customDays : [];
+  const days = DOW.map(function(d,di){ return '<label><input type="checkbox" data-cd="'+di+'"'+(cds.indexOf(di)>=0?' checked':'')+' onchange="scheduleSave()"> '+d+'</label>'; }).join('');
+  const row = document.createElement('div');
+  row.className = 'turno-row'; row.id = id;
+  row.innerHTML =
+    '<div class="col" style="flex-basis:100%;min-width:140px"><label>Dias</label>'
+    + '<select class="t-dias turno-dias-sel" onchange="onDiasSel(this);scheduleSave()">'+opts+'</select></div>'
+    + '<div class="col"><label>Início</label><input type="time" class="t-ini" value="'+(t.inicio||'')+'" onchange="scheduleSave()"></div>'
+    + '<div class="col"><label>Fim</label><input type="time" class="t-fim" value="'+(t.fim||'')+'" onchange="scheduleSave()"></div>'
+    + '<button type="button" class="turno-del" title="Remover turno" onclick="this.closest(\'.turno-row\').remove();scheduleSave()">✕</button>'
+    + '<div class="custom-days'+(t.dias==='custom'?' show':'')+'">'+days+'</div>';
+  wrap.appendChild(row);
+}
+function onDiasSel(sel){
+  const row = sel.closest('.turno-row'); if(!row) return;
+  const cd = row.querySelector('.custom-days');
+  if(cd) cd.classList.toggle('show', sel.value==='custom');
+}
+function lerTurnos(){
+  const rows = document.querySelectorAll('#regimeTurnos .turno-row');
+  const out = [];
+  rows.forEach(function(r){
+    const dias = (r.querySelector('.t-dias')||{}).value || '';
+    const inicio = (r.querySelector('.t-ini')||{}).value || '';
+    const fim = (r.querySelector('.t-fim')||{}).value || '';
+    if(!dias || !inicio || !fim) return;             // turno incompleto = ignora
+    const customDays = [].map.call(r.querySelectorAll('.custom-days input[type=checkbox]'), function(cb,i){ return cb.checked ? parseInt(cb.getAttribute('data-cd'),10) : -1; }).filter(function(i){ return i>=0; });
+    out.push({ dias:dias, inicio:inicio, fim:fim, customDays:customDays });
+  });
+  return out;
+}
+function resumoRegime(rd){
+  if(!rd || !rd.length) return '—';
+  return rd.map(function(t){
+    var d = t.dias==='custom' ? (t.customDays||[]).map(function(i){ return DOW[i]; }).join('/') : (DIAS_LABEL[t.dias]||t.dias);
+    return d + ' ' + (t.inicio||'') + '–' + (t.fim||'');
+  }).join(' · ');
+}
+// Preenche horímetro + turnos a partir da máquina do cadastro (getMaquinasByOS).
+// Não sobrescreve o que o técnico já digitou.
+function preencherMaquinaCampos(m){
+  if(!m) return;
+  var hEl = document.getElementById('f_horimetro');
+  if(hEl && !hEl.value.trim() && m.hourTotal){ hEl.value = m.hourTotal; }
+  var hint = document.getElementById('hint_horimetro');
+  if(hint) hint.innerHTML = m.hourTotal ? ('No cadastro: <b>'+m.hourTotal+' h</b>') : 'Sem horímetro no cadastro — lance a leitura atual.';
+  // turnos: só monta do cadastro se o técnico ainda não montou nenhum
+  var wrap = document.getElementById('regimeTurnos');
+  if(wrap && !wrap.querySelector('.turno-row')){
+    var rd = Array.isArray(m.regimeData) ? m.regimeData : [];
+    rd.forEach(function(t){ addTurno(t); });
+  }
+  var hr = document.getElementById('hint_regime');
+  if(hr) hr.innerHTML = (m.regimeData && m.regimeData.length) ? ('No cadastro: '+resumoRegime(m.regimeData)) : 'Sem regime no cadastro — adicione os turnos.';
+}
 
 // ══ ASSINATURAS — motor portado do PCF V63 (frontend-only) ═════════════════
 var _pgpSignCtx = null, _pgpSignRotated = false, _pgpSignHasInk = false, _pgpSignNome = '', _pgpSignBound = false;
@@ -572,6 +672,7 @@ function captura(){
   state.diagnostico.causa = val('f_causa');
   state.diagnostico.acoes = val('f_acoes');
   state.diagnostico.pendencias = val('f_pendencias');
+  state.maquina = { horimetro: val('f_horimetro'), regimeData: lerTurnos() };
 }
 function saveDraft(){
   try{ captura(); localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); }catch(e){}
@@ -594,6 +695,10 @@ function hydrateUI(){
   if(p.corrente_carga){ setV('f_ic_a',p.corrente_carga.a); setV('f_ic_b',p.corrente_carga.b); setV('f_ic_c',p.corrente_carga.c); }
   if(p.corrente_alivio){ setV('f_ia_a',p.corrente_alivio.a); setV('f_ia_b',p.corrente_alivio.b); setV('f_ia_c',p.corrente_alivio.c); }
   setV('f_causa',d.causa); setV('f_acoes',d.acoes); setV('f_pendencias',d.pendencias);
+  var mq=state.maquina||{};
+  setV('f_horimetro', mq.horimetro);
+  var wrapT=document.getElementById('regimeTurnos');
+  if(wrapT && !wrapT.querySelector('.turno-row') && Array.isArray(mq.regimeData)){ mq.regimeData.forEach(function(t){ addTurno(t); }); }
   Object.keys(state.motivos||{}).forEach(function(k){ var c=document.getElementById('mot_'+k); if(c) c.checked=!!state.motivos[k]; });
   var pr=state.protecoes||{}; markSN('rele_ligado',pr.rele_ligado); markSN('rele_atuando',pr.rele_atuando); markSN('oleo_ok',pr.oleo_ok);
   markSN('situacao', d.situacao);
@@ -639,6 +744,8 @@ async function enviar(){
       if(dd.status!=='ok') throw new Error(dd.message||'Erro do servidor');
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir corretiva'; toast('Erro ao enviar: '+e.message); return; }
   }
+  // Aproveita a visita pra atualizar horímetro + regime no cadastro da máquina
+  try{ await atualizarMaquinaCadastro(); }catch(e){}
   if(_osId){ enviarPdfParaDrive(); }
   clearDraft();
   document.getElementById('app').style.display='none';
@@ -653,7 +760,7 @@ const _SN_LABEL  = { sim:'SIM', nao:'NÃO', na:'N/A' };
 function _cb(v,target){ return '<span class="p1-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
 function snRow(lbl, v){ return '<tr><td>'+esc(lbl)+'</td><td style="white-space:nowrap">'+_cb(v,'sim')+'Sim &nbsp;'+_cb(v,'nao')+'Não &nbsp;'+_cb(v,'na')+'N/A</td></tr>'; }
 function buildPdfLayout(){
-  var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, pr=state.protecoes||{}, d=state.diagnostico||{}, a=state.assinaturas||{};
+  var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, pr=state.protecoes||{}, d=state.diagnostico||{}, a=state.assinaturas||{}, mq=state.maquina||{};
   var motivosSel = Object.keys(state.motivos||{}).filter(function(k){ return state.motivos[k]; }).map(function(k){ return _MOT_LABEL[k]||k; });
   var t=p.tensao||{}, cc=p.corrente_carga||{}, ca=p.corrente_alivio||{};
   var nfotos = fotosFlat().filter(function(f){ return f && f.url; }).length;
@@ -677,6 +784,8 @@ function buildPdfLayout(){
     + '<div class="p1-body"><div class="p1-grid">'
     +   '<div><b>Equipamento / TAG:</b> '+esc(i.equipamento||'—')+'</div>'
     +   '<div><b>Modelo / Série:</b> '+esc(i.modelo||'—')+'</div>'
+    +   '<div><b>Horímetro total:</b> '+esc((mq.horimetro? (mq.horimetro+' h') : '—'))+'</div>'
+    +   '<div><b>Regime de trabalho:</b> '+esc(resumoRegime(mq.regimeData))+'</div>'
     + '</div></div>'
     + '<div class="p1-sec-head">MOTIVO DO CHAMADO</div>'
     + '<div class="p1-body"><div class="p1-obs">'+(motivosSel.length?esc(motivosSel.join(' · ')):'—')
@@ -762,6 +871,7 @@ function aplicarMaquina(m){
   var eq=document.getElementById('f_equip'), md=document.getElementById('f_modelo');
   if(eq && !eq.value.trim()) eq.value=equip;
   if(md && !md.value.trim()) md.value=modelo;
+  preencherMaquinaCampos(m);
 }
 function selMaquina(){
   var idx=document.getElementById('f_maqSel').value; if(idx==='') return;
@@ -770,6 +880,7 @@ function selMaquina(){
   var modLbl=[m.brand,m.model].filter(Boolean).join(' ');
   document.getElementById('f_equip').value=equip;
   document.getElementById('f_modelo').value=modLbl+(m.serial?(modLbl?' / ':'')+'Série '+m.serial:'');
+  preencherMaquinaCampos(m);
   scheduleSave();
 }
 async function carregarMaquinasOS(){
@@ -790,6 +901,35 @@ async function carregarMaquinasOS(){
 function preencherResponsavelSessao(){
   var el=document.getElementById('f_tecnico'); if(!el || el.value.trim()) return;
   try{ var s=JSON.parse(localStorage.getItem('proper_session')||'null'); if(s&&s.tecnico&&s.tecnico.nome) el.value=s.tecnico.nome; }catch(e){}
+}
+
+// Atualiza o CADASTRO da máquina (horímetro + regime) aproveitando a visita.
+// Só roda se a corretiva veio de uma OS com máquina (_maqAtual.id). Envia o
+// objeto COMPLETO da máquina (do getMaquinasByOS) com horímetro/regime trocados —
+// o saveMachine casa por ID e regrava a linha sem perder os outros campos.
+// Best-effort e não-bloqueante: os dados também ficam no campos_json do laudo.
+async function atualizarMaquinaCadastro(){
+  if(!_maqAtual || !_maqAtual.id) return;                 // avulsa / sem máquina → nada a atualizar
+  var hVal = val('f_horimetro');
+  var novoHor = hVal!=='' ? (parseInt(hVal,10)||0) : (parseInt(_maqAtual.hourTotal,10)||0);
+  var antigoHor = parseInt(_maqAtual.hourTotal,10)||0;
+  var turnos = lerTurnos();
+  // nada mudou? não gera escrita à toa
+  var regimeIgual = JSON.stringify(turnos) === JSON.stringify(_maqAtual.regimeData||[]);
+  if(novoHor===antigoHor && (regimeIgual || !turnos.length)) return;
+  // guarda contra digitação errada: horímetro novo MENOR que o do cadastro
+  if(hVal!=='' && antigoHor>0 && novoHor>0 && novoHor<antigoHor){
+    if(!confirm('O horímetro informado ('+novoHor+' h) é MENOR que o do cadastro ('+antigoHor+' h). Isso só vale se o horímetro foi trocado/zerado. Atualizar mesmo assim?')) return;
+  }
+  var machineUpdate = Object.assign({}, _maqAtual, {
+    hourTotal: novoHor,
+    regimeData: turnos.length ? turnos : (_maqAtual.regimeData || [])
+  });
+  try{
+    var r = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'saveMachine', machine: machineUpdate }) });
+    var d = JSON.parse(await r.text());
+    if(d && d.status==='ok'){ _maqAtual.hourTotal = novoHor; _maqAtual.regimeData = machineUpdate.regimeData; toast('Cadastro da máquina atualizado'); }
+  }catch(e){ /* silencioso — o dado também está no laudo */ }
 }
 
 // ── Auto-save em qualquer digitação ──
