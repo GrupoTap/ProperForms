@@ -113,35 +113,52 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   .pgp-sign-bottom{ flex:none; display:flex; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0)); background:#161b22; border-top:1px solid #30363d }
   .pgp-sign-bottom .pgp-sign-btn{ padding:12px 8px; font-size:15px }
 
-  /* ── Layout do PDF do laudo corretivo (capturado por html2canvas p/ subir ao
-     Drive). display:none na tela; a captura o mostra fora do viewport. ── */
-  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:11px;line-height:1.35}
+  /* ── Layout do PDF do laudo corretivo — sistema visual do form02 (cabeçalho
+     com logo real, títulos de seção coloridos, tabelas zebradas). display:none
+     na tela; a captura html2canvas o mostra fora do viewport. ── */
+  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:8pt;line-height:1.35}
   #pdf-layout.pdf-capturing{display:block}
-  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .p1-header{display:table;width:100%;border:1px solid #ccc;margin-bottom:8px}
-  .p1-logo,.p1-title,.p1-fields{display:table-cell;vertical-align:middle}
-  .p1-logo{width:60px;border-right:1px solid #ccc;text-align:center;padding:8px 4px}
-  .p1-logo-circle{display:inline-block;width:42px;height:42px;background:#C0392B;border-radius:50%;color:#fff;font-weight:700;font-size:24px;line-height:42px}
-  .p1-title{background:#3D3D3D;color:#fff;width:44%;border-right:1px solid #555;padding:8px 10px}
-  .p1-form-name{font-size:14px;font-weight:700;display:block}
-  .p1-form-sub{font-size:10px;display:block;margin-top:2px;color:#ddd}
-  .p1-fields{padding:6px 10px;font-size:11px}
-  .p1-id-row{display:flex;gap:4px;margin-bottom:3px}
-  .p1-id-label{color:#555;flex-shrink:0}
-  .p1-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px}
-  .p1-sec-head{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:12px;font-weight:700;margin:8px 0 0}
-  .p1-body{border:1px solid #ccc;border-top:0;padding:8px}
-  .p1-grid{display:flex;flex-wrap:wrap;gap:4px 16px}
-  .p1-grid>div{min-width:45%}
-  #pdf-layout table{width:100%;border-collapse:collapse;font-size:11px}
-  #pdf-layout th,#pdf-layout td{border:.5px solid #bbb;padding:3px 6px;text-align:left}
-  #pdf-layout th{background:#eee}
-  .p1-cb{display:inline-block;width:11px;height:11px;border:1px solid #333;text-align:center;line-height:11px;font-size:9px;margin-right:3px;vertical-align:middle}
-  .p1-cb.marked{background:#333;color:#fff}
-  .p1-obs{white-space:pre-wrap;word-wrap:break-word;min-height:28px}
-  .p1-sig-img{height:46px;max-width:210px;object-fit:contain;display:block;margin-bottom:2px}
-  .p1-sig-line{border-bottom:.5px solid #999;height:44px;margin-bottom:2px}
-  .p1-footer{font-size:9px;font-style:italic;text-align:center;color:#555;border-top:.5px solid #ccc;padding-top:4px;margin-top:8px}
+  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  #pdf-layout .pdf-sec-head-amber,#pdf-layout .pdf-sec-head-blue,#pdf-layout .pdf-sec-head-dark{page-break-after:avoid}
+  #pdf-layout tr{page-break-inside:avoid}
+  /* HEADER */
+  .pdf-header{display:table;width:100%;border:1px solid #CCC;border-collapse:collapse;margin-bottom:5px}
+  .pdf-header-logo,.pdf-header-title,.pdf-header-fields{display:table-cell;vertical-align:middle}
+  .pdf-header-logo{width:60px;border-right:1px solid #CCC;text-align:center;padding:6px 5px;background:#F26522}
+  .pdf-header-logo img{width:46px;height:46px;display:inline-block}
+  .pdf-header-title{background:#3D3D3D;color:#fff;width:45%;border-right:1px solid #555;padding:7px 9px}
+  .pdf-form-name{font-size:11pt;font-weight:700;display:block;letter-spacing:.3px}
+  .pdf-form-sub{font-size:7.5pt;display:block;margin-top:2px;color:#DDD}
+  .pdf-form-ver{font-size:6.5pt;display:block;margin-top:4px;color:#BBB}
+  .pdf-header-fields{padding:5px 8px;vertical-align:top;font-size:7.5pt}
+  .pdf-id-row{display:flex;gap:4px;margin-bottom:3px;align-items:baseline}
+  .pdf-id-label{color:#555;flex-shrink:0}
+  .pdf-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px;padding-bottom:1px;font-weight:600}
+  /* SECTION HEADS */
+  .pdf-sec-head-amber{background:#E07B2E;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
+  .pdf-sec-head-blue{background:#2E4057;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
+  .pdf-sec-head-dark{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
+  /* BODY + GRID */
+  .pdf-body{border:.5px solid #CCC;padding:5px 8px;margin-bottom:4px;font-size:7.5pt}
+  .pdf-grid{display:flex;flex-wrap:wrap;gap:3px 16px}
+  .pdf-grid>div{min-width:45%}
+  .pdf-obs{white-space:pre-wrap;word-wrap:break-word;min-height:9mm;border:.5px solid #DDD;padding:4px;margin-top:2px;background:#FCFCFC}
+  /* TABLES */
+  #pdf-layout table.pdf-tbl{width:100%;border-collapse:collapse;font-size:7pt;margin-bottom:4px}
+  #pdf-layout .pdf-tbl th{background:#2E4057;color:#fff;padding:2px 5px;text-align:left;font-weight:600}
+  #pdf-layout .pdf-tbl td{padding:2px 5px;border:.5px solid #CCC;vertical-align:middle}
+  #pdf-layout .pdf-tbl tr:nth-child(even) td{background:#F5F5F5}
+  .pdf-cb{display:inline-block;width:9px;height:9px;border:.75px solid #555;text-align:center;line-height:9px;font-size:7pt;vertical-align:middle;margin-right:2px}
+  .pdf-cb.marked{background:#333;color:#fff}
+  /* SIGNATURES + FOOTER */
+  .pdf-ef{display:table;width:100%;table-layout:fixed;border-collapse:collapse;margin-top:2px}
+  .pdf-sig-col{display:table-cell;width:50%;vertical-align:top;border:.5px solid #CCC;padding:6px 8px}
+  .pdf-sig-col.left{border-right:none}
+  .pdf-sig-img{height:44px;max-width:200px;object-fit:contain;display:block;margin-bottom:2px}
+  .pdf-sig-line{border-bottom:.5px solid #999;height:40px;display:block;margin-bottom:2px}
+  .pdf-sig-name{font-size:7.5pt;font-weight:600}
+  .pdf-sig-role{font-size:6.5pt;color:#666}
+  .pdf-footer{font-size:6pt;font-style:italic;text-align:center;color:#555;border-top:.5px solid #CCC;padding-top:3px;margin-top:6px}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -329,6 +346,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9
 const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 const DRAFT_KEY = 'proper_draft_corretiva';
+const LOGO_DATAURL = 'data:image/png;base64,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';
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 
@@ -757,68 +775,68 @@ async function enviar(){
 const _MOT_LABEL = MOTIVOS.reduce(function(o,m){ o[m.k]=m.label; return o; }, {});
 const _SIT_LABEL = { resolvido:'Resolvido', parcial:'Parcial', retorno:'Requer retorno' };
 const _SN_LABEL  = { sim:'SIM', nao:'NÃO', na:'N/A' };
-function _cb(v,target){ return '<span class="p1-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
+function _cb(v,target){ return '<span class="pdf-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
 function snRow(lbl, v){ return '<tr><td>'+esc(lbl)+'</td><td style="white-space:nowrap">'+_cb(v,'sim')+'Sim &nbsp;'+_cb(v,'nao')+'Não &nbsp;'+_cb(v,'na')+'N/A</td></tr>'; }
 function buildPdfLayout(){
   var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, pr=state.protecoes||{}, d=state.diagnostico||{}, a=state.assinaturas||{}, mq=state.maquina||{};
   var motivosSel = Object.keys(state.motivos||{}).filter(function(k){ return state.motivos[k]; }).map(function(k){ return _MOT_LABEL[k]||k; });
   var t=p.tensao||{}, cc=p.corrente_carga||{}, ca=p.corrente_alivio||{};
   var nfotos = fotosFlat().filter(function(f){ return f && f.url; }).length;
+  var dataHora = esc((at.data||'')+(at.hora?(' '+at.hora):''));
   function sig(o, papel){
-    if(o && o.dataUrl) return '<img class="p1-sig-img" src="'+o.dataUrl+'"><div style="border-top:.5px solid #999;padding-top:2px">'+esc(o.nome||'')+'<br><span style="color:#666;font-size:9px">'+papel+(o.ts?(' — '+new Date(o.ts).toLocaleString('pt-BR')):'')+'</span></div>';
-    return '<div class="p1-sig-line"></div>'+papel;
+    if(o && o.dataUrl) return '<img class="pdf-sig-img" src="'+o.dataUrl+'"><div class="pdf-sig-name">'+esc(o.nome||'')+'</div><div class="pdf-sig-role">'+papel+(o.ts?(' — '+new Date(o.ts).toLocaleString('pt-BR')):'')+'</div>';
+    return '<span class="pdf-sig-line"></span><div class="pdf-sig-role">'+papel+'</div>';
   }
   var html = ''
-    + '<div class="p1-header">'
-    +   '<div class="p1-logo"><span class="p1-logo-circle">P</span></div>'
-    +   '<div class="p1-title"><span class="p1-form-name">LAUDO DE VISITA CORRETIVA</span>'
-    +     '<span class="p1-form-sub">Atendimento técnico em campo — ProperCare</span></div>'
-    +   '<div class="p1-fields">'
-    +     '<div class="p1-id-row"><span class="p1-id-label">OS Nº</span><span class="p1-id-val">'+esc(i.os||'')+'</span>'
-    +       '<span class="p1-id-label">Data:</span><span class="p1-id-val">'+esc(at.data||'')+' '+esc(at.hora||'')+'</span></div>'
-    +     '<div class="p1-id-row"><span class="p1-id-label">Cliente:</span><span class="p1-id-val">'+esc(i.cliente||'')+'</span></div>'
-    +     '<div class="p1-id-row"><span class="p1-id-label">Técnico:</span><span class="p1-id-val">'+esc(i.tecnico||'')+'</span></div>'
+    + '<header class="pdf-header">'
+    +   '<div class="pdf-header-logo"><img src="'+LOGO_DATAURL+'" alt="Proper"></div>'
+    +   '<div class="pdf-header-title">'
+    +     '<span class="pdf-form-name">LAUDO DE VISITA CORRETIVA</span>'
+    +     '<span class="pdf-form-sub">Atendimento técnico em campo · Compressores</span>'
+    +     '<span class="pdf-form-ver">ProperCare · Proper Compressores</span>'
     +   '</div>'
-    + '</div>'
-    + '<div class="p1-sec-head">EQUIPAMENTO</div>'
-    + '<div class="p1-body"><div class="p1-grid">'
-    +   '<div><b>Equipamento / TAG:</b> '+esc(i.equipamento||'—')+'</div>'
-    +   '<div><b>Modelo / Série:</b> '+esc(i.modelo||'—')+'</div>'
-    +   '<div><b>Horímetro total:</b> '+esc((mq.horimetro? (mq.horimetro+' h') : '—'))+'</div>'
+    +   '<div class="pdf-header-fields">'
+    +     '<div class="pdf-id-row"><span class="pdf-id-label">OS Nº</span><span class="pdf-id-val">'+esc(i.os||'')+'</span><span class="pdf-id-label">Data:</span><span class="pdf-id-val">'+dataHora+'</span></div>'
+    +     '<div class="pdf-id-row"><span class="pdf-id-label">Cliente:</span><span class="pdf-id-val">'+esc(i.cliente||'')+'</span></div>'
+    +     '<div class="pdf-id-row"><span class="pdf-id-label">Equipamento:</span><span class="pdf-id-val">'+esc(i.equipamento||'')+'</span><span class="pdf-id-label">Mod/Série:</span><span class="pdf-id-val">'+esc(i.modelo||'')+'</span></div>'
+    +     '<div class="pdf-id-row"><span class="pdf-id-label">Técnico:</span><span class="pdf-id-val">'+esc(i.tecnico||'')+'</span></div>'
+    +   '</div>'
+    + '</header>'
+    + '<div class="pdf-sec-head-amber">MOTIVO DO CHAMADO</div>'
+    + '<div class="pdf-body">'+(motivosSel.length?esc(motivosSel.join(' · ')):'—')
+    +   (state.motivoOutro?('<div class="pdf-obs">'+esc(state.motivoOutro)+'</div>'):'')+'</div>'
+    + '<div class="pdf-sec-head-dark">DADOS DA MÁQUINA</div>'
+    + '<div class="pdf-body"><div class="pdf-grid">'
+    +   '<div><b>Horímetro total:</b> '+esc(mq.horimetro?(mq.horimetro+' h'):'—')+'</div>'
     +   '<div><b>Regime de trabalho:</b> '+esc(resumoRegime(mq.regimeData))+'</div>'
     + '</div></div>'
-    + '<div class="p1-sec-head">MOTIVO DO CHAMADO</div>'
-    + '<div class="p1-body"><div class="p1-obs">'+(motivosSel.length?esc(motivosSel.join(' · ')):'—')
-    +   (state.motivoOutro?('<div style="margin-top:4px"><b>Detalhe:</b> '+esc(state.motivoOutro)+'</div>'):'')+'</div></div>'
-    + '<div class="p1-sec-head">PARÂMETROS DE FUNCIONAMENTO</div>'
-    + '<div class="p1-body" style="padding:0"><table><tbody>'
-    +   '<tr><th style="width:46%">Parâmetro</th><th>Fase A / A-B</th><th>Fase B / B-C</th><th>Fase C / C-A</th></tr>'
+    + '<div class="pdf-sec-head-blue">PARÂMETROS DE FUNCIONAMENTO</div>'
+    + '<table class="pdf-tbl"><tbody>'
+    +   '<tr><th style="width:44%">Parâmetro</th><th>Fase A / A-B</th><th>Fase B / B-C</th><th>Fase C / C-A</th></tr>'
     +   '<tr><td>Tensão na partida (V)</td><td>'+esc(t.ab||'—')+'</td><td>'+esc(t.bc||'—')+'</td><td>'+esc(t.ca||'—')+'</td></tr>'
     +   '<tr><td>Corrente em plena carga (A)</td><td>'+esc(cc.a||'—')+'</td><td>'+esc(cc.b||'—')+'</td><td>'+esc(cc.c||'—')+'</td></tr>'
     +   '<tr><td>Corrente em alívio (A)</td><td>'+esc(ca.a||'—')+'</td><td>'+esc(ca.b||'—')+'</td><td>'+esc(ca.c||'—')+'</td></tr>'
     +   '<tr><td>Temperatura de funcionamento</td><td colspan="3">'+esc(p.temperatura?(p.temperatura+' °C'):'—')+'</td></tr>'
-    + '</tbody></table></div>'
-    + '<div class="p1-sec-head">PROTEÇÕES E ÓLEO</div>'
-    + '<div class="p1-body" style="padding:0"><table><tbody>'
+    + '</tbody></table>'
+    + '<div class="pdf-sec-head-dark">PROTEÇÕES E ÓLEO</div>'
+    + '<table class="pdf-tbl"><tbody>'
     +   snRow('Relé de falta de fase ligado corretamente', pr.rele_ligado||'')
     +   snRow('Relé de falta de fase atuando (testado)', pr.rele_atuando||'')
     +   snRow('Nível de óleo correto antes da partida', pr.oleo_ok||'')
-    + '</tbody></table></div>'
-    + '<div class="p1-sec-head">DIAGNÓSTICO</div>'
-    + '<div class="p1-body">'
-    +   '<div><b>Causa-raiz provável:</b><div class="p1-obs">'+(esc(d.causa||'')||'—')+'</div></div>'
-    +   '<div style="margin-top:6px"><b>Ações corretivas tomadas:</b><div class="p1-obs">'+(esc(d.acoes||'')||'—')+'</div></div>'
-    +   '<div style="margin-top:6px"><b>Pendências (peça/ferramental):</b><div class="p1-obs">'+(esc(d.pendencias||'')||'—')+'</div></div>'
-    +   '<div style="margin-top:6px"><b>Situação ao final:</b> '+esc(_SIT_LABEL[d.situacao]||'—')+'</div>'
+    + '</tbody></table>'
+    + '<div class="pdf-sec-head-blue">DIAGNÓSTICO</div>'
+    + '<div class="pdf-body">'
+    +   '<b>Causa-raiz provável:</b><div class="pdf-obs">'+(esc(d.causa||'')||'—')+'</div>'
+    +   '<b>Ações corretivas tomadas:</b><div class="pdf-obs">'+(esc(d.acoes||'')||'—')+'</div>'
+    +   '<b>Pendências (peça/ferramental):</b><div class="pdf-obs">'+(esc(d.pendencias||'')||'—')+'</div>'
+    +   '<div style="margin-top:4px"><b>Situação ao final:</b> '+esc(_SIT_LABEL[d.situacao]||'—')+'</div>'
     + '</div>'
-    + '<div class="p1-sec-head">REGISTRO FOTOGRÁFICO</div>'
-    + '<div class="p1-body">'+nfotos+' foto(s) enviada(s) ao Drive — arquivos na pasta da OS.</div>'
-    + '<div class="p1-sec-head">ASSINATURAS</div>'
-    + '<div class="p1-body"><div style="display:flex;gap:24px">'
-    +   '<div style="flex:1">'+sig(a.tecnico,'Técnico responsável')+'</div>'
-    +   '<div style="flex:1">'+sig(a.responsavel,'Responsável pelo cliente')+'</div>'
-    + '</div></div>'
-    + '<div class="p1-footer">propercompressores.com.br &bull; Laudo de Visita Corretiva &bull; documento gerado automaticamente</div>';
+    + '<div class="pdf-sec-head-dark">REGISTRO FOTOGRÁFICO</div>'
+    + '<div class="pdf-body">'+nfotos+' foto(s) enviada(s) ao Drive — arquivos na pasta da OS.</div>'
+    + '<div class="pdf-sec-head-dark">ASSINATURAS</div>'
+    + '<div class="pdf-ef"><div class="pdf-sig-col left">'+sig(a.tecnico,'Técnico responsável')+'</div>'
+    +   '<div class="pdf-sig-col">'+sig(a.responsavel,'Responsável pelo cliente')+'</div></div>'
+    + '<div class="pdf-footer">propercompressores.com.br · Laudo de Visita Corretiva · documento gerado automaticamente pelo ProperCare</div>';
   document.getElementById('pdf-layout').innerHTML = html;
 }
 async function enviarPdfParaDrive(){
