@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<!--
+form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo (ProperCare)
+  Padrão de integração dos forms 01/02: roda pelo pipeline via ?os_id=&tarefa_id=,
+  grava em FORMULARIOS com tipo_formulario='corretiva' (o GAS fecha a tarefa
+  auto:corretiva), sobe fotos ao Drive via salvarFotoForm e gera o PDF do laudo
+  via salvarPdfDrive (Gestão de Documentos). ZERO mudança de GAS.
+
+  Coleta: motivo do chamado (multi), parâmetros elétricos/térmicos (temperatura,
+  tensões de partida A-B/B-C/C-A, correntes em plena carga e em alívio por fase),
+  relé de falta de fase, fotos rotuladas (máquina, relé, nível de óleo, ambiente),
+  diagnóstico (causa-raiz, ações tomadas, pendências) e ASSINATURAS manuscritas
+  do técnico + responsável do cliente (motor portado do PCF V63, tela em paisagem
+  por CSS-rotate, iOS-safe). As assinaturas entram no rodapé do PDF.
+
+  Idempotência: form_uid (pgpUid, 1x por sessão) — o GAS deduplica reenvios.
+  Rascunho local: proper_draft_corretiva (sobrevive a reload). Ao concluir, limpa.
+  CDNs: jsPDF 2.5.1 + html2canvas 1.4.1.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Corretiva — ProperCare</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--orange:#f97316;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:640px;margin:0 auto}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card h2{font-size:16px;margin-bottom:10px;color:#cbd5e1}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=date],input[type=time],textarea,select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  textarea{resize:vertical;min-height:64px}
+  .row2{display:flex;gap:8px}.row2>div{flex:1}
+  .row3{display:flex;gap:8px}.row3>div{flex:1}
+  .grp-title{font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px;font-weight:700}
+  .sn{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .sn button{flex:1;min-width:64px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px;font-size:13px;font-family:inherit;cursor:pointer}
+  .sn button.sim.on{background:var(--green);border-color:var(--green);color:#07240f}
+  .sn button.nao.on{background:var(--red);border-color:var(--red);color:#2a0a0a}
+  .sn button.na.on{background:var(--muted);border-color:var(--muted);color:#0b0b0b}
+  .item{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+  .item:first-child{border-top:0;padding-top:0;margin-top:0}
+  .chk{display:flex;align-items:center;gap:8px;padding:8px 6px;border-top:1px solid var(--border)}
+  .chk:first-child{border-top:0}
+  .chk input{width:20px;height:20px;flex:none;accent-color:var(--orange)}
+  .chk label{margin:0;font-size:14px;color:var(--text)}
+  .photo-zone{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .btn-foto{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap}
+  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb.ok{border-color:var(--green)}.thumb.uploading{opacity:.5}.thumb.erro{border-color:var(--red)}
+  .foto-lbl{font-size:13px;color:#cbd5e1;margin-top:10px;font-weight:600}
+  .foto-hint{font-size:11px;color:var(--muted);margin-bottom:2px}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
+  .btn-primary:disabled{opacity:.5}
+  .btn-sign{width:100%;background:#243349;border:1px solid var(--border);color:#fff;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  .ok-msg{text-align:center;padding:32px 16px}
+  .ok-msg .big{font-size:44px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+  .assin-status{text-align:center;font-size:12px;color:var(--muted);margin-top:8px}
+
+  /* ── ASSINATURAS EM CAMPO (motor portado do PCF V63) — overlay full-screen:
+     etapa 1 = nome (retrato); etapa 2 = assinatura em PAISAGEM. Em telas retrato
+     o "palco" é rotacionado 90° via CSS (.is-rotated) para virar paisagem sem
+     depender do bloqueio de orientação nativo (que o iOS não suporta). ── */
+  .pgp-sign-overlay{ position:fixed; inset:0; z-index:100000; background:#0d1117; display:none;
+    color:#fff; -webkit-user-select:none; user-select:none; touch-action:none; overflow:hidden }
+  .pgp-sign-overlay.open{ display:block }
+  .pgp-sign-name{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px calc(20px + env(safe-area-inset-right,0)) calc(24px + env(safe-area-inset-bottom,0)) calc(20px + env(safe-area-inset-left,0)); gap:14px; text-align:center }
+  .pgp-sign-name h3{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
+  .pgp-sign-name p{ font-size:14px; color:#c3ccd6; margin:0; max-width:340px; line-height:1.4 }
+  .pgp-sign-name input{ width:100%; max-width:360px; font-size:18px; padding:14px 14px; border-radius:12px; border:2px solid #30363d;
+    background:#161b22; color:#fff; outline:none; text-align:center; font-family:inherit }
+  .pgp-sign-name input:focus{ border-color:var(--orange) }
+  .pgp-sign-name .pgp-sign-row{ display:flex; gap:10px; width:100%; max-width:360px; margin-top:6px }
+  .pgp-sign-btn{ flex:1; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
+    border:2px solid #30363d; background:#161b22; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:.5px }
+  .pgp-sign-btn.primary{ background:var(--orange); border-color:var(--orange); color:#fff }
+  .pgp-sign-btn:disabled{ opacity:.45; pointer-events:none }
+  .pgp-sign-stage{ position:absolute; inset:0; display:none; flex-direction:column; background:#0d1117 }
+  .pgp-sign-stage.show{ display:flex }
+  .pgp-sign-stage.is-rotated{ transform-origin:top left; transform:rotate(90deg) translate(0,-100%);
+    width:100vh; height:100vw }
+  .pgp-sign-top{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; min-height:40px }
+  .pgp-sign-top .lbl{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pgp-sign-top .hint{ font-size:12px; color:#8b949e; white-space:nowrap }
+  .pgp-sign-canvas-wrap{ flex:1; position:relative; background:#fff; margin:10px; border-radius:10px; overflow:hidden;
+    box-shadow:inset 0 0 0 2px #30363d }
+  .pgp-sign-canvas-wrap::before{ content:'Assine aqui'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:#d0d4dc; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
+  .pgp-sign-canvas-wrap.inked::before{ display:none }
+  .pgp-sign-canvas-wrap::after{ content:''; position:absolute; left:8%; right:8%; bottom:22%; border-bottom:2px dashed #c8ccd4; pointer-events:none }
+  .pgp-sign-canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; display:block }
+  .pgp-sign-bottom{ flex:none; display:flex; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0)); background:#161b22; border-top:1px solid #30363d }
+  .pgp-sign-bottom .pgp-sign-btn{ padding:12px 8px; font-size:15px }
+
+  /* ── Layout do PDF do laudo corretivo (capturado por html2canvas p/ subir ao
+     Drive). display:none na tela; a captura o mostra fora do viewport. ── */
+  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:11px;line-height:1.35}
+  #pdf-layout.pdf-capturing{display:block}
+  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .p1-header{display:table;width:100%;border:1px solid #ccc;margin-bottom:8px}
+  .p1-logo,.p1-title,.p1-fields{display:table-cell;vertical-align:middle}
+  .p1-logo{width:60px;border-right:1px solid #ccc;text-align:center;padding:8px 4px}
+  .p1-logo-circle{display:inline-block;width:42px;height:42px;background:#C0392B;border-radius:50%;color:#fff;font-weight:700;font-size:24px;line-height:42px}
+  .p1-title{background:#3D3D3D;color:#fff;width:44%;border-right:1px solid #555;padding:8px 10px}
+  .p1-form-name{font-size:14px;font-weight:700;display:block}
+  .p1-form-sub{font-size:10px;display:block;margin-top:2px;color:#ddd}
+  .p1-fields{padding:6px 10px;font-size:11px}
+  .p1-id-row{display:flex;gap:4px;margin-bottom:3px}
+  .p1-id-label{color:#555;flex-shrink:0}
+  .p1-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px}
+  .p1-sec-head{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:12px;font-weight:700;margin:8px 0 0}
+  .p1-body{border:1px solid #ccc;border-top:0;padding:8px}
+  .p1-grid{display:flex;flex-wrap:wrap;gap:4px 16px}
+  .p1-grid>div{min-width:45%}
+  #pdf-layout table{width:100%;border-collapse:collapse;font-size:11px}
+  #pdf-layout th,#pdf-layout td{border:.5px solid #bbb;padding:3px 6px;text-align:left}
+  #pdf-layout th{background:#eee}
+  .p1-cb{display:inline-block;width:11px;height:11px;border:1px solid #333;text-align:center;line-height:11px;font-size:9px;margin-right:3px;vertical-align:middle}
+  .p1-cb.marked{background:#333;color:#fff}
+  .p1-obs{white-space:pre-wrap;word-wrap:break-word;min-height:28px}
+  .p1-sig-img{height:46px;max-width:210px;object-fit:contain;display:block;margin-bottom:2px}
+  .p1-sig-line{border-bottom:.5px solid #999;height:44px;margin-bottom:2px}
+  .p1-footer{font-size:9px;font-style:italic;text-align:center;color:#555;border-top:.5px solid #ccc;padding-top:4px;margin-top:8px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <h1>🔧 Visita Corretiva</h1>
+  <div class="sub">Atendimento de defeito / acompanhamento de partida — ProperCare</div>
+  <div id="osPill" class="pill-info" style="display:none"></div>
+
+  <div class="card">
+    <h2>Identificação</h2>
+    <div id="maqSelWrap" style="display:none">
+      <label>Máquina desta OS</label>
+      <select id="f_maqSel" onchange="selMaquina()"></select>
+    </div>
+    <div class="row2">
+      <div><label>Técnico responsável</label><input type="text" id="f_tecnico"></div>
+      <div><label>Cliente</label><input type="text" id="f_cliente"></div>
+    </div>
+    <div class="row3">
+      <div><label>Nº da OS</label><input type="text" id="f_os"></div>
+      <div><label>Data</label><input type="date" id="f_data"></div>
+      <div><label>Hora</label><input type="time" id="f_hora"></div>
+    </div>
+    <div class="row2">
+      <div><label>Equipamento / TAG</label><input type="text" id="f_equip"></div>
+      <div><label>Modelo / Série</label><input type="text" id="f_modelo"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Motivo do chamado</h2>
+    <div class="sub" style="margin-bottom:6px">Marque todos os sintomas relatados/observados.</div>
+    <div id="motivos"></div>
+    <label style="margin-top:8px">Outro / detalhe do relato</label>
+    <textarea id="f_motivo_outro" placeholder="Descreva o que o cliente relatou, se necessário..."></textarea>
+  </div>
+
+  <div class="card">
+    <h2>Parâmetros de funcionamento</h2>
+    <label>Temperatura de funcionamento (°C)</label>
+    <input type="number" id="f_temp" inputmode="decimal" placeholder="Ex.: 82">
+
+    <div class="grp-title">Tensão na partida entre fases (V)</div>
+    <div class="row3">
+      <div><label>A–B</label><input type="number" id="f_v_ab" inputmode="decimal"></div>
+      <div><label>B–C</label><input type="number" id="f_v_bc" inputmode="decimal"></div>
+      <div><label>C–A</label><input type="number" id="f_v_ca" inputmode="decimal"></div>
+    </div>
+
+    <div class="grp-title">Corrente em plena carga (A)</div>
+    <div class="row3">
+      <div><label>Fase A</label><input type="number" id="f_ic_a" inputmode="decimal"></div>
+      <div><label>Fase B</label><input type="number" id="f_ic_b" inputmode="decimal"></div>
+      <div><label>Fase C</label><input type="number" id="f_ic_c" inputmode="decimal"></div>
+    </div>
+
+    <div class="grp-title">Corrente em alívio (A)</div>
+    <div class="row3">
+      <div><label>Fase A</label><input type="number" id="f_ia_a" inputmode="decimal"></div>
+      <div><label>Fase B</label><input type="number" id="f_ia_b" inputmode="decimal"></div>
+      <div><label>Fase C</label><input type="number" id="f_ia_c" inputmode="decimal"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Proteções e nível de óleo</h2>
+    <div class="item">
+      <div>Relé de falta de fase presente e ligado corretamente</div>
+      <div class="sn" data-k="rele_ligado">
+        <button class="sim" onclick="setSN('rele_ligado','sim',this)">Sim</button>
+        <button class="nao" onclick="setSN('rele_ligado','nao',this)">Não</button>
+        <button class="na"  onclick="setSN('rele_ligado','na',this)">N/A</button>
+      </div>
+    </div>
+    <div class="item">
+      <div>Relé de falta de fase atuando (testado)</div>
+      <div class="sn" data-k="rele_atuando">
+        <button class="sim" onclick="setSN('rele_atuando','sim',this)">Sim</button>
+        <button class="nao" onclick="setSN('rele_atuando','nao',this)">Não</button>
+        <button class="na"  onclick="setSN('rele_atuando','na',this)">N/A</button>
+      </div>
+    </div>
+    <div class="item">
+      <div>Nível de óleo correto antes da partida</div>
+      <div class="sn" data-k="oleo_ok">
+        <button class="sim" onclick="setSN('oleo_ok','sim',this)">Sim</button>
+        <button class="nao" onclick="setSN('oleo_ok','nao',this)">Não</button>
+        <button class="na"  onclick="setSN('oleo_ok','na',this)">N/A</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📷 Registro fotográfico</h2>
+    <div class="sub" style="margin-bottom:4px">Fotografe cada item — protege o laudo e ajuda a análise remota.</div>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+    <div id="fotoSecoes"></div>
+  </div>
+
+  <div class="card">
+    <h2>Diagnóstico do técnico</h2>
+    <label>Causa-raiz provável do problema</label>
+    <textarea id="f_causa" placeholder="O que o técnico julga ser a origem do defeito..."></textarea>
+    <label style="margin-top:10px">Ações corretivas tomadas nesta visita (testes / atuações imediatas)</label>
+    <textarea id="f_acoes" placeholder="O que foi testado e corrigido no local..."></textarea>
+    <label style="margin-top:10px">Pendências (dependem de peça / ferramental não disponível nesta visita)</label>
+    <textarea id="f_pendencias" placeholder="O que ainda precisa ser feito e o que falta para concluir..."></textarea>
+    <div class="item" style="margin-top:12px">
+      <div>Situação ao final da visita</div>
+      <div class="sn" data-k="situacao">
+        <button class="sim" onclick="setSN('situacao','resolvido',this)">Resolvido</button>
+        <button class="na"  onclick="setSN('situacao','parcial',this)">Parcial</button>
+        <button class="nao" onclick="setSN('situacao','retorno',this)">Requer retorno</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>✍️ Assinaturas</h2>
+    <div class="sub" style="margin-bottom:8px">Técnico e responsável do cliente. Entram no rodapé do PDF.</div>
+    <button class="btn-sign" onclick="pgpColetarAssinaturasCorretiva()">✍️ Coletar assinaturas</button>
+    <div class="assin-status" id="pgpAssinStatus">⬜ Técnico pendente · ⬜ Responsável pendente</div>
+  </div>
+
+  <button class="btn-primary" id="btnEnviar" onclick="enviar()">✓ Concluir corretiva</button>
+</div>
+
+<div id="okScreen" style="display:none">
+  <div class="ok-msg">
+    <div class="big">✅</div>
+    <h1 style="margin-top:10px">Corretiva registrada</h1>
+    <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
+  </div>
+</div>
+
+<!-- OVERLAY DE ASSINATURA (montado 1x, reutilizado técnico/responsável) -->
+<div class="pgp-sign-overlay" id="pgpSignOverlay" aria-hidden="true">
+  <div class="pgp-sign-name" id="pgpSignNameStep">
+    <h3 id="pgpSignTitle">Assinatura</h3>
+    <p id="pgpSignSub">Digite o nome de quem vai assinar e toque em Avançar.</p>
+    <input id="pgpSignNameInput" type="text" placeholder="Nome completo" autocomplete="off"
+           autocapitalize="words" data-lpignore="true" data-1p-ignore>
+    <div class="pgp-sign-row">
+      <button type="button" class="pgp-sign-btn" id="pgpSignCancelBtn">Cancelar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignNextBtn">Avançar ✍️</button>
+    </div>
+  </div>
+  <div class="pgp-sign-stage" id="pgpSignStage">
+    <div class="pgp-sign-top">
+      <span class="lbl" id="pgpSignStageLbl">Assinatura</span>
+      <span class="hint">👆 Assine com o dedo ou caneta</span>
+    </div>
+    <div class="pgp-sign-canvas-wrap" id="pgpSignCanvasWrap">
+      <canvas class="pgp-sign-canvas" id="pgpSignCanvas"></canvas>
+    </div>
+    <div class="pgp-sign-bottom">
+      <button type="button" class="pgp-sign-btn" id="pgpSignBackBtn">← Voltar</button>
+      <button type="button" class="pgp-sign-btn" id="pgpSignClearBtn">↺ Limpar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignConfirmBtn">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="pdf-layout"></div>
+<div id="toast"></div>
+
+<script>
+// ══ CONTRATO DE INTEGRAÇÃO (idêntico aos forms 01/02) ══════════════════════
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
+const DRAFT_KEY = 'proper_draft_corretiva';
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
+
+let _osId = '', _tarefaId = '', _enviado = false, _pdfEnviado = false;
+let _maquinas = [], _maqAtual = null;
+const _formUid = pgpUid();
+
+// ── Seções de foto rotuladas (config → render + upload por seção) ──
+const FOTO_SECOES = [
+  { k:'maquina',  label:'Visão geral da máquina', hint:'Máquina por inteiro, placa de identificação' },
+  { k:'rele',     label:'Relé de falta de fase',  hint:'Mostre se está ligado e a fiação' },
+  { k:'oleo',     label:'Nível de óleo (antes da partida)', hint:'Visor / vareta antes de dar partida' },
+  { k:'ambiente', label:'Ambiente de instalação', hint:'Ventilação, espaço, condição do local' },
+  { k:'extra',    label:'Fotos adicionais',       hint:'Qualquer outro detalhe relevante' }
+];
+
+// ── Motivo do chamado (multi-seleção) ──
+const MOTIVOS = [
+  { k:'sem_carga',   label:'Não entra em carga / não faz ar' },
+  { k:'baixa_efic',  label:'Baixa eficiência / pouca vazão' },
+  { k:'superaquec',  label:'Superaquecimento' },
+  { k:'ruido',       label:'Ruído / vibração anormal' },
+  { k:'vaz_ar',      label:'Vazamento de ar' },
+  { k:'vaz_oleo',    label:'Vazamento de óleo' },
+  { k:'partida',     label:'Acompanhamento de partida (pós-reforma)' },
+  { k:'outro',       label:'Outro (detalhar abaixo)' }
+];
+
+// ── Estado (vira campos_json no saveFormulario e o rascunho local) ──
+const state = {
+  atendimento: {}, identificacao: {},
+  motivos: {}, motivoOutro: '',
+  parametros: {}, protecoes: {}, diagnostico: {},
+  fotos: { maquina:[], rele:[], oleo:[], ambiente:[], extra:[] },
+  assinaturas: { tecnico: null, responsavel: null }
+};
+
+function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
+function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+
+// ══ RENDER: motivos + seções de foto ═══════════════════════════════════════
+function initMotivos(){
+  document.getElementById('motivos').innerHTML = MOTIVOS.map(function(m){
+    return '<div class="chk"><input type="checkbox" id="mot_'+m.k+'" onchange="onMotivo(\''+m.k+'\',this.checked)">'
+      + '<label for="mot_'+m.k+'">'+esc(m.label)+'</label></div>';
+  }).join('');
+}
+function onMotivo(k, checked){ state.motivos[k] = !!checked; scheduleSave(); }
+
+function initFotoSecoes(){
+  document.getElementById('fotoSecoes').innerHTML = FOTO_SECOES.map(function(s){
+    return '<div class="foto-lbl">'+esc(s.label)+'</div>'
+      + '<div class="foto-hint">'+esc(s.hint)+'</div>'
+      + '<div class="photo-zone"><button class="btn-foto" onclick="pickPhoto(\''+s.k+'\')">📷 Adicionar</button>'
+      + '<div class="thumbs" id="thumbs-'+s.k+'"></div></div>';
+  }).join('');
+}
+
+// ══ SIM/NÃO/NA ═════════════════════════════════════════════════════════════
+function setSN(k, v, btn){
+  if (k === 'situacao') state.diagnostico.situacao = v;
+  else state.protecoes[k] = v;
+  const parent = btn.parentElement;
+  parent.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  scheduleSave();
+}
+
+// ══ FOTOS (upload imediato por seção; padrão form01) ═══════════════════════
+function pickPhoto(secao){
+  const inp = document.getElementById('fileInput');
+  inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(secao, f); inp.value=''; };
+  inp.click();
+}
+function handlePhoto(secao, file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      let { width:w, height:h } = img;
+      if (w > MAX_IMG_PX || h > MAX_IMG_PX){ const r = Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
+      uploadPhoto(secao, dataUrl, file.name || 'foto.jpg');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function uploadPhoto(secao, dataUrl, fileName){
+  const thumbId = 'th-' + Date.now();
+  const cont = document.getElementById('thumbs-' + secao);
+  const el = document.createElement('img'); el.className='thumb uploading'; el.id=thumbId; el.src=dataUrl; cont.appendChild(el);
+  const base64 = dataUrl.split(',')[1];
+  if (!state.fotos[secao]) state.fotos[secao] = [];
+  try{
+    const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_corretiva', entity_type:'corretiva' };
+    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+    const data = JSON.parse(await resp.text());
+    if (!data || data.ok !== true) throw new Error(data.error||'falha');
+    el.className='thumb ok';
+    state.fotos[secao].push({ url:data.url, fileName, secao, status:'ok' });
+  }catch(err){
+    el.className='thumb erro';
+    state.fotos[secao].push({ url:null, fileName, secao, status:'erro' });
+    toast('Erro ao enviar foto — tente de novo');
+  }
+  scheduleSave();
+}
+function state_os(){ return val('f_os') || _osId || 'SemOS'; }
+function fotosFlat(){ var out=[]; Object.keys(state.fotos).forEach(function(k){ (state.fotos[k]||[]).forEach(function(f){ out.push(f); }); }); return out; }
+
+// ══ ASSINATURAS — motor portado do PCF V63 (frontend-only) ═════════════════
+var _pgpSignCtx = null, _pgpSignRotated = false, _pgpSignHasInk = false, _pgpSignNome = '', _pgpSignBound = false;
+
+function pgpAtualizarStatusAssinaturas(){
+  var el = document.getElementById('pgpAssinStatus'); if (!el) return;
+  var a = state.assinaturas || {};
+  var t = (a.tecnico && a.tecnico.dataUrl) ? ('✅ Técnico: ' + (a.tecnico.nome||'')) : '⬜ Técnico pendente';
+  var r = (a.responsavel && a.responsavel.dataUrl) ? ('✅ Responsável: ' + (a.responsavel.nome||'')) : '⬜ Responsável pendente';
+  el.textContent = t + ' · ' + r;
+}
+function pgpSignToLocal(clientX, clientY){
+  var canvas = document.getElementById('pgpSignCanvas');
+  var r = canvas.getBoundingClientRect();
+  if (_pgpSignRotated) return { x: clientY - r.top, y: r.right - clientX };
+  return { x: clientX - r.left, y: clientY - r.top };
+}
+function pgpSignMarkInk(){ _pgpSignHasInk = true; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.add('inked'); }
+function pgpSignResetInk(){ _pgpSignHasInk = false; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.remove('inked'); }
+function pgpSignSetupStage(){
+  var stage=document.getElementById('pgpSignStage'), wrap=document.getElementById('pgpSignCanvasWrap'), canvas=document.getElementById('pgpSignCanvas');
+  if(!stage||!wrap||!canvas) return;
+  var portrait = window.innerHeight > window.innerWidth;
+  stage.classList.toggle('is-rotated', portrait);
+  _pgpSignRotated = portrait;
+  void wrap.offsetWidth;
+  var cw = Math.max(40, wrap.clientWidth), ch = Math.max(40, wrap.clientHeight);
+  var dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  canvas.width = Math.round(cw*dpr); canvas.height = Math.round(ch*dpr);
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cw,ch);
+  ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#111111';
+  _pgpSignCtx = ctx;
+}
+function pgpSignBindCanvasOnce(){
+  if(_pgpSignBound) return;
+  var canvas = document.getElementById('pgpSignCanvas'); if(!canvas) return;
+  _pgpSignBound = true;
+  var drawing=false, lastP=null;
+  canvas.addEventListener('pointerdown', function(ev){
+    if(!_pgpSignCtx) return; ev.preventDefault(); drawing=true;
+    try{ canvas.setPointerCapture(ev.pointerId); }catch(e){}
+    var p=pgpSignToLocal(ev.clientX,ev.clientY); lastP=p;
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(p.x,p.y); _pgpSignCtx.lineTo(p.x+0.1,p.y+0.1); _pgpSignCtx.stroke();
+    pgpSignMarkInk();
+  });
+  canvas.addEventListener('pointermove', function(ev){
+    if(!drawing||!_pgpSignCtx) return; ev.preventDefault();
+    var p=pgpSignToLocal(ev.clientX,ev.clientY);
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(lastP.x,lastP.y); _pgpSignCtx.lineTo(p.x,p.y); _pgpSignCtx.stroke(); lastP=p;
+  });
+  function end(ev){ if(!drawing) return; drawing=false; lastP=null; try{ canvas.releasePointerCapture(ev.pointerId); }catch(e){} }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+}
+function pgpSignTrim(canvas){
+  var ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height, data;
+  try{ data=ctx.getImageData(0,0,W,H).data; }catch(e){ return null; }
+  var minX=W,minY=H,maxX=0,maxY=0,found=false;
+  for(var y=0;y<H;y++){ for(var x=0;x<W;x++){ var i=(y*W+x)*4;
+    if(data[i]<230||data[i+1]<230||data[i+2]<230){ found=true; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } } }
+  if(!found) return null;
+  var pad=Math.round(10*(window.devicePixelRatio||1));
+  minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(W-1,maxX+pad); maxY=Math.min(H-1,maxY+pad);
+  var tw=maxX-minX+1, th=maxY-minY+1;
+  var out=document.createElement('canvas'); out.width=tw; out.height=th;
+  var octx=out.getContext('2d'); octx.fillStyle='#ffffff'; octx.fillRect(0,0,tw,th);
+  octx.drawImage(canvas,minX,minY,tw,th,0,0,tw,th);
+  return { dataUrl: out.toDataURL('image/png'), w:tw, h:th };
+}
+function pgpColetarAssinatura(cfg){
+  cfg = cfg || {};
+  return new Promise(function(resolve){
+    pgpSignBindCanvasOnce();
+    var ov=document.getElementById('pgpSignOverlay'), nameStep=document.getElementById('pgpSignNameStep'), stage=document.getElementById('pgpSignStage');
+    var nameInput=document.getElementById('pgpSignNameInput'), nextBtn=document.getElementById('pgpSignNextBtn'), cancelBtn=document.getElementById('pgpSignCancelBtn');
+    var backBtn=document.getElementById('pgpSignBackBtn'), clearBtn=document.getElementById('pgpSignClearBtn'), confirmBtn=document.getElementById('pgpSignConfirmBtn');
+    if(!ov){ resolve(null); return; }
+    document.getElementById('pgpSignTitle').textContent = cfg.titulo || 'Assinatura';
+    document.getElementById('pgpSignSub').textContent = cfg.sub || 'Digite o nome e toque em Avançar.';
+    document.getElementById('pgpSignStageLbl').textContent = cfg.stageLbl || cfg.titulo || 'Assinatura';
+    nameInput.value = cfg.nomePrefill || ''; nameInput.style.borderColor='';
+    ov.classList.add('open'); ov.setAttribute('aria-hidden','false');
+    stage.classList.remove('show','is-rotated'); nameStep.style.display='flex';
+    setTimeout(function(){ try{ nameInput.focus(); }catch(e){} }, 60);
+    var done=false;
+    function cleanup(){
+      nextBtn.removeEventListener('click',onNext); cancelBtn.removeEventListener('click',onCancel); backBtn.removeEventListener('click',onBack);
+      clearBtn.removeEventListener('click',onClear); confirmBtn.removeEventListener('click',onConfirm); nameInput.removeEventListener('keydown',onKey);
+      window.removeEventListener('resize',onResize);
+      ov.classList.remove('open'); ov.setAttribute('aria-hidden','true'); stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; _pgpSignCtx=null;
+    }
+    function finish(v){ if(done) return; done=true; cleanup(); resolve(v); }
+    function goStage(){
+      var nome=(nameInput.value||'').trim();
+      if(!nome){ nameInput.style.borderColor='#e5534b'; try{ nameInput.focus(); }catch(e){} return; }
+      _pgpSignNome=nome; nameStep.style.display='none'; stage.classList.add('show');
+      requestAnimationFrame(function(){ pgpSignSetupStage(); pgpSignResetInk(); });
+    }
+    function onNext(){ goStage(); }
+    function onKey(e){ if(e.key==='Enter'){ e.preventDefault(); goStage(); } }
+    function onBack(){ stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; setTimeout(function(){ try{ nameInput.focus(); }catch(e){} },50); }
+    function onClear(){ pgpSignSetupStage(); pgpSignResetInk(); }
+    function onCancel(){ finish(null); }
+    function onConfirm(){
+      if(!_pgpSignHasInk){ toast('Faça a assinatura antes de confirmar.'); return; }
+      var canvas=document.getElementById('pgpSignCanvas');
+      var t=pgpSignTrim(canvas);
+      if(!t) t={ dataUrl:canvas.toDataURL('image/png'), w:canvas.width, h:canvas.height };
+      finish({ nome:_pgpSignNome, dataUrl:t.dataUrl, w:t.w, h:t.h, ts:Date.now() });
+    }
+    function onResize(){ if(stage.classList.contains('show') && !_pgpSignHasInk) pgpSignSetupStage(); }
+    nextBtn.addEventListener('click',onNext); cancelBtn.addEventListener('click',onCancel); backBtn.addEventListener('click',onBack);
+    clearBtn.addEventListener('click',onClear); confirmBtn.addEventListener('click',onConfirm); nameInput.addEventListener('keydown',onKey);
+    window.addEventListener('resize',onResize);
+  });
+}
+async function pgpColetarAssinaturasCorretiva(){
+  var a = state.assinaturas;
+  var tec = await pgpColetarAssinatura({
+    titulo:'Assinatura do Técnico', sub:'Confirme seu nome e toque em Avançar para assinar.',
+    stageLbl:'Técnico — assine abaixo', nomePrefill:(a.tecnico&&a.tecnico.nome)||val('f_tecnico')||''
+  });
+  if(!tec){ pgpAtualizarStatusAssinaturas(); return false; }
+  a.tecnico = Object.assign({ papel:'Técnico responsável' }, tec);
+  scheduleSave(); pgpAtualizarStatusAssinaturas();
+  var resp = await pgpColetarAssinatura({
+    titulo:'Assinatura do Responsável (Cliente)', sub:'Digite o nome do responsável do cliente e passe o aparelho para ele assinar.',
+    stageLbl:'Responsável do cliente — assine abaixo', nomePrefill:(a.responsavel&&a.responsavel.nome)||''
+  });
+  if(!resp){ pgpAtualizarStatusAssinaturas(); toast('Assinatura do técnico salva. Falta o responsável.'); return false; }
+  a.responsavel = Object.assign({ papel:'Responsável pelo cliente' }, resp);
+  scheduleSave(); pgpAtualizarStatusAssinaturas();
+  toast('✅ Assinaturas coletadas');
+  return true;
+}
+
+// ══ RASCUNHO LOCAL (sobrevive a reload; limpa ao concluir) ═════════════════
+var _saveTimer = null;
+function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer = setTimeout(saveDraft, 500); }
+function captura(){
+  state.identificacao = { tecnico:val('f_tecnico'), cliente:val('f_cliente'), os:val('f_os'), equipamento:val('f_equip'), modelo:val('f_modelo') };
+  state.atendimento = { data:val('f_data'), hora:val('f_hora') };
+  state.motivoOutro = val('f_motivo_outro');
+  state.parametros = {
+    temperatura:val('f_temp'),
+    tensao:{ ab:val('f_v_ab'), bc:val('f_v_bc'), ca:val('f_v_ca') },
+    corrente_carga:{ a:val('f_ic_a'), b:val('f_ic_b'), c:val('f_ic_c') },
+    corrente_alivio:{ a:val('f_ia_a'), b:val('f_ia_b'), c:val('f_ia_c') }
+  };
+  state.diagnostico.causa = val('f_causa');
+  state.diagnostico.acoes = val('f_acoes');
+  state.diagnostico.pendencias = val('f_pendencias');
+}
+function saveDraft(){
+  try{ captura(); localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); }catch(e){}
+}
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function setV(id,v){ var e=document.getElementById(id); if(e && v!=null) e.value=v; }
+function markSN(dataK, v){
+  if(!v) return;
+  var box=document.querySelector('.sn[data-k="'+dataK+'"]'); if(!box) return;
+  box.querySelectorAll('button').forEach(function(b){ b.classList.remove('on'); });
+  var map={sim:'sim',nao:'nao',na:'na',resolvido:'sim',parcial:'na',retorno:'nao'};
+  var cls=map[v]; var btn=box.querySelector('button.'+cls); if(btn) btn.classList.add('on');
+}
+function hydrateUI(){
+  var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, d=state.diagnostico||{};
+  setV('f_tecnico',i.tecnico); setV('f_cliente',i.cliente); setV('f_os',i.os); setV('f_equip',i.equipamento); setV('f_modelo',i.modelo);
+  setV('f_data',at.data); setV('f_hora',at.hora); setV('f_motivo_outro',state.motivoOutro);
+  setV('f_temp',p.temperatura);
+  if(p.tensao){ setV('f_v_ab',p.tensao.ab); setV('f_v_bc',p.tensao.bc); setV('f_v_ca',p.tensao.ca); }
+  if(p.corrente_carga){ setV('f_ic_a',p.corrente_carga.a); setV('f_ic_b',p.corrente_carga.b); setV('f_ic_c',p.corrente_carga.c); }
+  if(p.corrente_alivio){ setV('f_ia_a',p.corrente_alivio.a); setV('f_ia_b',p.corrente_alivio.b); setV('f_ia_c',p.corrente_alivio.c); }
+  setV('f_causa',d.causa); setV('f_acoes',d.acoes); setV('f_pendencias',d.pendencias);
+  Object.keys(state.motivos||{}).forEach(function(k){ var c=document.getElementById('mot_'+k); if(c) c.checked=!!state.motivos[k]; });
+  var pr=state.protecoes||{}; markSN('rele_ligado',pr.rele_ligado); markSN('rele_atuando',pr.rele_atuando); markSN('oleo_ok',pr.oleo_ok);
+  markSN('situacao', d.situacao);
+  // fotos já enviadas → mostra miniaturas (url) como confirmadas
+  Object.keys(state.fotos||{}).forEach(function(sec){
+    var cont=document.getElementById('thumbs-'+sec); if(!cont) return;
+    (state.fotos[sec]||[]).forEach(function(f){ if(f && f.url){ var img=document.createElement('img'); img.className='thumb ok'; img.src=f.url; cont.appendChild(img); } });
+  });
+  pgpAtualizarStatusAssinaturas();
+}
+function loadDraft(){
+  try{
+    var raw=localStorage.getItem(DRAFT_KEY); if(!raw) return false;
+    var obj=JSON.parse(raw); if(!obj||typeof obj!=='object') return false;
+    Object.assign(state, obj);
+    if(!state.fotos) state.fotos={ maquina:[],rele:[],oleo:[],ambiente:[],extra:[] };
+    if(!state.assinaturas) state.assinaturas={ tecnico:null, responsavel:null };
+    return true;
+  }catch(e){ return false; }
+}
+
+// ══ ENVIO (saveFormulario) + PDF ═══════════════════════════════════════════
+function assinaturasMeta(){
+  // versão leve (sem dataUrl) para o campos_json — o PNG vai só no PDF.
+  var a=state.assinaturas||{}, out={};
+  if(a.tecnico) out.tecnico={ nome:a.tecnico.nome, papel:a.tecnico.papel, ts:a.tecnico.ts, assinado:!!a.tecnico.dataUrl };
+  if(a.responsavel) out.responsavel={ nome:a.responsavel.nome, papel:a.responsavel.papel, ts:a.responsavel.ts, assinado:!!a.responsavel.dataUrl };
+  return out;
+}
+async function enviar(){
+  captura();
+  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Enviando…';
+  var payloadState = Object.assign({}, state, { assinaturas: assinaturasMeta() });
+  if(_osId && !_enviado){
+    _enviado=true;
+    var _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+    try{
+      const payload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'corretiva', form_uid:_formUid,
+        tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
+        tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
+      const r=await fetch(GAS_URL,{ method:'POST', body:gcBody(payload) });
+      const dd=JSON.parse(await r.text());
+      if(dd.status!=='ok') throw new Error(dd.message||'Erro do servidor');
+    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir corretiva'; toast('Erro ao enviar: '+e.message); return; }
+  }
+  if(_osId){ enviarPdfParaDrive(); }
+  clearDraft();
+  document.getElementById('app').style.display='none';
+  document.getElementById('okScreen').style.display='';
+  document.getElementById('okSub').textContent = _osId ? 'A tarefa de corretiva foi concluída no pipeline.' : 'Fotos e PDF salvos no Drive. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+}
+
+// ── PDF do laudo → Drive (Gestão de Documentos) ──
+const _MOT_LABEL = MOTIVOS.reduce(function(o,m){ o[m.k]=m.label; return o; }, {});
+const _SIT_LABEL = { resolvido:'Resolvido', parcial:'Parcial', retorno:'Requer retorno' };
+const _SN_LABEL  = { sim:'SIM', nao:'NÃO', na:'N/A' };
+function _cb(v,target){ return '<span class="p1-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
+function snRow(lbl, v){ return '<tr><td>'+esc(lbl)+'</td><td style="white-space:nowrap">'+_cb(v,'sim')+'Sim &nbsp;'+_cb(v,'nao')+'Não &nbsp;'+_cb(v,'na')+'N/A</td></tr>'; }
+function buildPdfLayout(){
+  var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, pr=state.protecoes||{}, d=state.diagnostico||{}, a=state.assinaturas||{};
+  var motivosSel = Object.keys(state.motivos||{}).filter(function(k){ return state.motivos[k]; }).map(function(k){ return _MOT_LABEL[k]||k; });
+  var t=p.tensao||{}, cc=p.corrente_carga||{}, ca=p.corrente_alivio||{};
+  var nfotos = fotosFlat().filter(function(f){ return f && f.url; }).length;
+  function sig(o, papel){
+    if(o && o.dataUrl) return '<img class="p1-sig-img" src="'+o.dataUrl+'"><div style="border-top:.5px solid #999;padding-top:2px">'+esc(o.nome||'')+'<br><span style="color:#666;font-size:9px">'+papel+(o.ts?(' — '+new Date(o.ts).toLocaleString('pt-BR')):'')+'</span></div>';
+    return '<div class="p1-sig-line"></div>'+papel;
+  }
+  var html = ''
+    + '<div class="p1-header">'
+    +   '<div class="p1-logo"><span class="p1-logo-circle">P</span></div>'
+    +   '<div class="p1-title"><span class="p1-form-name">LAUDO DE VISITA CORRETIVA</span>'
+    +     '<span class="p1-form-sub">Atendimento técnico em campo — ProperCare</span></div>'
+    +   '<div class="p1-fields">'
+    +     '<div class="p1-id-row"><span class="p1-id-label">OS Nº</span><span class="p1-id-val">'+esc(i.os||'')+'</span>'
+    +       '<span class="p1-id-label">Data:</span><span class="p1-id-val">'+esc(at.data||'')+' '+esc(at.hora||'')+'</span></div>'
+    +     '<div class="p1-id-row"><span class="p1-id-label">Cliente:</span><span class="p1-id-val">'+esc(i.cliente||'')+'</span></div>'
+    +     '<div class="p1-id-row"><span class="p1-id-label">Técnico:</span><span class="p1-id-val">'+esc(i.tecnico||'')+'</span></div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="p1-sec-head">EQUIPAMENTO</div>'
+    + '<div class="p1-body"><div class="p1-grid">'
+    +   '<div><b>Equipamento / TAG:</b> '+esc(i.equipamento||'—')+'</div>'
+    +   '<div><b>Modelo / Série:</b> '+esc(i.modelo||'—')+'</div>'
+    + '</div></div>'
+    + '<div class="p1-sec-head">MOTIVO DO CHAMADO</div>'
+    + '<div class="p1-body"><div class="p1-obs">'+(motivosSel.length?esc(motivosSel.join(' · ')):'—')
+    +   (state.motivoOutro?('<div style="margin-top:4px"><b>Detalhe:</b> '+esc(state.motivoOutro)+'</div>'):'')+'</div></div>'
+    + '<div class="p1-sec-head">PARÂMETROS DE FUNCIONAMENTO</div>'
+    + '<div class="p1-body" style="padding:0"><table><tbody>'
+    +   '<tr><th style="width:46%">Parâmetro</th><th>Fase A / A-B</th><th>Fase B / B-C</th><th>Fase C / C-A</th></tr>'
+    +   '<tr><td>Tensão na partida (V)</td><td>'+esc(t.ab||'—')+'</td><td>'+esc(t.bc||'—')+'</td><td>'+esc(t.ca||'—')+'</td></tr>'
+    +   '<tr><td>Corrente em plena carga (A)</td><td>'+esc(cc.a||'—')+'</td><td>'+esc(cc.b||'—')+'</td><td>'+esc(cc.c||'—')+'</td></tr>'
+    +   '<tr><td>Corrente em alívio (A)</td><td>'+esc(ca.a||'—')+'</td><td>'+esc(ca.b||'—')+'</td><td>'+esc(ca.c||'—')+'</td></tr>'
+    +   '<tr><td>Temperatura de funcionamento</td><td colspan="3">'+esc(p.temperatura?(p.temperatura+' °C'):'—')+'</td></tr>'
+    + '</tbody></table></div>'
+    + '<div class="p1-sec-head">PROTEÇÕES E ÓLEO</div>'
+    + '<div class="p1-body" style="padding:0"><table><tbody>'
+    +   snRow('Relé de falta de fase ligado corretamente', pr.rele_ligado||'')
+    +   snRow('Relé de falta de fase atuando (testado)', pr.rele_atuando||'')
+    +   snRow('Nível de óleo correto antes da partida', pr.oleo_ok||'')
+    + '</tbody></table></div>'
+    + '<div class="p1-sec-head">DIAGNÓSTICO</div>'
+    + '<div class="p1-body">'
+    +   '<div><b>Causa-raiz provável:</b><div class="p1-obs">'+(esc(d.causa||'')||'—')+'</div></div>'
+    +   '<div style="margin-top:6px"><b>Ações corretivas tomadas:</b><div class="p1-obs">'+(esc(d.acoes||'')||'—')+'</div></div>'
+    +   '<div style="margin-top:6px"><b>Pendências (peça/ferramental):</b><div class="p1-obs">'+(esc(d.pendencias||'')||'—')+'</div></div>'
+    +   '<div style="margin-top:6px"><b>Situação ao final:</b> '+esc(_SIT_LABEL[d.situacao]||'—')+'</div>'
+    + '</div>'
+    + '<div class="p1-sec-head">REGISTRO FOTOGRÁFICO</div>'
+    + '<div class="p1-body">'+nfotos+' foto(s) enviada(s) ao Drive — arquivos na pasta da OS.</div>'
+    + '<div class="p1-sec-head">ASSINATURAS</div>'
+    + '<div class="p1-body"><div style="display:flex;gap:24px">'
+    +   '<div style="flex:1">'+sig(a.tecnico,'Técnico responsável')+'</div>'
+    +   '<div style="flex:1">'+sig(a.responsavel,'Responsável pelo cliente')+'</div>'
+    + '</div></div>'
+    + '<div class="p1-footer">propercompressores.com.br &bull; Laudo de Visita Corretiva &bull; documento gerado automaticamente</div>';
+  document.getElementById('pdf-layout').innerHTML = html;
+}
+async function enviarPdfParaDrive(){
+  if(_pdfEnviado || !_osId) return;
+  if(!window.jspdf || !window.html2canvas) return;
+  _pdfEnviado = true;
+  var el=document.getElementById('pdf-layout');
+  try{
+    buildPdfLayout();
+    el.classList.add('pdf-capturing');
+    el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+    var canvas=await html2canvas(el,{ scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    el.classList.remove('pdf-capturing'); el.style.cssText='display:none';
+    var jsPDF=window.jspdf.jsPDF;
+    var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
+    var imgData=canvas.toDataURL('image/jpeg',0.92);
+    var heightLeft=imgH, position=0;
+    pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
+    while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
+    var i=state.identificacao||{}, _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+    var _num=i.os||'';
+    var base64=pdf.output('datauristring').split(',')[1];
+    var payload={ action:'salvarPdfDrive', key:KEY, os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
+      maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:(_maqAtual?maqLabel(_maqAtual):(i.equipamento||'')),
+      base64:base64, fileName:'Corretiva_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_corretiva',
+      caption:'Laudo de visita corretiva', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'') };
+    var r=await fetch(GAS_URL,{ method:'POST', body:gcBody(payload) });
+    var d=JSON.parse(await r.text());
+    if(!d||d.status!=='ok') throw new Error((d&&d.error)||'falha ao salvar PDF');
+    toast('PDF do laudo salvo no Drive');
+  }catch(e){
+    _pdfEnviado=false;
+    if(el){ el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
+    toast('Corretiva enviada; PDF ao Drive falhou: '+e.message);
+  }
+}
+
+// ── Máquina da OS (autofill; padrão form01) ──
+function maqLabel(m){
+  var base=[m.brand,m.model].filter(Boolean).join(' '); var extra=[];
+  if(m.serial) extra.push('Série '+m.serial); if(m.tag) extra.push(m.tag);
+  return (base||'Máquina')+(extra.length?' · '+extra.join(' · '):'');
+}
+function aplicarMaquina(m){
+  if(!m) return; _maqAtual=m;
+  var equip=m.tag||m.tipoEquip||m.tipo||m.brand||'';
+  var modLbl=[m.brand,m.model].filter(Boolean).join(' ');
+  var modelo=modLbl+(m.serial?(modLbl?' / ':'')+'Série '+m.serial:'');
+  var eq=document.getElementById('f_equip'), md=document.getElementById('f_modelo');
+  if(eq && !eq.value.trim()) eq.value=equip;
+  if(md && !md.value.trim()) md.value=modelo;
+}
+function selMaquina(){
+  var idx=document.getElementById('f_maqSel').value; if(idx==='') return;
+  var m=_maquinas[parseInt(idx,10)]; if(!m) return; _maqAtual=m;
+  var equip=m.tag||m.tipoEquip||m.tipo||m.brand||'';
+  var modLbl=[m.brand,m.model].filter(Boolean).join(' ');
+  document.getElementById('f_equip').value=equip;
+  document.getElementById('f_modelo').value=modLbl+(m.serial?(modLbl?' / ':'')+'Série '+m.serial:'');
+  scheduleSave();
+}
+async function carregarMaquinasOS(){
+  if(!_osId) return;
+  try{
+    const resp=await fetch(GAS_URL,{ method:'POST', body:gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
+    const data=JSON.parse(await resp.text());
+    const machines=(data&&data.machines)||[]; if(!machines.length) return;
+    _maquinas=machines;
+    if(machines.length===1){ aplicarMaquina(machines[0]); }
+    else{
+      const wrap=document.getElementById('maqSelWrap'), sel=document.getElementById('f_maqSel');
+      sel.innerHTML='<option value="">— selecione a máquina —</option>'+machines.map(function(m,i){ return '<option value="'+i+'">'+esc(maqLabel(m))+'</option>'; }).join('');
+      wrap.style.display='';
+    }
+  }catch(e){ /* silencioso — técnico preenche à mão */ }
+}
+function preencherResponsavelSessao(){
+  var el=document.getElementById('f_tecnico'); if(!el || el.value.trim()) return;
+  try{ var s=JSON.parse(localStorage.getItem('proper_session')||'null'); if(s&&s.tecnico&&s.tecnico.nome) el.value=s.tecnico.nome; }catch(e){}
+}
+
+// ── Auto-save em qualquer digitação ──
+function wireInputs(){
+  document.querySelectorAll('input,textarea,select').forEach(function(el){
+    if(el.id && el.id.indexOf('pgpSign')===0) return; // não drafta o overlay de assinatura
+    el.addEventListener('input', scheduleSave);
+    el.addEventListener('change', scheduleSave);
+  });
+}
+
+(function init(){
+  initMotivos();
+  initFotoSecoes();
+  const p=new URLSearchParams(location.search);
+  _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||'';
+  window._GC=p.get('gc')||window._GC||'';
+  const hadDraft = loadDraft();
+  if(hadDraft){ hydrateUI(); toast('Rascunho restaurado'); }
+  else {
+    document.getElementById('f_data').value=new Date().toISOString().slice(0,10);
+    document.getElementById('f_hora').value=new Date().toTimeString().slice(0,5);
+  }
+  if(p.get('cliente') && !val('f_cliente')) document.getElementById('f_cliente').value=p.get('cliente');
+  if(p.get('os_numero') && !val('f_os')) document.getElementById('f_os').value=p.get('os_numero');
+  if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId); }
+  preencherResponsavelSessao();
+  carregarMaquinasOS();
+  wireInputs();
+  pgpAtualizarStatusAssinaturas();
+  // salva ao sair (proteção contra fechar sem querer)
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
+  window.addEventListener('pagehide', saveDraft);
+})();
+</script>
+</body>
+</html>
