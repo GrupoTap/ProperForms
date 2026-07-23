@@ -65,6 +65,29 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   .assin-status{text-align:center;font-size:12px;color:var(--muted);margin-top:8px}
   .field-hint{font-size:11px;color:var(--muted);margin-top:3px}
   .field-hint b{color:var(--accent)}
+  /* ── Foto POR LEITURA (inline) + estados de envio da miniatura ── */
+  .pfoto{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+  .btn-foto-mini{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .pfoto-cap{font-size:11px;color:var(--muted)}
+  .thumb.pending{border-color:var(--amber);opacity:.7}
+  /* ── Fila de envio durável: badge + painel ── */
+  #psBadge{position:fixed;bottom:16px;left:16px;background:#111;border:1px solid var(--border);color:#fff;border-radius:20px;padding:8px 12px;font-size:12px;z-index:98;cursor:pointer;display:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #psBadge.warn{border-color:var(--red);color:#fecaca}
+  #psBadge.ok{border-color:var(--green)}
+  .ps-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:none;align-items:flex-end;justify-content:center}
+  .ps-overlay.open{display:flex}
+  .ps-sheet{background:var(--card);border:1px solid var(--border);border-radius:14px 14px 0 0;width:100%;max-width:640px;max-height:82vh;overflow:auto;padding:16px}
+  .ps-sheet h3{font-size:16px;margin-bottom:4px}
+  .ps-sheet .sub{margin-bottom:10px}
+  .ps-job{border-top:1px solid var(--border);padding:9px 0;font-size:13px}
+  .ps-job:first-child{border-top:0}
+  .ps-job .who{color:#cbd5e1;font-weight:600}
+  .ps-job .meta{color:var(--muted);font-size:11px;margin-top:2px}
+  .ps-job .err{color:#fca5a5;font-size:11px;margin-top:2px}
+  .ps-job .act{margin-top:6px;display:flex;gap:6px}
+  .ps-job .act button{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .ps-banner{background:#243349;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;color:#cbd5e1;margin-bottom:12px;line-height:1.35}
+  .ps-banner b{color:#fff}
   /* Regime de trabalho — turnos */
   .turno-row{display:flex;align-items:flex-end;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;flex-wrap:wrap}
   .turno-row .col{flex:1;min-width:78px}
@@ -159,9 +182,18 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   .pdf-sig-name{font-size:7.5pt;font-weight:600}
   .pdf-sig-role{font-size:6.5pt;color:#666}
   .pdf-footer{font-size:6pt;font-style:italic;text-align:center;color:#555;border-top:.5px solid #CCC;padding-top:3px;margin-top:6px}
+  /* Grade de fotos do laudo (embutidas no PDF, cada uma com a legenda da leitura) */
+  #pdf-layout .pdf-photos{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+  #pdf-layout .pdf-photo{width:48.5%;border:.5px solid #CCC;padding:3px;background:#fff;page-break-inside:avoid}
+  #pdf-layout .pdf-photo img{width:100%;height:auto;max-height:58mm;object-fit:contain;display:block}
+  #pdf-layout .pdf-photo .cap{font-size:6.5pt;color:#333;margin-top:2px;text-align:center;line-height:1.2}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- jsPDF + html2canvas LOCAIS (mesmo origin do GitHub Pages) → não dependem de
+     CDN em campo, que é a causa da OS-0016 (PDF sumia quando o cdnjs era bloqueado
+     no celular). CDN só como fallback se o arquivo local faltar. Publicar os dois
+     .js JUNTO com este HTML no repo ProperForms. -->
+<script src="jspdf.umd.min.js" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';document.head.appendChild(s);"></script>
+<script src="html2canvas.min.js" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';document.head.appendChild(s);"></script>
 </head>
 <body>
 <div id="app">
@@ -213,6 +245,7 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
 
   <div class="card">
     <h2>Parâmetros de funcionamento</h2>
+    <div class="sub" style="margin-bottom:6px">Cada leitura tem um botão 📷 logo abaixo — anexe pelo menos uma foto por leitura; a legenda entra sozinha no laudo.</div>
     <label>Temperatura de funcionamento (°C)</label>
     <input type="number" id="f_temp" inputmode="decimal" placeholder="Ex.: 82">
 
@@ -267,8 +300,8 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   </div>
 
   <div class="card">
-    <h2>📷 Registro fotográfico</h2>
-    <div class="sub" style="margin-bottom:4px">Fotografe cada item — protege o laudo e ajuda a análise remota.</div>
+    <h2>📷 Registro fotográfico geral</h2>
+    <div class="sub" style="margin-bottom:4px">Cada leitura e proteção acima já tem seu próprio botão 📷 com legenda automática. Aqui ficam as fotos gerais da máquina e do ambiente. Toda foto entra no PDF do laudo.</div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
     <div id="fotoSecoes"></div>
   </div>
@@ -303,9 +336,13 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
 
 <div id="okScreen" style="display:none">
   <div class="ok-msg">
-    <div class="big">✅</div>
-    <h1 style="margin-top:10px">Corretiva registrada</h1>
+    <div class="big" id="okBig">✅</div>
+    <h1 style="margin-top:10px" id="okTitle">Corretiva registrada</h1>
     <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
+    <div class="sub" id="okStatus" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">
+      <button class="btn-sign" style="width:auto;padding:11px 16px" id="okFilaBtn" onclick="psAbrirPainel()" style="display:none">📤 Ver envios</button>
+    </div>
   </div>
 </div>
 
@@ -337,8 +374,128 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   </div>
 </div>
 
+<!-- BADGE + PAINEL da fila de envio durável (ProperSafe) -->
+<div id="psBadge" onclick="psAbrirPainel()"></div>
+<div class="ps-overlay" id="psOverlay">
+  <div class="ps-sheet">
+    <h3>📤 Fila de envio</h3>
+    <div class="sub">Lançamentos aguardando confirmação do servidor. Ficam salvos no aparelho até enviar — reenviam sozinhos quando houver internet.</div>
+    <div id="psJobs"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-sign" style="flex:1" onclick="PS.pump()">↻ Tentar enviar agora</button>
+      <button class="btn-sign" style="flex:1" onclick="psFecharPainel()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div id="pdf-layout"></div>
 <div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   ProperSafe — salvamento robusto para os forms (rascunho blindado + fila durável)
+   Autocontido, sem dependências externas. IndexedDB com 3 stores: drafts, photos, outbox.
+   • Rascunho por INSTÂNCIA (chave os_id::tarefa_id, ou avulsa::uid estável): só é
+     apagado quando o servidor confirma TODOS os envios daquela instância.
+   • Fila DURÁVEL (outbox): cada POST vira um "job" que sobrevive a reload, fechamento
+     do app, queda de sinal e fim de turno. Reenvio automático no boot e no evento
+     'online', com backoff por tentativas e dead-letter (vai para "revisar" após N).
+   • Degrada com graça: se o IndexedDB não abrir (aba privada/quota), tudo opera em
+     memória; o form continua funcionando (perde só a persistência entre sessões).
+   O motor é GENÉRICO; o form registra o "sender" (quem sabe falar com o GAS). Feito
+   para ser extraído depois para um proper_safe.js compartilhado pelos demais forms.
+   ══════════════════════════════════════════════════════════════════════════ */
+window.PS = (function(){
+  var DB='properSafe', VER=1, db=null, ready=false, pumping=false, sender=null, listeners=[];
+  var MAX_TRIES=6, mem={ drafts:{}, photos:{}, outbox:{} }, seq=1;
+
+  function open(){ return new Promise(function(res){
+    try{
+      if(!('indexedDB' in window) || !window.indexedDB){ ready=false; return res(false); }
+      var rq=indexedDB.open(DB,VER);
+      rq.onupgradeneeded=function(e){ var d=e.target.result;
+        if(!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts',{keyPath:'draftId'});
+        if(!d.objectStoreNames.contains('photos')) d.createObjectStore('photos',{keyPath:'photoId',autoIncrement:true});
+        if(!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox',{keyPath:'jobId',autoIncrement:true});
+      };
+      rq.onsuccess=function(e){ db=e.target.result; ready=true; res(true); };
+      rq.onerror=function(){ ready=false; res(false); };
+      rq.onblocked=function(){ ready=false; res(false); };
+    }catch(e){ ready=false; res(false); }
+  }); }
+
+  function store(name,mode){ return db.transaction(name,mode).objectStore(name); }
+  function rq(r){ return new Promise(function(res,rej){ r.onsuccess=function(){res(r.result);}; r.onerror=function(){rej(r.error);}; }); }
+  function keyOf(name){ return name==='drafts'?'draftId':(name==='photos'?'photoId':'jobId'); }
+
+  function put(name,val){
+    if(ready) return rq(store(name,'readwrite').put(val)).then(function(k){ if(val[keyOf(name)]==null) val[keyOf(name)]=k; return k; });
+    var kp=keyOf(name); if(val[kp]==null) val[kp]=(name==='drafts'?val.draftId:(seq++));
+    mem[name][val[kp]]=JSON.parse(JSON.stringify(val)); return Promise.resolve(val[kp]);
+  }
+  function get(name,key){ if(ready) return rq(store(name,'readonly').get(key)); return Promise.resolve(mem[name][key]?JSON.parse(JSON.stringify(mem[name][key])):null); }
+  function all(name){ if(ready) return rq(store(name,'readonly').getAll()); return Promise.resolve(Object.keys(mem[name]).map(function(k){ return JSON.parse(JSON.stringify(mem[name][k])); })); }
+  function del(name,key){ if(ready) return rq(store(name,'readwrite')['delete'](key)); delete mem[name][key]; return Promise.resolve(); }
+
+  function emit(){ listeners.forEach(function(fn){ try{ fn(); }catch(e){} }); }
+  function onChange(fn){ listeners.push(fn); }
+
+  // ─ Rascunhos ─
+  function saveDraft(d){ d.updatedAt=Date.now(); return put('drafts',d); }
+  function loadDraft(id){ return get('drafts',id); }
+  function dropDraft(id){ return del('drafts',id); }
+  function listDrafts(){ return all('drafts'); }
+
+  // ─ Fotos (bytes p/ o PDF + restauração da tela) ─
+  function savePhoto(p){ return put('photos',p); }
+  function photosOf(draftId){ return all('photos').then(function(a){ return a.filter(function(p){return p.draftId===draftId;}); }); }
+  function updatePhoto(id,patch){ return get('photos',id).then(function(p){ if(!p) return; Object.assign(p,patch); return put('photos',p); }); }
+  function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
+
+  // ─ Outbox ─
+  function enqueue(job){ job.tries=0; job.status='pending'; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
+  function listJobs(){ return all('outbox'); }
+  function jobsOf(draftId){ return all('outbox').then(function(a){ return a.filter(function(j){return j.draftId===draftId;}); }); }
+  function dropJobsOf(draftId){ return all('outbox').then(function(a){ return Promise.all(a.filter(function(j){return j.draftId===draftId;}).map(function(j){ return del('outbox',j.jobId); })); }); }
+  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
+  function dropJob(id){ return del('outbox',id).then(function(){ emit(); }); }
+
+  function setSender(fn){ sender=fn; }
+
+  async function pump(){
+    if(pumping || !sender) return;
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return;
+    pumping=true;
+    try{
+      var jobs=await listJobs();
+      var pend=jobs.filter(function(j){ return j.status==='pending'; }).sort(function(a,b){ return a.createdAt-b.createdAt; });
+      for(var i=0;i<pend.length;i++){
+        var j=pend[i], r;
+        try{ r=await sender(j); }catch(e){ r={ status:'retry', error:(e&&e.message)||'erro' }; }
+        j.tries=(j.tries||0)+1; j.updatedAt=Date.now();
+        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; }
+        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); }
+        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending'; }
+        await put('outbox',j);
+        emit();
+      }
+    } finally { pumping=false; }
+    emit();
+  }
+
+  function counts(){ return listJobs().then(function(a){
+    return { pending:a.filter(function(j){return j.status==='pending';}).length,
+             dead:a.filter(function(j){return j.status==='dead';}).length,
+             done:a.filter(function(j){return j.status==='done';}).length,
+             total:a.length }; }); }
+
+  return { open:open, ready:function(){return ready;}, onChange:onChange, MAX_TRIES:MAX_TRIES,
+    saveDraft:saveDraft, loadDraft:loadDraft, dropDraft:dropDraft, listDrafts:listDrafts,
+    savePhoto:savePhoto, photosOf:photosOf, updatePhoto:updatePhoto, dropPhotos:dropPhotos,
+    enqueue:enqueue, listJobs:listJobs, jobsOf:jobsOf, dropJobsOf:dropJobsOf, retryJob:retryJob, dropJob:dropJob,
+    setSender:setSender, pump:pump, counts:counts };
+})();
+</script>
 
 <script>
 // ══ CONTRATO DE INTEGRAÇÃO (idêntico aos forms 01/02) ══════════════════════
@@ -353,15 +510,36 @@ function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random()
 let _osId = '', _tarefaId = '', _enviado = false, _pdfEnviado = false;
 let _maquinas = [], _maqAtual = null;
 const _formUid = pgpUid();
+let _draftId = '';          // chave da instância no ProperSafe (os_id::tarefa_id ou avulsa::uid)
+let _sending = false;       // true depois de "Concluir": a fila cuida do envio, não editar mais
+let _pdfPendente = false;   // PDF não pôde ser gerado (libs ausentes) → gera ao reabrir
+let _psHasPending = false;  // há jobs pendentes → guard de beforeunload
+const AVULSA_UID_KEY = 'proper_corretiva_avulsa_uid';
 
-// ── Seções de foto rotuladas (config → render + upload por seção) ──
-const FOTO_SECOES = [
-  { k:'maquina',  label:'Visão geral da máquina', hint:'Máquina por inteiro, placa de identificação' },
-  { k:'rele',     label:'Relé de falta de fase',  hint:'Mostre se está ligado e a fiação' },
-  { k:'oleo',     label:'Nível de óleo (antes da partida)', hint:'Visor / vareta antes de dar partida' },
-  { k:'ambiente', label:'Ambiente de instalação', hint:'Ventilação, espaço, condição do local' },
-  { k:'extra',    label:'Fotos adicionais',       hint:'Qualquer outro detalhe relevante' }
+// ── PONTOS DE FOTO: um botão por leitura, com legenda automática. As leituras
+//    (correntes/tensões/temperatura) e as proteções (relé/óleo) recebem foto
+//    inline ancorada no próprio campo; os pontos "geral" ficam no card de
+//    registro fotográfico. A legenda viaja com a foto (Drive + PDF). ──
+const FOTO_PONTOS = [
+  { k:'ic_a', anchor:'f_ic_a', caption:'Corrente Fase A – em Carga' },
+  { k:'ic_b', anchor:'f_ic_b', caption:'Corrente Fase B – em Carga' },
+  { k:'ic_c', anchor:'f_ic_c', caption:'Corrente Fase C – em Carga' },
+  { k:'ia_a', anchor:'f_ia_a', caption:'Corrente Fase A – em Alívio' },
+  { k:'ia_b', anchor:'f_ia_b', caption:'Corrente Fase B – em Alívio' },
+  { k:'ia_c', anchor:'f_ia_c', caption:'Corrente Fase C – em Alívio' },
+  { k:'v_ab', anchor:'f_v_ab', caption:'Tensão de partida A–B' },
+  { k:'v_bc', anchor:'f_v_bc', caption:'Tensão de partida B–C' },
+  { k:'v_ca', anchor:'f_v_ca', caption:'Tensão de partida C–A' },
+  { k:'temp', anchor:'f_temp', caption:'Temperatura de funcionamento' },
+  { k:'rele_ligado',  anchorSN:'rele_ligado',  caption:'Relé de falta de fase – ligado' },
+  { k:'rele_atuando', anchorSN:'rele_atuando', caption:'Relé de falta de fase – atuando (teste)' },
+  { k:'oleo_ok',      anchorSN:'oleo_ok',      caption:'Nível de óleo antes da partida' },
+  { k:'maquina',  geral:true, caption:'Visão geral da máquina',  hint:'Máquina por inteiro, placa de identificação' },
+  { k:'ambiente', geral:true, caption:'Ambiente de instalação',  hint:'Ventilação, espaço, condição do local' },
+  { k:'extra',    geral:true, caption:'Fotos adicionais',        hint:'Qualquer outro detalhe relevante' }
 ];
+const _PONTO = FOTO_PONTOS.reduce(function(o,p){ o[p.k]=p; return o; }, {});
+const FOTO_KEYS = FOTO_PONTOS.map(function(p){ return p.k; });
 
 // ── Motivo do chamado (multi-seleção) ──
 const MOTIVOS = [
@@ -381,9 +559,10 @@ const state = {
   maquina: {},            // horímetro + regime (auto-preenchido do cadastro; técnico atualiza)
   motivos: {}, motivoOutro: '',
   parametros: {}, protecoes: {}, diagnostico: {},
-  fotos: { maquina:[], rele:[], oleo:[], ambiente:[], extra:[] },
+  fotos: FOTO_KEYS.reduce(function(o,k){ o[k]=[]; return o; }, {}),
   assinaturas: { tecnico: null, responsavel: null }
 };
+function ensureFotoBuckets(){ FOTO_KEYS.forEach(function(k){ if(!Array.isArray(state.fotos[k])) state.fotos[k]=[]; }); }
 
 // ── Regime de trabalho — turnos (mesma forma do PCF: {dias,inicio,fim,customDays})
 // para gravar direto em MAQUINAS.Regime_JSON via saveMachine. ──
@@ -409,13 +588,39 @@ function initMotivos(){
 }
 function onMotivo(k, checked){ state.motivos[k] = !!checked; scheduleSave(); }
 
-function initFotoSecoes(){
-  document.getElementById('fotoSecoes').innerHTML = FOTO_SECOES.map(function(s){
-    return '<div class="foto-lbl">'+esc(s.label)+'</div>'
-      + '<div class="foto-hint">'+esc(s.hint)+'</div>'
-      + '<div class="photo-zone"><button class="btn-foto" onclick="pickPhoto(\''+s.k+'\')">📷 Adicionar</button>'
-      + '<div class="thumbs" id="thumbs-'+s.k+'"></div></div>';
-  }).join('');
+// Controle de foto inline (botão + legenda + miniaturas) por ponto de leitura.
+function photoCtrlHtml(pt){
+  var label = pt.geral ? '📷 Adicionar' : '📷 Foto da leitura';
+  return '<div class="pfoto" data-k="'+pt.k+'">'
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+pt.k+'\')">'+label+'</button>'
+    + (pt.geral ? '' : '<span class="pfoto-cap">'+esc(pt.caption)+'</span>')
+    + '<div class="thumbs" id="thumbs-'+pt.k+'"></div></div>';
+}
+// Injeta os controles: leituras ancoradas no próprio campo; proteções no item S/N;
+// pontos gerais dentro do card "Registro fotográfico".
+function mountPhotoControls(){
+  FOTO_PONTOS.forEach(function(pt){
+    if(pt.anchor){
+      var inp=document.getElementById(pt.anchor); if(!inp) return;
+      if(document.getElementById('thumbs-'+pt.k)) return;             // idempotente
+      var host=document.createElement('div'); host.innerHTML=photoCtrlHtml(pt);
+      (inp.closest('div')||inp.parentNode).appendChild(host.firstChild);
+    } else if(pt.anchorSN){
+      var box=document.querySelector('.sn[data-k="'+pt.anchorSN+'"]'); if(!box) return;
+      if(document.getElementById('thumbs-'+pt.k)) return;
+      var item=box.closest('.item')||box.parentNode;
+      var host2=document.createElement('div'); host2.innerHTML=photoCtrlHtml(pt);
+      item.appendChild(host2.firstChild);
+    }
+  });
+  var g=document.getElementById('fotoSecoes');
+  if(g){
+    g.innerHTML = FOTO_PONTOS.filter(function(p){ return p.geral; }).map(function(pt){
+      return '<div class="foto-lbl">'+esc(pt.caption)+'</div>'
+        + '<div class="foto-hint">'+esc(pt.hint||'')+'</div>'
+        + photoCtrlHtml(pt);
+    }).join('');
+  }
 }
 
 // ══ SIM/NÃO/NA ═════════════════════════════════════════════════════════════
@@ -428,50 +633,60 @@ function setSN(k, v, btn){
   scheduleSave();
 }
 
-// ══ FOTOS (upload imediato por seção; padrão form01) ═══════════════════════
-function pickPhoto(secao){
+// ══ FOTOS (por leitura; bytes no IndexedDB + fila durável) ═════════════════
+function pickPhoto(k){
   const inp = document.getElementById('fileInput');
-  inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(secao, f); inp.value=''; };
+  inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(k, f); inp.value=''; };
   inp.click();
 }
-function handlePhoto(secao, file){
+function handlePhoto(k, file){
   const reader = new FileReader();
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
-      let { width:w, height:h } = img;
+      let w = img.width, h = img.height;
       if (w > MAX_IMG_PX || h > MAX_IMG_PX){ const r = Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
       const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
       cv.getContext('2d').drawImage(img,0,0,w,h);
       const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
-      uploadPhoto(secao, dataUrl, file.name || 'foto.jpg');
+      addPhoto(k, dataUrl, file.name || 'foto.jpg');
     };
     img.src = reader.result;
   };
   reader.readAsDataURL(file);
 }
-async function uploadPhoto(secao, dataUrl, fileName){
-  const thumbId = 'th-' + Date.now();
-  const cont = document.getElementById('thumbs-' + secao);
-  const el = document.createElement('img'); el.className='thumb uploading'; el.id=thumbId; el.src=dataUrl; cont.appendChild(el);
-  const base64 = dataUrl.split(',')[1];
-  if (!state.fotos[secao]) state.fotos[secao] = [];
+// Salva a foto NO APARELHO (IndexedDB) e enfileira o envio ao Drive. A miniatura
+// nasce "pendente" (âmbar) e vira verde só quando o servidor confirma — mas os
+// bytes já estão seguros localmente e o PDF do laudo é montado a partir deles.
+async function addPhoto(k, dataUrl, fileName){
+  var pt = _PONTO[k] || { caption:k };
+  var cont = document.getElementById('thumbs-' + k);
+  var el = document.createElement('img'); el.className='thumb pending'; el.src=dataUrl; if(cont) cont.appendChild(el);
+  if (!Array.isArray(state.fotos[k])) state.fotos[k] = [];
+  var ref = { photoId:null, caption:pt.caption, secao:k, status:'pending', url:null, fileName:fileName };
+  state.fotos[k].push(ref);
+  await ensureDraftSaved();
   try{
-    const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_corretiva', entity_type:'corretiva' };
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-    const data = JSON.parse(await resp.text());
-    if (!data || data.ok !== true) throw new Error(data.error||'falha');
-    el.className='thumb ok';
-    state.fotos[secao].push({ url:data.url, fileName, secao, status:'ok' });
-  }catch(err){
-    el.className='thumb erro';
-    state.fotos[secao].push({ url:null, fileName, secao, status:'erro' });
-    toast('Erro ao enviar foto — tente de novo');
-  }
+    var photoId = await PS.savePhoto({ draftId:_draftId, pointKey:k, caption:pt.caption, fileName:fileName, dataUrl:dataUrl, uploadStatus:'pending', uploadUrl:'' });
+    ref.photoId = photoId; el.setAttribute('data-pid', String(photoId));
+    var body = { action:'salvarFotoForm', os:state_os(), cliente:val('f_cliente')||'SemCliente', secao:k, legenda:pt.caption,
+      nomeArquivo:fileName, base64:dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_corretiva', entity_type:'corretiva',
+      foto_uid:'f_'+_formUid+'_'+photoId };
+    await PS.enqueue({ draftId:_draftId, kind:'salvarFotoForm', url:GAS_URL, body:body, photoId:photoId, label:pt.caption });
+  }catch(e){ el.className='thumb erro'; toast('Não consegui guardar a foto no aparelho'); }
+  scheduleSave();
+}
+// Chamado pelo sender quando o Drive confirma a foto → pinta a miniatura de verde.
+function markPhotoSent(photoId, url){
+  Object.keys(state.fotos).forEach(function(k){
+    (state.fotos[k]||[]).forEach(function(f){ if(f && f.photoId===photoId){ f.status='ok'; f.url=url||f.url; } });
+  });
+  var img=document.querySelector('.thumb[data-pid="'+photoId+'"]'); if(img) img.className='thumb ok';
   scheduleSave();
 }
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
-function fotosFlat(){ var out=[]; Object.keys(state.fotos).forEach(function(k){ (state.fotos[k]||[]).forEach(function(f){ out.push(f); }); }); return out; }
+function fotosFlat(){ var out=[]; Object.keys(state.fotos).forEach(function(k){ (state.fotos[k]||[]).forEach(function(f){
+  out.push({ url:f.url||null, fileName:f.fileName, secao:k, caption:f.caption||(_PONTO[k]&&_PONTO[k].caption)||k, status:f.status||'pending' }); }); }); return out; }
 
 // ══ REGIME (turnos) + HORÍMETRO ════════════════════════════════════════════
 let _turnoSeq = 0;
@@ -674,9 +889,28 @@ async function pgpColetarAssinaturasCorretiva(){
   return true;
 }
 
-// ══ RASCUNHO LOCAL (sobrevive a reload; limpa ao concluir) ═════════════════
+// ══ RASCUNHO BLINDADO (ProperSafe/IndexedDB; por instância; só some quando o
+//    servidor confirma TODOS os envios daquela instância) ═══════════════════
 var _saveTimer = null;
-function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer = setTimeout(saveDraft, 500); }
+function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer = setTimeout(function(){ saveDraft(); }, 500); }
+// chave estável por OS/tarefa (ou avulsa por aparelho) → rascunhos de máquinas
+// diferentes na mesma jornada não se sobrescrevem.
+function draftKeyFor(osId, tarefaId){
+  if(osId) return 'corretiva::'+osId+'::'+(tarefaId||'');
+  var u=''; try{ u=localStorage.getItem(AVULSA_UID_KEY)||''; }catch(e){}
+  if(!u){ u=pgpUid(); try{ localStorage.setItem(AVULSA_UID_KEY,u); }catch(e){} }
+  return 'corretiva::avulsa::'+u;
+}
+function ensureDraftId(){ if(!_draftId) _draftId=draftKeyFor(_osId,_tarefaId); return _draftId; }
+function draftRecord(){
+  captura();
+  return { draftId:ensureDraftId(), formType:'corretiva', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
+    state:JSON.parse(JSON.stringify(state)), status:(_sending?'sending':'editing'),
+    pdfPending:_pdfPendente, updatedAt:Date.now() };
+}
+function saveDraft(){ try{ ensureDraftId(); return PS.saveDraft(draftRecord()); }catch(e){ return Promise.resolve(); } }
+function ensureDraftSaved(){ return saveDraft(); }
+async function marcarPdfPendente(v){ _pdfPendente=!!v; try{ var d=await PS.loadDraft(_draftId); if(d){ d.pdfPending=!!v; await PS.saveDraft(d); } }catch(e){} }
 function captura(){
   state.identificacao = { tecnico:val('f_tecnico'), cliente:val('f_cliente'), os:val('f_os'), equipamento:val('f_equip'), modelo:val('f_modelo') };
   state.atendimento = { data:val('f_data'), hora:val('f_hora') };
@@ -692,10 +926,6 @@ function captura(){
   state.diagnostico.pendencias = val('f_pendencias');
   state.maquina = { horimetro: val('f_horimetro'), regimeData: lerTurnos() };
 }
-function saveDraft(){
-  try{ captura(); localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); }catch(e){}
-}
-function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
 function setV(id,v){ var e=document.getElementById(id); if(e && v!=null) e.value=v; }
 function markSN(dataK, v){
   if(!v) return;
@@ -720,22 +950,33 @@ function hydrateUI(){
   Object.keys(state.motivos||{}).forEach(function(k){ var c=document.getElementById('mot_'+k); if(c) c.checked=!!state.motivos[k]; });
   var pr=state.protecoes||{}; markSN('rele_ligado',pr.rele_ligado); markSN('rele_atuando',pr.rele_atuando); markSN('oleo_ok',pr.oleo_ok);
   markSN('situacao', d.situacao);
-  // fotos já enviadas → mostra miniaturas (url) como confirmadas
-  Object.keys(state.fotos||{}).forEach(function(sec){
-    var cont=document.getElementById('thumbs-'+sec); if(!cont) return;
-    (state.fotos[sec]||[]).forEach(function(f){ if(f && f.url){ var img=document.createElement('img'); img.className='thumb ok'; img.src=f.url; cont.appendChild(img); } });
-  });
+  // (as miniaturas das fotos são reconstruídas do IndexedDB em restoreDraft)
   pgpAtualizarStatusAssinaturas();
 }
-function loadDraft(){
+// Restaura a instância (rascunho + fotos) do IndexedDB para esta OS/tarefa.
+async function restoreDraft(){
+  ensureDraftId();
+  var d=null; try{ d=await PS.loadDraft(_draftId); }catch(e){}
+  if(!d) return false;
+  if(d.state && typeof d.state==='object'){ Object.assign(state, d.state); }
+  ensureFotoBuckets();
+  if(!state.assinaturas) state.assinaturas={ tecnico:null, responsavel:null };
+  _pdfPendente=!!d.pdfPending; _sending=(d.status==='sending');
+  // fotos: o store de fotos é a fonte da verdade (tem os bytes). Reconstrói refs + thumbs.
   try{
-    var raw=localStorage.getItem(DRAFT_KEY); if(!raw) return false;
-    var obj=JSON.parse(raw); if(!obj||typeof obj!=='object') return false;
-    Object.assign(state, obj);
-    if(!state.fotos) state.fotos={ maquina:[],rele:[],oleo:[],ambiente:[],extra:[] };
-    if(!state.assinaturas) state.assinaturas={ tecnico:null, responsavel:null };
-    return true;
-  }catch(e){ return false; }
+    var photos=await PS.photosOf(_draftId);
+    photos.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
+    FOTO_KEYS.forEach(function(k){ state.fotos[k]=[]; });
+    photos.forEach(function(p){
+      if(!state.fotos[p.pointKey]) state.fotos[p.pointKey]=[];
+      var okp=(p.uploadStatus==='ok');
+      state.fotos[p.pointKey].push({ photoId:p.photoId, caption:p.caption, secao:p.pointKey, status:(okp?'ok':'pending'), url:p.uploadUrl||null, fileName:p.fileName });
+      var cont=document.getElementById('thumbs-'+p.pointKey); if(!cont) return;
+      var img=document.createElement('img'); img.src=p.dataUrl; img.setAttribute('data-pid',String(p.photoId));
+      img.className='thumb '+(okp?'ok':'pending'); cont.appendChild(img);
+    });
+  }catch(e){}
+  return true;
 }
 
 // ══ ENVIO (saveFormulario) + PDF ═══════════════════════════════════════════
@@ -746,30 +987,114 @@ function assinaturasMeta(){
   if(a.responsavel) out.responsavel={ nome:a.responsavel.nome, papel:a.responsavel.papel, ts:a.responsavel.ts, assinado:!!a.responsavel.dataUrl };
   return out;
 }
+// Concluir: NÃO envia direto e NÃO apaga o rascunho. Enfileira jobs duráveis
+// (saveFormulario idempotente por form_uid; PDF com fotos) e deixa a fila enviar —
+// sobrevive a queda de sinal, fechamento do app e fim de turno. O rascunho só é
+// apagado quando o servidor confirma TUDO (ver checkFinalize).
 async function enviar(){
+  if(_sending){ toast('Esta corretiva já foi concluída — acompanhe os envios abaixo.'); return; }
   captura();
-  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Enviando…';
-  var payloadState = Object.assign({}, state, { assinaturas: assinaturasMeta() });
-  if(_osId && !_enviado){
-    _enviado=true;
+  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Concluindo…';
+  await ensureDraftSaved();
+  if(_osId){
     var _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
-    try{
-      const payload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'corretiva', form_uid:_formUid,
-        tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
-        tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
-      const r=await fetch(GAS_URL,{ method:'POST', body:gcBody(payload) });
-      const dd=JSON.parse(await r.text());
-      if(dd.status!=='ok') throw new Error(dd.message||'Erro do servidor');
-    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir corretiva'; toast('Erro ao enviar: '+e.message); return; }
+    var payloadState = Object.assign({}, state, { assinaturas: assinaturasMeta() });
+    var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'corretiva', form_uid:_formUid,
+      tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
+      tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
+    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados da corretiva' });
   }
-  // Aproveita a visita pra atualizar horímetro + regime no cadastro da máquina
+  // Aproveita a visita pra atualizar horímetro + regime no cadastro da máquina (best-effort)
   try{ await atualizarMaquinaCadastro(); }catch(e){}
-  if(_osId){ enviarPdfParaDrive(); }
-  clearDraft();
+  if(_osId){ await enfileirarPdf(); }
+  _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
-  document.getElementById('okSub').textContent = _osId ? 'A tarefa de corretiva foi concluída no pipeline.' : 'Fotos e PDF salvos no Drive. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+  atualizarOkScreen();
+  PS.pump();
 }
+
+// ══ MOTOR DE ENVIO (sender do ProperSafe) + finalização + painel da fila ═══
+function registrarSender(){
+  PS.setSender(async function(job){
+    try{
+      var r=await fetch(job.url,{ method:'POST', body:gcBody(job.body) });
+      var txt=await r.text(); var d=null; try{ d=JSON.parse(txt); }catch(e){}
+      var ok = d && (d.status==='ok' || d.ok===true);
+      if(ok){
+        if(job.kind==='salvarFotoForm' && job.photoId!=null){
+          try{ await PS.updatePhoto(job.photoId,{ uploadStatus:'ok', uploadUrl:(d.url||'') }); }catch(e){}
+          markPhotoSent(job.photoId, d.url||'');
+        }
+        return { status:'ok', result:d };
+      }
+      // servidor respondeu mas não-ok (validação/lock): retry limitado — não escreveu.
+      return { status:'retry', error:(d&&(d.message||d.error))||('resposta '+(r&&r.status||'?')) };
+    }catch(e){
+      return { status:'retry', error:(e&&e.message)||'sem conexão' };   // não chegou ao servidor
+    }
+  });
+}
+// Quando todos os jobs desta instância confirmam (e sem PDF pendente), apaga a
+// instância inteira (rascunho + fotos + jobs). Enquanto houver 'dead', mantém tudo.
+async function checkFinalize(){
+  if(!_sending || !_draftId) return;
+  var jobs=[]; try{ jobs=await PS.jobsOf(_draftId); }catch(e){ return; }
+  var pending=jobs.filter(function(j){return j.status==='pending';}).length;
+  var dead=jobs.filter(function(j){return j.status==='dead';}).length;
+  if(pending===0 && dead===0 && !_pdfPendente){
+    try{ await PS.dropJobsOf(_draftId); await PS.dropPhotos(_draftId); await PS.dropDraft(_draftId); }catch(e){}
+  }
+  if(document.getElementById('okScreen').style.display!=='none') atualizarOkScreen();
+}
+async function atualizarOkScreen(){
+  var okSub=document.getElementById('okSub'), okStatus=document.getElementById('okStatus');
+  var big=document.getElementById('okBig'), title=document.getElementById('okTitle'), filaBtn=document.getElementById('okFilaBtn');
+  var jobs=[]; try{ jobs=await PS.jobsOf(_draftId); }catch(e){}
+  var pend=jobs.filter(function(j){return j.status==='pending';}).length;
+  var dead=jobs.filter(function(j){return j.status==='dead';}).length;
+  if(filaBtn) filaBtn.style.display=(pend+dead>0)?'':'none';
+  if(!_osId){ if(okSub) okSub.textContent='Fotos e laudo guardados no aparelho. Sem OS vinculada, os dados do formulário não ficam no sistema.'; }
+  if(pend+dead===0 && !_pdfPendente){
+    if(big) big.textContent='✅'; if(title) title.textContent='Corretiva enviada';
+    if(_osId&&okSub) okSub.textContent='A tarefa foi concluída e o servidor confirmou tudo (dados, fotos e PDF).';
+    if(okStatus) okStatus.textContent='';
+  } else if(dead>0){
+    if(big) big.textContent='⚠️'; if(title) title.textContent='Concluída — envios a revisar';
+    if(okStatus) okStatus.innerHTML='<b style="color:#fca5a5">'+dead+'</b> envio(s) travado(s). Nada foi perdido — toque em <b>Ver envios</b> para reenviar.';
+  } else {
+    if(big) big.textContent='📤'; if(title) title.textContent='Corretiva registrada';
+    if(okStatus) okStatus.textContent='Enviando em segundo plano ('+pend+(_pdfPendente?' + PDF':'')+' pendente). Pode fechar o app — retoma sozinho quando houver internet.';
+  }
+}
+async function psRefreshBadge(){
+  var b=document.getElementById('psBadge'); if(!b) return;
+  var c; try{ c=await PS.counts(); }catch(e){ return; }
+  _psHasPending=(c.pending>0);
+  if(c.pending+c.dead===0){ b.style.display='none'; return; }
+  b.style.display=''; b.className = c.dead>0 ? 'warn' : '';
+  b.textContent = '📤 ' + (c.pending?('Enviando '+c.pending):'') + (c.pending&&c.dead?' · ':'') + (c.dead?('⚠ '+c.dead+' revisar'):'');
+}
+async function psAbrirPainel(){
+  var ov=document.getElementById('psOverlay'), box=document.getElementById('psJobs');
+  var jobs=[]; try{ jobs=await PS.listJobs(); }catch(e){}
+  jobs=jobs.filter(function(j){ return j.status!=='done'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+  var KIND={ saveFormulario:'Dados da corretiva', salvarFotoForm:'Foto', salvarPdfDrive:'PDF do laudo' };
+  if(!jobs.length){ box.innerHTML='<div class="sub">Nenhum envio pendente. Tudo confirmado ✅</div>'; }
+  else box.innerHTML=jobs.map(function(j){
+    var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+esc(j.label)):'');
+    var st=j.status==='dead'?'⚠ travado (revisar)':'⏳ pendente';
+    return '<div class="ps-job"><div class="who">'+esc(who)+'</div>'
+      +'<div class="meta">'+st+' · tentativas '+(j.tries||0)+'/'+PS.MAX_TRIES+(j.body&&j.body.os_numero?(' · OS '+esc(String(j.body.os_numero))):'')+'</div>'
+      +(j.lastError?'<div class="err">'+esc(j.lastError)+'</div>':'')
+      +'<div class="act"><button onclick="psRetry('+j.jobId+')">↻ Reenviar</button>'
+      +'<button onclick="psDrop('+j.jobId+')">Descartar</button></div></div>';
+  }).join('');
+  ov.classList.add('open');
+}
+function psFecharPainel(){ var o=document.getElementById('psOverlay'); if(o) o.classList.remove('open'); }
+async function psRetry(id){ await PS.retryJob(id); psAbrirPainel(); }
+async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa não irá ao servidor.')){ await PS.dropJob(id); psAbrirPainel(); psRefreshBadge(); } }
 
 // ── PDF do laudo → Drive (Gestão de Documentos) ──
 const _MOT_LABEL = MOTIVOS.reduce(function(o,m){ o[m.k]=m.label; return o; }, {});
@@ -777,7 +1102,21 @@ const _SIT_LABEL = { resolvido:'Resolvido', parcial:'Parcial', retorno:'Requer r
 const _SN_LABEL  = { sim:'SIM', nao:'NÃO', na:'N/A' };
 function _cb(v,target){ return '<span class="pdf-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
 function snRow(lbl, v){ return '<tr><td>'+esc(lbl)+'</td><td style="white-space:nowrap">'+_cb(v,'sim')+'Sim &nbsp;'+_cb(v,'nao')+'Não &nbsp;'+_cb(v,'na')+'N/A</td></tr>'; }
-function buildPdfLayout(){
+// Monta o grid de fotos do laudo (embutidas), na ordem dos pontos de leitura,
+// cada uma com a legenda automática. photosByKey: { pointKey: [{dataUrl,caption}] }.
+function _pdfPhotosHtml(photosByKey){
+  photosByKey = photosByKey || {};
+  var blocks = [];
+  FOTO_PONTOS.forEach(function(pt){
+    (photosByKey[pt.k]||[]).forEach(function(ph){
+      if(!ph || !ph.dataUrl) return;
+      blocks.push('<div class="pdf-photo"><img src="'+ph.dataUrl+'"><div class="cap">'+esc(ph.caption||pt.caption)+'</div></div>');
+    });
+  });
+  if(!blocks.length) return '<div class="pdf-body">Sem fotos anexadas nesta visita.</div>';
+  return '<div class="pdf-photos">'+blocks.join('')+'</div>';
+}
+function buildPdfLayout(photosByKey){
   var i=state.identificacao||{}, at=state.atendimento||{}, p=state.parametros||{}, pr=state.protecoes||{}, d=state.diagnostico||{}, a=state.assinaturas||{}, mq=state.maquina||{};
   var motivosSel = Object.keys(state.motivos||{}).filter(function(k){ return state.motivos[k]; }).map(function(k){ return _MOT_LABEL[k]||k; });
   var t=p.tensao||{}, cc=p.corrente_carga||{}, ca=p.corrente_alivio||{};
@@ -832,24 +1171,34 @@ function buildPdfLayout(){
     +   '<div style="margin-top:4px"><b>Situação ao final:</b> '+esc(_SIT_LABEL[d.situacao]||'—')+'</div>'
     + '</div>'
     + '<div class="pdf-sec-head-dark">REGISTRO FOTOGRÁFICO</div>'
-    + '<div class="pdf-body">'+nfotos+' foto(s) enviada(s) ao Drive — arquivos na pasta da OS.</div>'
+    + _pdfPhotosHtml(photosByKey)
     + '<div class="pdf-sec-head-dark">ASSINATURAS</div>'
     + '<div class="pdf-ef"><div class="pdf-sig-col left">'+sig(a.tecnico,'Técnico responsável')+'</div>'
     +   '<div class="pdf-sig-col">'+sig(a.responsavel,'Responsável pelo cliente')+'</div></div>'
     + '<div class="pdf-footer">propercompressores.com.br · Laudo de Visita Corretiva · documento gerado automaticamente pelo ProperCare</div>';
   document.getElementById('pdf-layout').innerHTML = html;
 }
-async function enviarPdfParaDrive(){
-  if(_pdfEnviado || !_osId) return;
-  if(!window.jspdf || !window.html2canvas) return;
-  _pdfEnviado = true;
-  var el=document.getElementById('pdf-layout');
+// Carrega as fotos guardadas no aparelho (IndexedDB) agrupadas por ponto de leitura.
+async function loadPhotosByKey(){
+  var byKey={};
   try{
-    buildPdfLayout();
-    el.classList.add('pdf-capturing');
-    el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+    var arr=await PS.photosOf(_draftId);
+    arr.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
+    arr.forEach(function(p){ if(!p||!p.dataUrl) return; if(!byKey[p.pointKey]) byKey[p.pointKey]=[]; byKey[p.pointKey].push({ dataUrl:p.dataUrl, caption:p.caption }); });
+  }catch(e){}
+  return byKey;
+}
+// Gera o PDF do laudo (com as fotos embutidas) e devolve o base64. Lança erro se
+// as bibliotecas de PDF não carregaram (ex.: CDN bloqueada no 1º acesso em campo).
+async function buildPdfBase64(){
+  if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
+  var el=document.getElementById('pdf-layout');
+  var photosByKey=await loadPhotosByKey();
+  buildPdfLayout(photosByKey);
+  el.classList.add('pdf-capturing');
+  el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  try{
     var canvas=await html2canvas(el,{ scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
-    el.classList.remove('pdf-capturing'); el.style.cssText='display:none';
     var jsPDF=window.jspdf.jsPDF;
     var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
@@ -857,21 +1206,27 @@ async function enviarPdfParaDrive(){
     var heightLeft=imgH, position=0;
     pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
     while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
-    var i=state.identificacao||{}, _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
-    var _num=i.os||'';
-    var base64=pdf.output('datauristring').split(',')[1];
-    var payload={ action:'salvarPdfDrive', key:KEY, os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
+    return pdf.output('datauristring').split(',')[1];
+  } finally { el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
+}
+// Gera o PDF e ENFILEIRA o envio ao Drive (durável). Se as libs não carregaram,
+// marca pendência: o PDF é gerado automaticamente ao reabrir o form com internet.
+async function enfileirarPdf(){
+  if(!_osId) return;
+  var i=state.identificacao||{}, _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+  var _num=i.os||'';
+  try{
+    var base64=await buildPdfBase64();
+    var body={ action:'salvarPdfDrive', os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
       maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:(_maqAtual?maqLabel(_maqAtual):(i.equipamento||'')),
       base64:base64, fileName:'Corretiva_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_corretiva',
-      caption:'Laudo de visita corretiva', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'') };
-    var r=await fetch(GAS_URL,{ method:'POST', body:gcBody(payload) });
-    var d=JSON.parse(await r.text());
-    if(!d||d.status!=='ok') throw new Error((d&&d.error)||'falha ao salvar PDF');
-    toast('PDF do laudo salvo no Drive');
+      caption:'Laudo de visita corretiva', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
+      pdf_uid:'pdf_'+_formUid };
+    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF do laudo' });
+    _pdfPendente=false; await marcarPdfPendente(false);
   }catch(e){
-    _pdfEnviado=false;
-    if(el){ el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
-    toast('Corretiva enviada; PDF ao Drive falhou: '+e.message);
+    _pdfPendente=true; await marcarPdfPendente(true);
+    toast('Dados salvos. O PDF do laudo será gerado ao reabrir com internet.');
   }
 }
 
@@ -959,14 +1314,20 @@ function wireInputs(){
   });
 }
 
-(function init(){
+(async function init(){
   initMotivos();
-  initFotoSecoes();
+  mountPhotoControls();
   const p=new URLSearchParams(location.search);
   _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||'';
   window._GC=p.get('gc')||window._GC||'';
-  const hadDraft = loadDraft();
-  if(hadDraft){ hydrateUI(); toast('Rascunho restaurado'); }
+  // motor de envio + reações de UI antes de abrir o banco
+  registrarSender();
+  PS.onChange(function(){ psRefreshBadge(); checkFinalize(); });
+  await PS.open();
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}   // limpa rascunho do formato antigo
+  ensureDraftId();
+  var restaurou=false; try{ restaurou=await restoreDraft(); }catch(e){}
+  if(restaurou){ hydrateUI(); toast(_sending?'Retomando os envios desta corretiva':'Rascunho restaurado'); }
   else {
     document.getElementById('f_data').value=new Date().toISOString().slice(0,10);
     document.getElementById('f_hora').value=new Date().toTimeString().slice(0,5);
@@ -978,9 +1339,22 @@ function wireInputs(){
   carregarMaquinasOS();
   wireInputs();
   pgpAtualizarStatusAssinaturas();
-  // salva ao sair (proteção contra fechar sem querer)
+  // instância já concluída numa sessão anterior → mostra o status e tenta o PDF pendente
+  if(_sending){
+    document.getElementById('app').style.display='none';
+    document.getElementById('okScreen').style.display='';
+    if(_pdfPendente && window.jspdf && window.html2canvas){ try{ await enfileirarPdf(); }catch(e){} }
+    atualizarOkScreen();
+  }
+  // ── Proteções de salvamento ──
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
-  window.addEventListener('pagehide', saveDraft);
+  window.addEventListener('pagehide', function(){ saveDraft(); });
+  window.addEventListener('online', function(){ PS.pump(); });
+  window.addEventListener('beforeunload', function(e){ if(_psHasPending){ e.preventDefault(); e.returnValue=''; return ''; } });
+  setInterval(function(){ if(!_sending) saveDraft(); }, 8000);   // autosave periódico
+  // Retoma envios pendentes de sessões anteriores (fim de turno, app fechado, queda de sinal)
+  psRefreshBadge();
+  PS.pump();
 })();
 </script>
 </body>
