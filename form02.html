@@ -1,4 +1,24 @@
 <!--
+form02.html — 28/07/2026 — RASCUNHO POR OS + ENVIO ROBUSTO + FOTOS NO PDF (chamado do Fernando). Par: GAS v78.
+  4 correções aditivas (varredura pipeline OS Reforma):
+  (1) RASCUNHO POR OS: DRAFT_KEY era GLOBAL ('proper_draft_form02') — abrir o form02
+      numa OS NOVA restaurava o rascunho da OS anterior (caso real: OS 0021 abriu com
+      os dados da 0008 de 15 dias atrás). Agora a chave é por OS
+      ('proper_draft_form02:<os_id>'; sem os_id = avulso, chave antiga). A URL é lida
+      ANTES de carregar o rascunho (a ordem antiga carregava o draft primeiro).
+      saveDraft grava _draft_os_id p/ migração segura do rascunho legado.
+  (2) ENVIO ROBUSTO (gasPostJson): o GAS às vezes responde página HTML de erro em vez
+      de JSON → "JSON Parse error: Unrecognized token '<'" e o envio morria sem retry.
+      Agora parse seguro + 3 tentativas com backoff em foto/saveFormulario/PDF.
+  (3) FOTO COM FALHA REENVIÁVEL: miniatura vermelha agora é clicável ("toque para
+      reenviar") — antes a foto com erro ficava perdida (só re-tirar).
+  (4) FOTOS NO PDF: pdfFotoBlock só embutia fotos da SESSÃO (memória); com rascunho
+      restaurado as fotos antigas viravam <img> de URL do Drive que o html2canvas não
+      captura (sem CORS) → PDF com fotos faltando. Agora hidrata via getFotoBase64
+      (GAS v78) antes de montar o PDF; jsPDF/html2canvas passam a ser LOCAIS do repo
+      (./jspdf.umd.min.js, ./html2canvas.min.js) com CDN de fallback.
+  Nenhum id/data-key/função renomeado.
+  ----------------------------------------------------------------------------
 form02.html — 15/07/2026 — PDF do diagnóstico → Drive/Gestão de Documentos (ADITIVO)
   - No envio (goToFinal, se houver os_id), captura o #pdf-layout com html2canvas,
     monta um PDF A4 paginado (jsPDF) e sobe via salvarPdfDrive (ação já existente
@@ -498,8 +518,14 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
   </style>
   <!-- Geração de PDF do diagnóstico para subir ao Drive (Gestão de Documentos).
        Aditivo: só usado no envio quando a OS está vinculada. -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- 28/07: locais primeiro (mesmo repo ProperForms — mata a classe de bug da OS-0016);
+       CDN só como fallback se o local não carregar -->
+  <script src="./jspdf.umd.min.js"></script>
+  <script src="./html2canvas.min.js"></script>
+  <script>
+    if (!window.jspdf)       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');
+    if (!window.html2canvas) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>');
+  </script>
 </head>
 <body>
 <div id="app">
@@ -1306,8 +1332,47 @@ function gcParam() {
   return '&google_credential=' + encodeURIComponent(window._GC || '');
 }
 
+// 28/07: POST robusto ao GAS — o Apps Script às vezes responde uma PÁGINA HTML
+// de erro em vez de JSON (pico de carga/erro transitório); o JSON.parse cru
+// estourava "Unrecognized token '<'" e o envio morria sem retry (fotos com
+// contorno vermelho / "Não sincronizado"). Parse seguro + 3 tentativas c/ backoff.
+async function gasPostJson(payload, tentativas) {
+  tentativas = tentativas || 3;
+  let ultimoErro = null;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      const resp = await fetch(GAS_URL, { method: 'POST', body: gcBody(payload) });
+      const text = await resp.text();
+      try { return JSON.parse(text); }
+      catch (ePar) { throw new Error('servidor respondeu página de erro (não-JSON)'); }
+    } catch (e) {
+      ultimoErro = e;
+      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  throw new Error((ultimoErro && ultimoErro.message) || 'falha de comunicação');
+}
+
 // ══ CONSTANTS ════════════════════════════════════════════════════════════
-const DRAFT_KEY  = 'proper_draft_form02';
+// 28/07: DRAFT_KEY deixou de ser global — por OS (bug: OS nova abria com o
+// rascunho da OS anterior). resolveDraftKey() roda no início do init, DEPOIS
+// de ler os_id da URL. Sem os_id (uso avulso) mantém a chave legada.
+const DRAFT_KEY_LEGADO = 'proper_draft_form02';
+let DRAFT_KEY = DRAFT_KEY_LEGADO;
+function resolveDraftKey() {
+  DRAFT_KEY = _osId ? (DRAFT_KEY_LEGADO + ':' + _osId) : DRAFT_KEY_LEGADO;
+  // Migração segura do rascunho legado: só adota se ele declarar ser DESTA OS
+  // (_draft_os_id gravado pelo saveDraft novo). Rascunho velho de outra OS é ignorado.
+  if (_osId && !localStorage.getItem(DRAFT_KEY)) {
+    try {
+      const leg = JSON.parse(localStorage.getItem(DRAFT_KEY_LEGADO) || 'null');
+      if (leg && leg._draft_os_id === _osId) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(leg));
+        localStorage.removeItem(DRAFT_KEY_LEGADO);
+      }
+    } catch (e) {}
+  }
+}
 const GAS_URL    = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec'; // GAS v29
 const MAX_IMG_PX = 1200;
 const IMG_QUALITY = 0.82;
@@ -1533,6 +1598,7 @@ function scheduleSave() {
 function saveDraft() {
   captureAllInputs();
   // Never store base64 — only Drive URLs (strings)
+  state._draft_os_id = _osId || ''; // 28/07: carimbo da OS dona do rascunho
   try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch(e) {}
 }
 
@@ -1853,7 +1919,14 @@ async function uploadPhoto(secao, compressed) {
     return;
   }
 
-  // 2. Upload to GAS
+  // 2. Upload to GAS (28/07: extraído p/ _tentarUploadFoto — reusado pelo retry)
+  await _tentarUploadFoto(secao, compressed, thumbId, os, cliente);
+}
+
+// 28/07: retry de foto — a miniatura vermelha vira clicável em vez de perder a foto.
+const _fotoRetryStore = {};
+async function _tentarUploadFoto(secao, compressed, thumbId, os, cliente) {
+  const { base64, mimeType, fileName } = compressed;
   try {
     const payload = {
       action: 'salvarFotoForm',
@@ -1861,19 +1934,36 @@ async function uploadPhoto(secao, compressed) {
       os, cliente, secao, nomeArquivo: fileName, base64, mimeType,
       entity_type: 'form02', categoria: 'foto_form02'
     };
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-    const text = await resp.text();
-    const data = JSON.parse(text);
+    const data = await gasPostJson(payload);
     if (!data || data.ok !== true) throw new Error(data.error || 'Falha no upload');
 
     updateThumbState(thumbId, 'confirmado');
+    const img0 = document.getElementById(thumbId);
+    if (img0) { img0.onclick = null; img0.title = ''; }
+    delete _fotoRetryStore[thumbId];
     if (!state.fotos[secao]) state.fotos[secao] = [];
     state.fotos[secao].push({ url: data.url, fileName, status:'ok' });
     saveDraft();
   } catch(err) {
     updateThumbState(thumbId, 'erro');
-    showToast('Erro no envio da foto. Tente novamente.');
+    _fotoRetryStore[thumbId] = { secao, compressed, os, cliente };
+    const img = document.getElementById(thumbId);
+    if (img) {
+      img.title = 'Falha no envio — toque para reenviar';
+      img.onclick = function() { retryFoto(thumbId); };
+    }
+    showToast('Erro no envio da foto — toque na miniatura vermelha para reenviar.');
   }
+}
+
+async function retryFoto(thumbId) {
+  const r = _fotoRetryStore[thumbId];
+  if (!r) return;
+  const img = document.getElementById(thumbId);
+  if (img) { img.onclick = null; }
+  updateThumbState(thumbId, 'uploading');
+  showToast('Reenviando foto…');
+  await _tentarUploadFoto(r.secao, r.compressed, thumbId, r.os, r.cliente);
 }
 
 function createThumbnail(secao, src, cssClass, thumbId) {
@@ -1914,9 +2004,8 @@ async function goToFinal() {
         campos_json: state,
         fotos_json: state.fotos || []
       };
-      const r = await fetch(GAS_URL, { method: 'POST', body: gcBody(_payload) });
-      const d = JSON.parse(await r.text());
-      if (d.status !== 'ok') throw new Error(d.message || 'Erro do servidor');
+      const d = await gasPostJson(_payload); // 28/07: parse seguro + retry
+      if (d.status !== 'ok') throw new Error(d.message || d.error || 'Erro do servidor');
     } catch (e) {
       _formularioEnviado = false; // falha real — libera nova tentativa
       showToast('Erro ao enviar: ' + e.message);
@@ -1939,10 +2028,15 @@ async function goToFinal() {
 // ADITIVO: sem mudança de GAS; roda 1x por sessão do form (_pdfEnviado).
 async function enviarPdfParaDrive() {
   if (_pdfEnviado || !_osId) return;
-  if (!window.jspdf || !window.html2canvas) return; // CDN indisponível → só o print local
+  if (!window.jspdf || !window.html2canvas) {
+    // 28/07: era um return SILENCIOSO (classe do achado #2 da OS-0016) — agora avisa
+    showToast('PDF não gerado: biblioteca não carregou. Recarregue a página e finalize de novo.');
+    return;
+  }
   _pdfEnviado = true;
   var el = document.getElementById('pdf-layout');
   try {
+    await pdfHidratarFotosDrive(); // 28/07: embute fotos de rascunho restaurado
     buildPdfLayout();
     // Torna o layout renderável fora da tela, com largura de página A4 (~794px @96dpi).
     var _prevStyle = el.getAttribute('style') || '';
@@ -1990,8 +2084,7 @@ async function enviarPdfParaDrive() {
       caption: 'Diagnóstico sem desmontagem (Form 02)',
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
-    var r = await fetch(GAS_URL, { method: 'POST', body: gcBody(payload) });
-    var d = JSON.parse(await r.text());
+    var d = await gasPostJson(payload); // 28/07: parse seguro + retry
     if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
     showToast('PDF do diagnóstico salvo no Drive');
   } catch (e) {
@@ -2069,6 +2162,33 @@ function pdfPhoto(zone) {
   return `<div class="pdf-photo-reminder">📷 ${count} foto(s) registrada(s) — ver Drive</div>`;
 }
 
+// 28/07: cache url→dataURL das fotos hidratadas do Drive (getFotoBase64, GAS v78).
+// Antes, com rascunho restaurado, as fotos antigas entravam como <img src=drive-url>
+// que o html2canvas NÃO captura (sem CORS) → PDF com fotos faltando.
+const _fotoB64Cache = {};
+async function pdfHidratarFotosDrive() {
+  const zonas = Object.keys(state.fotos || {});
+  for (const zone of zonas) {
+    const dataUrls = _fotoDataUrls[zone] || [];
+    const driveEntries = (state.fotos[zone] || []).filter(e => e && e.url);
+    // Sessão atual já cobre tudo → nada a hidratar nesta zona
+    if (dataUrls.length >= driveEntries.length) continue;
+    for (const e of driveEntries) {
+      if (_fotoB64Cache[e.url]) continue;
+      try {
+        const d = await gasPostJson({
+          action: 'getFotoBase64',
+          key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+          url: e.url
+        }, 2);
+        if (d && d.status === 'ok' && d.base64) {
+          _fotoB64Cache[e.url] = 'data:' + (d.mimeType || 'image/jpeg') + ';base64,' + d.base64;
+        }
+      } catch (eF) { /* segue — a foto entra como lembrete no PDF */ }
+    }
+  }
+}
+
 function pdfFotoBlock(zone) {
   const dataUrls = _fotoDataUrls[zone] || [];
   const driveEntries = (state.fotos[zone] || []).filter(e => e && e.url);
@@ -2077,10 +2197,21 @@ function pdfFotoBlock(zone) {
     if (count === 0) return '';
     return `<div class="pdf-photo-reminder">📷 ${count} foto(s) registrada(s) — ver Drive</div>`;
   }
-  let imgs = dataUrls.map(url => `<img class="pdf-foto-img" src="${url}" alt="foto">`).join('');
-  if (driveEntries.length > 0 && dataUrls.length === 0) {
-    imgs = driveEntries.map(e => `<img class="pdf-foto-img" src="${e.url}" alt="foto">`).join('');
+  // 28/07: sessão atual cobre tudo → dataUrls (inclui até foto que falhou no upload).
+  // Rascunho restaurado → base64 hidratado por URL; sem hidratação, vira lembrete
+  // explícito em vez de <img> quebrada invisível.
+  let srcs, faltando = 0;
+  if (dataUrls.length >= driveEntries.length) {
+    srcs = dataUrls;
+  } else {
+    srcs = [];
+    driveEntries.forEach(e => {
+      if (_fotoB64Cache[e.url]) srcs.push(_fotoB64Cache[e.url]);
+      else faltando++;
+    });
   }
+  let imgs = srcs.map(url => `<img class="pdf-foto-img" src="${url}" alt="foto">`).join('');
+  if (faltando > 0) imgs += `<div class="pdf-photo-reminder">📷 +${faltando} foto(s) no Drive (não embutida(s))</div>`;
   return `<div class="pdf-foto-block">${imgs}</div>`;
 }
 
@@ -2378,8 +2509,9 @@ function buildPdfLayout() {
   document.getElementById('pdf-layout').innerHTML = html;
 }
 
-function printAll() {
+async function printAll() {
   captureAllInputs();
+  try { await pdfHidratarFotosDrive(); } catch(e) {} // 28/07: impressão local tb com fotos
   buildPdfLayout();
   window.print();
 }
@@ -2501,19 +2633,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('id-data').value = today;
   document.getElementById('sF-data').value = today;
 
-  // Load draft if exists
-  const draft = loadDraft();
-  if (draft) {
-    hydrateUI(draft);
-    showToast('Rascunho restaurado');
-  }
-
-  // Pipeline: ler os_id/tarefa_id da URL e pré-preencher OS/cliente
+  // 28/07: URL PRIMEIRO — a ordem antiga carregava o rascunho antes de saber a OS,
+  // então a chave era sempre a global e OS nova herdava rascunho de OS velha.
   var _p = new URLSearchParams(location.search);
   _osId     = _p.get('os_id')     || '';
   _tarefaId = _p.get('tarefa_id') || '';
   var _cli  = _p.get('cliente')   || _p.get('client')     || '';
   var _num  = _p.get('os_numero') || _p.get('os')         || '';
+  resolveDraftKey(); // 28/07: chave por OS
+
+  // Load draft if exists (agora já com a chave certa)
+  const draft = loadDraft();
+  if (draft) {
+    hydrateUI(draft);
+    showToast('Rascunho restaurado');
+  }
   if (_num) { var eOs = document.getElementById('id-os');      if (eOs && !eOs.value) eOs.value = _num; }
   if (_cli) { var eCl = document.getElementById('id-cliente'); if (eCl && !eCl.value) eCl.value = _cli; }
 

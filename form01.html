@@ -1,5 +1,15 @@
 <!DOCTYPE html>
 <!--
+form01.html — 28/07/2026 — ENVIO ROBUSTO + FOTO REENVIÁVEL (chamado do Fernando)
+  - gasPostJson: o GAS às vezes responde página HTML de erro em vez de JSON →
+    "JSON Parse error: Unrecognized token '<'" e a foto ficava com contorno
+    vermelho SEM caminho de reenvio (caso real: fotos da chegada perdidas na
+    OS de Reforma). Agora: parse seguro + 3 tentativas com backoff em foto/
+    saveFormulario/PDF, e a miniatura vermelha é CLICÁVEL para reenviar.
+  - jsPDF/html2canvas passam a ser LOCAIS do repo (./jspdf.umd.min.js,
+    ./html2canvas.min.js) com CDN de fallback; falta da lib agora avisa em vez
+    de pular o PDF em silêncio. Nenhum id/data-key/função renomeado.
+  ----------------------------------------------------------------------------
 form01.html — 15/07/2026 — PDF do recebimento → Drive/Gestão de Documentos (ADITIVO)
   - No envio (enviar, se houver os_id), monta o #pdf-layout (novo, layout do termo
     de recebimento), captura com html2canvas, pagina num PDF A4 (jsPDF) e sobe via
@@ -107,8 +117,13 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
   .p1-footer{font-size:9px;font-style:italic;text-align:center;color:#555;border-top:.5px solid #ccc;padding-top:4px;margin-top:8px}
 </style>
 <!-- Geração do PDF de recebimento para subir ao Drive (Gestão de Documentos). Aditivo. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- 28/07: locais primeiro (mesmo repo ProperForms); CDN só de fallback -->
+<script src="./jspdf.umd.min.js"></script>
+<script src="./html2canvas.min.js"></script>
+<script>
+  if (!window.jspdf)       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');
+  if (!window.html2canvas) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>');
+</script>
 </head>
 <body>
 <div id="app">
@@ -180,6 +195,25 @@ const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
 
+// 28/07: POST robusto ao GAS — parse seguro + retry (o Apps Script às vezes
+// responde página HTML de erro; o JSON.parse cru estourava "token '<'").
+async function gasPostJson(payload, tentativas){
+  tentativas = tentativas || 3;
+  let ultimoErro = null;
+  for (let i = 0; i < tentativas; i++){
+    try{
+      const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      const text = await resp.text();
+      try { return JSON.parse(text); }
+      catch(ePar){ throw new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){
+      ultimoErro = e;
+      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  throw new Error((ultimoErro && ultimoErro.message) || 'falha de comunicação');
+}
+
 let _osId = '', _tarefaId = '', _enviado = false;
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 const _formUid = pgpUid();
@@ -235,22 +269,42 @@ function handlePhoto(secao, file){
   reader.readAsDataURL(file);
 }
 async function uploadPhoto(secao, dataUrl, fileName){
-  const thumbId = 'th-' + Date.now();
+  const thumbId = 'th-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
   const cont = document.getElementById('thumbs-' + secao);
   const el = document.createElement('img'); el.className='thumb uploading'; el.id=thumbId; el.src=dataUrl; cont.appendChild(el);
+  await _tentarUploadFoto01(secao, dataUrl, fileName, thumbId);
+}
+
+// 28/07: retry de foto — a miniatura vermelha vira clicável em vez de perder a foto
+const _fotoRetryStore = {};
+async function _tentarUploadFoto01(secao, dataUrl, fileName, thumbId){
+  const el = document.getElementById(thumbId);
   const base64 = dataUrl.split(',')[1];
   try{
     const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_form01', entity_type:'form01' };
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-    const data = JSON.parse(await resp.text());
+    const data = await gasPostJson(payload);
     if (!data || data.ok !== true) throw new Error(data.error||'falha');
-    el.className='thumb ok';
+    if (el){ el.className='thumb ok'; el.onclick=null; el.title=''; }
+    delete _fotoRetryStore[thumbId];
     state.fotos[secao].push({ url:data.url, fileName, status:'ok' });
   }catch(err){
-    el.className='thumb erro';
-    state.fotos[secao].push({ url:null, fileName, status:'erro' });
-    toast('Erro ao enviar foto — tente de novo');
+    if (el){
+      el.className='thumb erro';
+      el.title='Falha no envio — toque para reenviar';
+      el.onclick = function(){ retryFoto01(thumbId); };
+    }
+    _fotoRetryStore[thumbId] = { secao, dataUrl, fileName };
+    toast('Erro ao enviar foto — toque na miniatura vermelha para reenviar');
   }
+}
+
+async function retryFoto01(thumbId){
+  const r = _fotoRetryStore[thumbId];
+  if (!r) return;
+  const el = document.getElementById(thumbId);
+  if (el){ el.onclick=null; el.className='thumb uploading'; }
+  toast('Reenviando foto…');
+  await _tentarUploadFoto01(r.secao, r.dataUrl, r.fileName, thumbId);
 }
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
 
@@ -274,9 +328,8 @@ async function enviar(){
       const payload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'form01', form_uid:_formUid,
         tecnico_nome: state.identificacao.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
         tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '', campos_json: state, fotos_json: state.fotos.chegada||[] };
-      const r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-      const d = JSON.parse(await r.text());
-      if (d.status !== 'ok') throw new Error(d.message || 'Erro do servidor');
+      const d = await gasPostJson(payload); // 28/07: parse seguro + retry
+      if (d.status !== 'ok') throw new Error(d.message || d.error || 'Erro do servidor');
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir recebimento'; toast('Erro ao enviar: ' + e.message); return; }
   }
   // Gera o PDF do recebimento e sobe ao Drive → aparece na Gestão de Documentos
@@ -335,7 +388,10 @@ function buildPdfLayout(){
 }
 async function enviarPdfParaDrive(){
   if (_pdfEnviado || !_osId) return;
-  if (!window.jspdf || !window.html2canvas) return; // CDN indisponível → segue sem PDF
+  if (!window.jspdf || !window.html2canvas) {
+    toast('PDF não gerado: biblioteca não carregou. Recarregue e conclua de novo.'); // 28/07: era silencioso
+    return;
+  }
   _pdfEnviado = true;
   var el = document.getElementById('pdf-layout');
   try{
@@ -374,8 +430,7 @@ async function enviarPdfParaDrive(){
       categoria:'pdf_form01', caption:'Recebimento de máquina (Form 01)',
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
-    var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-    var d = JSON.parse(await r.text());
+    var d = await gasPostJson(payload); // 28/07: parse seguro + retry
     if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
     toast('PDF do recebimento salvo no Drive');
   }catch(e){
@@ -429,8 +484,7 @@ function selMaquina(){
 async function carregarMaquinasOS(){
   if (!_osId) return;
   try{
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
-    const data = JSON.parse(await resp.text());
+    const data = await gasPostJson({ action:'getMaquinasByOS', id_os:_osId }, 2); // 28/07: parse seguro
     const machines = (data && data.machines) || [];
     if (!machines.length) return;
     _maquinas = machines;
