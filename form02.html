@@ -1,4 +1,36 @@
 <!--
+form02.html — 29/07/2026 (V2) — CONDICIONAIS DO GATEWAY + SAÍDA PARA O PIPELINE
+  Chamado do Fernando na PGP-2026-0022 ("bloqueia o que devia liberar, libera o
+  que devia bloquear, e ao salvar o form não fecha pra continuar o pipeline").
+  (A) MATRIZ DAS CONDICIONAIS corrigida nos dois sentidos. Só pula o que EXIGE a
+      máquina operando (data-cond="run"):
+      · LIBERADOS (eram pulados sem motivo — medem-se justamente na máquina que
+        não liga): B6 Tensão de alimentação, Tensão lida (V), Corrente nominal de
+        plaqueta, Desequilíbrio de tensão entre fases, Display IHM (o código de
+        falha é a principal pista de um "não liga").
+      · BLOQUEADOS (eram respondíveis numa máquina parada, onde não existe
+        pressão nem vazão para ler): B2 Pressão de trabalho, Regulagem de
+        pressão, Pressão lida, Vazão estimada/realizada e o bloco de medição.
+  (B) A REGRA PASSOU A OBEDECER À RESPOSTA, não só ao gateway:
+      pula se gateway = NÃO LIGA OU "Liga ao acionar chave" = N. E no gateway
+      NÃO LIGA o B1 nasce N e trava (dava para marcar NÃO LIGA e responder S — a
+      contradição ia inteira para o laudo).
+      Item que vira PULADO tem a resposta LIMPA (state + botão + input), senão o
+      valor antigo continuava viajando no campos_json e no PDF.
+  (C) PDF usa EXATAMENTE a mesma regra (tinha a sua própria lista de ⚡,
+      divergente da tela) + ganhou as linhas "Corrente lida em operação" e
+      "Temperatura do painel", que existiam no form e sumiam do laudo.
+  (D) TELA FINAL (8/8) deixou de ser um beco sem saída: o botão principal virou
+      "✅ Concluir e voltar ao pipeline" (o PCF abre os forms na MESMA aba via
+      location.href, então fechar = voltar para ProperTech?modo=pipeline&os_id=),
+      com auto-retorno de 8s cancelável que só começa DEPOIS do upload do PDF
+      terminar (navegar antes matava o envio pela metade). "Salvar Rascunho" só
+      aparece no modo avulso (sem OS). O aviso "não sincronizado" ganhou botão
+      🔄 Reenviar — antes mandava "tocar em Finalizar de novo", e não havia mais
+      nenhum Finalizar visível nessa tela.
+  Tudo ADITIVO: nenhum id/name/data-key/função/action existente renomeado.
+  Testes: 77 (condicionais) + 20 (tela final) + 31 (PDF) + anti-regressão = 128, 0 falhas.
+  ----------------------------------------------------------------------------
 form02.html — 29/07/2026 — pacote pós-teste profundo (F-01, F-01b, F-14, F-30)
   - F-01: client_ts + foto_uid CONGELADOS na compressão da foto (viajam dentro do
     objeto 'compressed', que é o mesmo reusado pelo retry) → o servidor deixa de
@@ -234,6 +266,26 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
       border-radius: 4px; letter-spacing: 0.05em;
     }
     .conditional-item.skipped .skipped-badge { display: block; }
+
+    /* ── ITEM TRAVADO PELO GATEWAY (29/07) ─────────────────────────────── */
+    /* Quando o gateway diz NÃO LIGA, "Liga ao acionar chave" não pode ser
+       respondido "S" — a contradição ia inteira para o laudo e para o PDF. */
+    .item-row.locked { position: relative; }
+    .item-row.locked .btn-group { pointer-events: none; opacity: 0.75; }
+    .locked-badge {
+      display: none; position: absolute; top: 4px; right: 4px;
+      background: #4B5563; color: #D1D5DB;
+      font-size: 10px; font-weight: 700; padding: 2px 7px;
+      border-radius: 4px; letter-spacing: 0.05em;
+    }
+    .item-row.locked .locked-badge { display: block; }
+
+    /* ── AUTO-RETORNO AO PIPELINE (29/07) ──────────────────────────────── */
+    .auto-volta {
+      margin-top: 10px; font-size: 13px; color: var(--text-secondary);
+      text-align: center;
+    }
+    .auto-volta a { color: var(--accent); font-weight: 700; cursor: pointer; text-decoration: underline; }
 
     /* ── PHOTO ZONE ────────────────────────────────────────────────────── */
     .photo-zone {
@@ -692,7 +744,8 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <span>B1 – Partida e Atuação</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body open">
-          <div class="item-row">
+          <div class="item-row" id="row-b1-ligaChave">
+            <span class="locked-badge">🔒 STATUS</span>
             <div class="item-label">Liga ao acionar chave / botão?</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b1-ligaChave" data-val="S" onclick="selectToggle(this)">S</button>
@@ -700,7 +753,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b1-ligaChave" data-val="NA" onclick="selectToggle(this)">N/A</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Partida sem ruído excessivo ou tranco?</div>
             <div class="btn-group">
@@ -710,7 +763,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Tempo até pressão máxima de carga (alívio)</div>
             <input type="text" id="b1-tempoMaxima" inputmode="decimal" placeholder="s / min"
@@ -723,7 +776,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Pressuriza até pressão máxima de carga configurada</div>
             <input type="text" id="b1-pressurizaValor" inputmode="decimal" placeholder="bar / PSI"
@@ -736,7 +789,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Desliga ou alivia automaticamente ao atingir pressão de alívio?</div>
             <div class="btn-group">
@@ -746,7 +799,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Rearma corretamente ao cair para pressão mínima?</div>
             <div class="btn-group">
@@ -765,16 +818,18 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <span>B2 – Pressão e Vazão</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body">
-          <div class="item-row">
-            <div class="item-label">Pressão de trabalho dentro do esperado</div>
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Pressão de trabalho dentro do esperado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="NA" onclick="selectToggle(this)">N/A</button>
             </div>
           </div>
-          <div class="item-row">
-            <div class="item-label">Regulagem de pressão funciona</div>
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <div class="item-label">⚡ Regulagem de pressão funciona</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="N" onclick="selectToggle(this)">N</button>
@@ -791,7 +846,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Pressão de alívio configurada no controlador (bar / PSI)</div>
             <div class="btn-group">
@@ -801,7 +856,8 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="field-group" style="margin-top:10px;">
+          <div class="field-group conditional-item" data-cond="run" style="margin-top:10px;">
+            <span class="skipped-badge">⚡ PULADO</span>
             <label>Pressão lida</label>
             <input type="number" id="b2-pressaoLida" inputmode="decimal" placeholder="bar / psi">
           </div>
@@ -809,18 +865,21 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
             <label>Pressão esperada / referência</label>
             <input type="number" id="b2-pressaoEsperada" inputmode="decimal" placeholder="bar / psi">
           </div>
-          <div class="field-group">
+          <div class="field-group conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <label>Vazão estimada (m³/min)</label>
             <input type="number" id="b2-vazaoEstimada" inputmode="decimal" placeholder="m³/min">
           </div>
-          <div class="field-group">
+          <div class="field-group conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <label>Vazão realizada?</label>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-vazaoRealizada" data-val="S" onclick="selectToggle(this)">Sim</button>
               <button class="btn-toggle" data-field="b2-vazaoRealizada" data-val="N" onclick="selectToggle(this)">Não</button>
             </div>
           </div>
-          <div id="bloco-vazao" style="display:none">
+          <div id="bloco-vazao" class="conditional-item" data-cond="run" style="display:none">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="field-group">
               <label>Tempo de Enchimento (min)</label>
               <input type="number" id="b2-tempoEnchimento" inputmode="decimal" placeholder="min">
@@ -847,7 +906,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <span>B3 – Temperatura</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body">
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Temperatura de descarga dentro do limite</div>
             <div class="btn-group">
@@ -857,7 +916,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b3-tempDescarga" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Temperatura de óleo dentro do limite</div>
             <div class="btn-group">
@@ -875,7 +934,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b3-tempAmbiente" data-val="NA" onclick="selectToggle(this)">N/A</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Sistema de resfriamento / ventilação OK</div>
             <div class="btn-group">
@@ -1000,7 +1059,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b5-filtroOleo" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Dreno automático — funcionando?</div>
             <div class="btn-group">
@@ -1029,8 +1088,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <span>B6 – Elétrico sem Abertura do Painel</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body">
-          <div class="item-row conditional-item" data-cond="true">
-            <span class="skipped-badge">⚡ PULADO</span>
+          <div class="item-row">
             <div class="item-label">Tensão de alimentação dentro do esperado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="S" onclick="selectToggle(this)">S</button>
@@ -1038,17 +1096,16 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="NA" onclick="selectToggle(this)">N/A</button>
             </div>
           </div>
-          <div class="field-group conditional-item" data-cond="true" style="margin-top:4px;">
-            <span class="skipped-badge">⚡ PULADO</span>
+          <div class="field-group" style="margin-top:4px;">
             <label>Tensão lida (V)</label>
             <input type="number" id="b6-tensaoLida" inputmode="decimal" placeholder="V">
           </div>
-          <div class="field-group conditional-item" data-cond="true">
+          <div class="field-group conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <label>Corrente lida (A)</label>
             <input type="number" id="b6-correnteLida" inputmode="decimal" placeholder="A">
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Temperatura do painel aceitável</div>
             <div class="btn-group">
@@ -1075,7 +1132,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b6-cabeamento" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
+          <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">⚡ Corrente em carga plena (alicate amperímetro)</div>
             <input type="text" id="b6-correnteCargaValor" inputmode="decimal" placeholder="A"
@@ -1088,14 +1145,12 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="field-group conditional-item" data-cond="true">
-            <span class="skipped-badge">⚡ PULADO</span>
+          <div class="field-group">
             <label>Corrente nominal de plaqueta (A)</label>
             <input type="text" id="b6-correnteNominal" inputmode="decimal" placeholder="A">
           </div>
-          <div class="item-row conditional-item" data-cond="true">
-            <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Desequilíbrio de tensão entre fases</div>
+          <div class="item-row">
+            <div class="item-label">Desequilíbrio de tensão entre fases</div>
             <input type="text" id="b6-desequilibrioValor" inputmode="decimal" placeholder="%"
               style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
               color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
@@ -1106,9 +1161,8 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b6-desequilibrio" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row conditional-item" data-cond="true">
-            <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Display IHM sem código de falha ativo</div>
+          <div class="item-row">
+            <div class="item-label">Display IHM sem código de falha ativo</div>
             <input type="text" id="b6-displayCodigoValor" placeholder="Código (se houver)"
               style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
               color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
@@ -1283,10 +1337,15 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
       <div id="summary-content"></div>
     </div>
     <div id="sync-warning" class="card" style="display:none;border:1.5px solid #f59e0b;color:#f59e0b;">
-      Não sincronizado — toque em Finalizar de novo para reenviar.
+      <div style="margin-bottom:10px;">Não sincronizado — o diagnóstico ainda NÃO chegou ao sistema. Toque em Reenviar.</div>
+      <button class="btn-primary" style="background:#f59e0b;" onclick="reenviarFormulario()">🔄 Reenviar formulário</button>
     </div>
     <div class="card">
-      <button class="btn-primary" onclick="saveDraft(); showToast('Rascunho salvo!')">💾 Salvar Rascunho</button>
+      <button class="btn-primary" id="btn-voltar-pipeline" style="display:none" onclick="voltarAoPipeline()">✅ Concluir e voltar ao pipeline</button>
+      <div class="auto-volta" id="auto-volta-aviso" style="display:none">
+        Voltando ao pipeline em <span id="auto-volta-seg">8</span>s… <a onclick="cancelarAutoVolta()">cancelar</a>
+      </div>
+      <button class="btn-primary" id="btn-rascunho-final" style="background:#374151;border:1.5px solid #6B7280;" onclick="saveDraft(); showToast('Rascunho salvo!')">💾 Salvar Rascunho</button>
       <button class="btn-primary" style="background:#374151;border:1.5px solid #6B7280;" onclick="printAll()">🖨️ Imprimir / Gerar PDF</button>
       <button class="btn-secondary" onclick="newDiagnostic()">＋ Novo Diagnóstico</button>
     </div>
@@ -1464,10 +1523,59 @@ function selectGateway(val) {
   scheduleSave();
 }
 
+// 29/07 — CONDICIONAIS (correção do chamado do Fernando na PGP-2026-0022).
+// ANTES: liga/desliga único — TODO .conditional-item pulava se e só se o gateway
+// fosse 'no_boot', e a marcação de quais itens eram condicionais estava errada
+// nos dois sentidos (B6 tensão/plaqueta/desequilíbrio/IHM eram bloqueados sem
+// motivo — são medidos justamente na máquina que não liga; B2 pressão/vazão
+// ficava liberado numa máquina parada, onde não existe pressão para ler).
+// AGORA: só pula o que EXIGE a máquina operando (data-cond="run"), e a regra
+// também obedece à RESPOSTA do técnico — não só ao gateway.
+function _maquinaNaoOpera() {
+  return state.gateway === 'no_boot' || state.secaoB.partida.ligaChave === 'N';
+}
+
+// Limpa o que ficou preso num item que passou a ser PULADO — senão a resposta
+// antiga continuava viajando no campos_json e no PDF (era o caso do "S" em
+// Pressão de trabalho numa máquina que não liga).
+function _limparItemPulado(el) {
+  const campos = {};
+  el.querySelectorAll('.btn-toggle[data-field]').forEach(b => {
+    b.classList.remove('active-S','active-N','active-NA','active-NT');
+    campos[b.dataset.field] = 1;
+  });
+  Object.keys(campos).forEach(f => writeStateByField(f, ''));
+  el.querySelectorAll('input, textarea').forEach(i => { i.value = ''; });
+  captureAllInputs();
+}
+
+// Gateway NÃO LIGA ⇒ "Liga ao acionar chave" nasce N e trava. Antes dava para
+// marcar NÃO LIGA e responder S — laudo e PDF saíam se contradizendo.
+function _travarLigaChave(travar) {
+  const row = document.getElementById('row-b1-ligaChave');
+  if (!row) return;
+  if (travar) {
+    if (state.secaoB.partida.ligaChave !== 'N') {
+      document.querySelectorAll('[data-field="b1-ligaChave"]').forEach(b =>
+        b.classList.remove('active-S','active-N','active-NA','active-NT'));
+      const bn = document.querySelector('[data-field="b1-ligaChave"][data-val="N"]');
+      if (bn) bn.classList.add('active-N');
+      state.secaoB.partida.ligaChave = 'N';
+    }
+    row.classList.add('locked');
+  } else {
+    row.classList.remove('locked');
+  }
+}
+
+// Nome mantido (é chamado por selectGateway e por hydrateUI) — só o corpo mudou.
 function applyGatewayConditions() {
-  const skip = state.gateway === 'no_boot';
+  _travarLigaChave(state.gateway === 'no_boot');
+  const skip = _maquinaNaoOpera();
   document.querySelectorAll('.conditional-item').forEach(el => {
+    const jaEstava = el.classList.contains('skipped');
     el.classList.toggle('skipped', skip);
+    if (skip && !jaEstava) _limparItemPulado(el);
   });
 }
 
@@ -1507,6 +1615,8 @@ function selectToggle(btn) {
   });
   btn.classList.add('active-' + val);
   writeStateByField(field, val);
+  // 29/07: a resposta do B1 também comanda o bloqueio (não só o gateway).
+  if (field === 'b1-ligaChave') applyGatewayConditions();
   scheduleSave();
 }
 
@@ -1756,8 +1866,10 @@ function hydrateUI(saved) {
     const map = { sim_opera:'gw-sim-opera', sim_falha:'gw-sim-falha', no_boot:'gw-no-boot' };
     const el = document.getElementById(map[state.gateway]);
     if (el) el.classList.add('selected');
-    applyGatewayConditions();
   }
+  // 29/07: fora do if — a regra agora depende também de b1-ligaChave, então um
+  // rascunho sem gateway (ou salvo pela versão antiga) precisa ser reavaliado.
+  applyGatewayConditions();
 
   // Restore approval
   if (state.secaoF.aprovacao) {
@@ -2008,6 +2120,7 @@ function updateThumbState(thumbId, cssClass) {
 async function goToFinal() {
   captureAllInputs();
 
+  var _envioFalhou = false;
   if (_osId && !_formularioEnviado) {
     _formularioEnviado = true; // FP-05: grava em FORMULARIOS uma vez só por sessão do form
     var _sess = null;
@@ -2030,18 +2143,95 @@ async function goToFinal() {
       if (d.status !== 'ok') throw new Error(d.message || d.error || 'Erro do servidor');
     } catch (e) {
       _formularioEnviado = false; // falha real — libera nova tentativa
+      _envioFalhou = true;
       showToast('Erro ao enviar: ' + e.message);
       var _syncWarn = document.getElementById('sync-warning');
       if (_syncWarn) _syncWarn.style.display = 'block';
     }
   }
+  if (!_envioFalhou) {
+    var _sw = document.getElementById('sync-warning');
+    if (_sw) _sw.style.display = 'none';
+  }
 
   // Gera o PDF do diagnóstico e sobe ao Drive → aparece na Gestão de Documentos
   // na hora, sem depender de "finalizar a OS". Não bloqueia a tela final.
-  if (_osId) { enviarPdfParaDrive(); }
+  // 29/07: guardamos a promessa — o auto-retorno ao pipeline só dispara DEPOIS
+  // que o upload do PDF terminar, senão a navegação matava o envio pela metade.
+  if (_osId) { _pdfAguardando = enviarPdfParaDrive(); }
 
   renderSummary();
   showScreen('screen-final');
+  prepararTelaFinal(_envioFalhou);
+}
+
+// ══ SAÍDA PARA O PIPELINE (29/07) ═════════════════════════════════════════
+// Chamado do Fernando: ao finalizar, o form ficava aberto e o técnico não tinha
+// como voltar ao pipeline da OS — o único botão vermelho da tela 8/8 era
+// "Salvar Rascunho", que sequer faz sentido depois do envio. O PCF abre os forms
+// por window.location.href (mesma aba), então "fechar" = navegar de volta para
+// ProperTech?modo=pipeline&os_id=... (a própria PCF reabre o pipeline da OS).
+var PCF_PIPELINE_URL = 'https://grupotap.github.io/ProperTech/index.html';
+var _pdfAguardando = null;
+var _autoVoltaTimer = null;
+
+function prepararTelaFinal(falhou) {
+  var btnV  = document.getElementById('btn-voltar-pipeline');
+  var btnR  = document.getElementById('btn-rascunho-final');
+  var aviso = document.getElementById('auto-volta-aviso');
+  if (aviso) aviso.style.display = 'none';
+  // Sem OS vinculada não existe pipeline para voltar — mantém o rascunho.
+  if (btnV) btnV.style.display = _osId ? '' : 'none';
+  if (btnR) btnR.style.display = _osId ? 'none' : '';
+  if (!_osId || falhou) return;   // com envio pendente NÃO sai sozinho da tela
+  Promise.resolve(_pdfAguardando).catch(function(){}).then(function() {
+    if (_currentScreenId !== 'screen-final') return;
+    var sw = document.getElementById('sync-warning');
+    if (sw && sw.style.display !== 'none') return;  // falhou no meio-tempo
+    iniciarAutoVolta(8);
+  });
+}
+
+function iniciarAutoVolta(seg) {
+  var aviso = document.getElementById('auto-volta-aviso');
+  var span  = document.getElementById('auto-volta-seg');
+  if (!aviso || !span) return;
+  aviso.style.display = '';
+  span.textContent = seg;
+  clearInterval(_autoVoltaTimer);
+  _autoVoltaTimer = setInterval(function() {
+    seg--;
+    span.textContent = seg;
+    if (seg <= 0) { clearInterval(_autoVoltaTimer); _autoVoltaTimer = null; voltarAoPipeline(); }
+  }, 1000);
+}
+
+function cancelarAutoVolta() {
+  clearInterval(_autoVoltaTimer);
+  _autoVoltaTimer = null;
+  var aviso = document.getElementById('auto-volta-aviso');
+  if (aviso) aviso.style.display = 'none';
+}
+
+function voltarAoPipeline() {
+  clearInterval(_autoVoltaTimer);
+  _autoVoltaTimer = null;
+  // O diagnóstico já está no sistema — o rascunho local só atrapalharia a
+  // próxima OS que abrisse este form (era a classe do bug do rascunho global).
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+  if (!_osId) {
+    if (history.length > 1) history.back();
+    else location.href = 'https://grupotap.github.io/ProperHub/';
+    return;
+  }
+  location.href = PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+}
+
+// Reenvio a partir da própria tela final (antes o aviso mandava "tocar em
+// Finalizar de novo", mas não havia mais nenhum Finalizar visível).
+async function reenviarFormulario() {
+  showToast('Reenviando…');
+  await goToFinal();
 }
 
 // ══ PDF → DRIVE (Gestão de Documentos) ═════════════════════════════════════
@@ -2269,7 +2459,10 @@ function buildPdfLayout() {
   const sE   = state.secaoE;
   const sF   = state.secaoF;
   const gw   = state.gateway;
-  const skip = gw === 'no_boot';
+  // 29/07: o laudo passa a usar EXATAMENTE a mesma regra da tela (gateway OU
+  // "Liga ao acionar chave = N"). Antes o PDF tinha a sua própria lista de
+  // ⚡, divergente da tela.
+  const skip = (gw === 'no_boot') || (sB.partida.ligaChave === 'N');
 
   const fmtDate = d => d ? d.split('-').reverse().join('/') : '___';
   const brl = n => Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -2393,12 +2586,12 @@ function buildPdfLayout() {
       <table class="pdf-check-table">
         ${pdfCheckHead('OK','Ñ OK','N/A','N/T')}
         ${pdfCheckRow('⚡ Pressão de trabalho dentro do esperado',        'b2-pressaoTrabalho',  'b2-pressaoLida',      skip)}
-        ${pdfCheckRow('Regulagem de pressão funciona',                    'b2-regulagemPressao', 'b2-pressaoEsperada',  false)}
+        ${pdfCheckRow('⚡ Regulagem de pressão funciona',                 'b2-regulagemPressao', 'b2-pressaoEsperada',  skip)}
         ${pdfCheckRow('Válvula de alívio em boas condições',              'b2-valvulaAlivio',    null,                  false)}
         ${pdfCheckRow('⚡ Pressão de alívio conf. no controlador',        'b2-pressaoAlivio',    null,                  skip)}
-        <tr><td colspan="2" style="font-size:6pt;color:#666">Vazão estimada (m³/min):</td>
-            <td colspan="4">${sB.pressao.vazaoEstimada||''}</td></tr>
-        ${sB.pressao.vazaoRealizada === 'S' ? `<tr>
+        <tr${skip ? ' class="pdf-cond-skip"' : ''}><td colspan="2" style="font-size:6pt;color:#666">⚡ Vazão estimada (m³/min):</td>
+            <td colspan="4">${skip ? '<em>(pulado)</em>' : (sB.pressao.vazaoEstimada||'')}</td></tr>
+        ${(!skip && sB.pressao.vazaoRealizada === 'S') ? `<tr>
           <td colspan="6" style="font-size:6pt;padding:1px 2px;">
             <strong>Medição de Vazão:</strong>
             Tempo: ${sB.pressao.tempoEnchimento||'___'} min &nbsp;|&nbsp;
@@ -2447,16 +2640,18 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-blue">ELÉTRICO — SEM ABERTURA DE PAINEL</div>
       <table class="pdf-check-table">
         ${pdfCheckHead()}
-        ${pdfCheckRow('⚡ Tensão de alimentação dentro do esperado', 'b6-tensaoAlimentacao', 'b6-tensaoLida',         skip)}
+        ${pdfCheckRow('Tensão de alimentação dentro do esperado',    'b6-tensaoAlimentacao', 'b6-tensaoLida',         false)}
+        ${pdfCheckRow('⚡ Corrente lida em operação (A)',             'b6-correnteLidaPdf',   'b6-correnteLida',       skip)}
         ${pdfCheckRow('⚡ Corrente em carga plena (amperímetro)',    'b6-correnteCarga',     'b6-correnteCargaValor', skip)}
-        <tr${skip ? ' class="pdf-cond-skip"' : ''}>
+        <tr>
           <td>Corrente nominal de plaqueta</td>
           <td class="col-valor">${sB.eletrico.correnteNominal||''} A</td>
           <td class="col-check"></td><td class="col-check"></td>
           <td class="col-check"></td><td class="col-check"></td>
         </tr>
-        ${pdfCheckRow('⚡ Desequilíbrio de tensão entre fases',      'b6-desequilibrio',     'b6-desequilibrioValor', skip)}
-        ${pdfCheckRow('⚡ Display IHM sem código de falha ativo',    'b6-displayIHM',        'b6-displayCodigoValor', skip)}
+        ${pdfCheckRow('Desequilíbrio de tensão entre fases',         'b6-desequilibrio',     'b6-desequilibrioValor', false)}
+        ${pdfCheckRow('Display IHM sem código de falha ativo',       'b6-displayIHM',        'b6-displayCodigoValor', false)}
+        ${pdfCheckRow('⚡ Temperatura do painel aceitável',          'b6-tempPainel',        null,                    skip)}
         ${pdfCheckRow('Aterramento visível e íntegro',               'b6-aterramento',        null,                  false)}
         ${pdfCheckRow('Condição do cabeamento externo OK',           'b6-cabeamento',         null,                  false)}
       </table>
