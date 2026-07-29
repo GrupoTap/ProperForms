@@ -1,5 +1,29 @@
 <!DOCTYPE html>
 <!--
+form_corretiva.html — 29/07/2026 — pacote pós-teste profundo (F-25, F-26, F-27, F-30, F-01)
+  - F-25a: job enfileirado DURANTE um pump ativo ficava órfão (o enqueue chama
+    pump(), que sai no guard 'pumping'). Ao final do pump, se sobrou 'pending',
+    reagenda em 5s; e um setInterval de 30s no init como rede de segurança.
+  - F-25b: não havia backoff real — as 6 tentativas queimavam em milissegundos e
+    o job ia para dead-letter antes de a rede voltar. Agora
+    nextRetryAt = Date.now() + min(2^tentativas * 5s, 10min) e o pump pula jobs
+    cuja janela ainda não chegou.
+  - F-25c: "Descartar" durante um envio EM VOO ressuscitava o job (o pump
+    regravava depois). Agora o pump relê o job antes do put e pula se sumiu.
+  - F-26: fotos_json era congelado no Concluir (offline = tudo url:null). Agora
+    cada foto leva foto_uid/client_ts E o fotos_json é REMONTADO no sender, na
+    hora do envio, a partir do store durável de fotos.
+  - F-27a: o uid da instância avulsa (AVULSA_UID_KEY) era por aparelho e nunca
+    rotacionava → a avulsa da máquina X voltava ao abrir para a máquina Y.
+    Rotaciona ao SELAR a instância; limpeza de instâncias órfãs no boot.
+  - F-27b: a avulsa não gerava laudo nenhum (PDF condicionado a _osId) mas a tela
+    dizia "Fotos e laudo guardados no aparelho". Agora gera o PDF e baixa no
+    aparelho (botão "📄 Baixar laudo (PDF)") e a mensagem diz a verdade.
+  - F-30: laudo num único canvas → scale limitado a ~16 Mpx e recusa de PDF
+    branco (iOS estourava o canvas e subia PDF vazio em silêncio).
+  - F-01: client_ts congelado na captura junto do foto_uid que já existia.
+  Tudo ADITIVO: nenhum id/name/data-key/função/action renomeado.
+  ----------------------------------------------------------------------------
 form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo (ProperCare)
   Padrão de integração dos forms 01/02: roda pelo pipeline via ?os_id=&tarefa_id=,
   grava em FORMULARIOS com tipo_formulario='corretiva' (o GAS fecha a tarefa
@@ -342,6 +366,7 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
     <div class="sub" id="okStatus" style="margin-top:10px"></div>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">
       <button class="btn-sign" style="width:auto;padding:11px 16px" id="okFilaBtn" onclick="psAbrirPainel()" style="display:none">📤 Ver envios</button>
+      <button class="btn-sign" style="width:auto;padding:11px 16px;display:none" id="okAvulsoBtn" onclick="baixarLaudoAvulso()">📄 Baixar laudo (PDF)</button>
     </div>
   </div>
 </div>
@@ -453,14 +478,20 @@ window.PS = (function(){
   function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
 
   // ─ Outbox ─
-  function enqueue(job){ job.tries=0; job.status='pending'; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
+  function enqueue(job){ job.tries=0; job.status='pending'; job.nextRetryAt=0; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
   function listJobs(){ return all('outbox'); }
   function jobsOf(draftId){ return all('outbox').then(function(a){ return a.filter(function(j){return j.draftId===draftId;}); }); }
   function dropJobsOf(draftId){ return all('outbox').then(function(a){ return Promise.all(a.filter(function(j){return j.draftId===draftId;}).map(function(j){ return del('outbox',j.jobId); })); }); }
-  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
+  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; j.nextRetryAt=0; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
   function dropJob(id){ return del('outbox',id).then(function(){ emit(); }); }
 
   function setSender(fn){ sender=fn; }
+
+  // 29/07 (F-25b): backoff REAL. Antes as 6 tentativas queimavam em milissegundos
+  // (o pump roda os jobs em sequência) e o job caía em dead-letter ANTES de a rede
+  // voltar. Agora cada falha marca nextRetryAt = 2^tentativas * 5s (teto 10 min) e
+  // o pump PULA jobs cuja janela ainda não chegou.
+  function _backoffMs(tries){ return Math.min(Math.pow(2, tries) * 5000, 600000); }
 
   async function pump(){
     if(pumping || !sender) return;
@@ -471,16 +502,31 @@ window.PS = (function(){
       var pend=jobs.filter(function(j){ return j.status==='pending'; }).sort(function(a,b){ return a.createdAt-b.createdAt; });
       for(var i=0;i<pend.length;i++){
         var j=pend[i], r;
+        if(j.nextRetryAt && j.nextRetryAt > Date.now()) continue;   // 29/07 (F-25b)
         try{ r=await sender(j); }catch(e){ r={ status:'retry', error:(e&&e.message)||'erro' }; }
         j.tries=(j.tries||0)+1; j.updatedAt=Date.now();
-        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; }
-        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); }
-        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending'; }
+        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; j.nextRetryAt=0; }
+        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); j.nextRetryAt=0; }
+        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending';
+               j.nextRetryAt=(j.status==='pending')?(Date.now()+_backoffMs(j.tries)):0; }
+        // 29/07 (F-25c): o técnico pode ter tocado em "Descartar" com este envio EM
+        // VOO — relê o job e só regrava se ele ainda existir (antes ressuscitava).
+        var aindaExiste=await get('outbox', j.jobId);
+        if(!aindaExiste){ emit(); continue; }
         await put('outbox',j);
         emit();
       }
     } finally { pumping=false; }
     emit();
+    // 29/07 (F-25a): job enfileirado DURANTE um pump ativo ficava órfão — o enqueue
+    // chama pump(), que sai no guard 'pumping', e ninguém mais o pegava até um
+    // reload/evento 'online'. Se sobrou pendente (novo ou em backoff), reagenda.
+    try{
+      var resto=await listJobs();
+      var sobrou=false;
+      for(var q=0;q<resto.length;q++){ if(resto[q].status==='pending'){ sobrou=true; break; } }
+      if(sobrou) setTimeout(function(){ pump(); }, 5000);
+    }catch(e){}
   }
 
   function counts(){ return listJobs().then(function(a){
@@ -505,6 +551,24 @@ const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 const DRAFT_KEY = 'proper_draft_corretiva';
 const LOGO_DATAURL = 'data:image/png;base64,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';
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+// V29/07 F-12b: leitura auxiliar com parse seguro + 2 tentativas. O GAS às vezes responde
+// uma PÁGINA HTML de erro (cold start/quota) e o JSON.parse cru morria dentro de um catch
+// silencioso — o técnico via campos vazios sem saber por quê. NÃO usa a fila durável de
+// propósito: estas chamadas são auxiliares (ler máquinas da OS / atualizar cadastro) e não
+// podem competir com a outbox de fotos/formulário.
+async function gcFetchJson(payload, tentativas){
+  var n = tentativas || 2, ultimo = null;
+  for (var i = 1; i <= n; i++){
+    try{
+      var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      var t = await r.text();
+      try { return JSON.parse(t); }
+      catch(e){ ultimo = new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){ ultimo = e; }
+    if (i < n) await new Promise(function(res){ setTimeout(res, 700 * i); });
+  }
+  throw (ultimo || new Error('falha de rede'));
+}
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 
 let _osId = '', _tarefaId = '', _enviado = false, _pdfEnviado = false;
@@ -665,13 +729,20 @@ async function addPhoto(k, dataUrl, fileName){
   if (!Array.isArray(state.fotos[k])) state.fotos[k] = [];
   var ref = { photoId:null, caption:pt.caption, secao:k, status:'pending', url:null, fileName:fileName };
   state.fotos[k].push(ref);
+  // 29/07 (F-01): ms da CAPTURA, gerado 1x. O corpo do job é gravado no IndexedDB
+  // e reenviado tal e qual — nunca é remontado, logo o client_ts nunca muda.
+  var _clientTs = Date.now();
   await ensureDraftSaved();
   try{
-    var photoId = await PS.savePhoto({ draftId:_draftId, pointKey:k, caption:pt.caption, fileName:fileName, dataUrl:dataUrl, uploadStatus:'pending', uploadUrl:'' });
+    var photoId = await PS.savePhoto({ draftId:_draftId, pointKey:k, caption:pt.caption, fileName:fileName, dataUrl:dataUrl, uploadStatus:'pending', uploadUrl:'', clientTs:_clientTs });
     ref.photoId = photoId; el.setAttribute('data-pid', String(photoId));
+    var fotoUid = 'f_'+_formUid+'_'+photoId;
+    ref.foto_uid = fotoUid; ref.client_ts = _clientTs;
     var body = { action:'salvarFotoForm', os:state_os(), cliente:val('f_cliente')||'SemCliente', secao:k, legenda:pt.caption,
       nomeArquivo:fileName, base64:dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_corretiva', entity_type:'corretiva',
-      foto_uid:'f_'+_formUid+'_'+photoId };
+      foto_uid:fotoUid, client_ts:_clientTs };   // 29/07 (F-01): client_ts congelado na captura
+    // o uid fica junto dos bytes → o fotos_json remontado no envio consegue casar
+    try{ await PS.updatePhoto(photoId,{ fotoUid:fotoUid, clientTs:_clientTs }); }catch(e){}
     await PS.enqueue({ draftId:_draftId, kind:'salvarFotoForm', url:GAS_URL, body:body, photoId:photoId, label:pt.caption });
   }catch(e){ el.className='thumb erro'; toast('Não consegui guardar a foto no aparelho'); }
   scheduleSave();
@@ -686,7 +757,24 @@ function markPhotoSent(photoId, url){
 }
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
 function fotosFlat(){ var out=[]; Object.keys(state.fotos).forEach(function(k){ (state.fotos[k]||[]).forEach(function(f){
-  out.push({ url:f.url||null, fileName:f.fileName, secao:k, caption:f.caption||(_PONTO[k]&&_PONTO[k].caption)||k, status:f.status||'pending' }); }); }); return out; }
+  out.push({ url:f.url||null, fileName:f.fileName, secao:k, caption:f.caption||(_PONTO[k]&&_PONTO[k].caption)||k, status:f.status||'pending',
+             foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }); }); }); return out; }
+// 29/07 (F-26): o fotos_json era CONGELADO no momento do Concluir; num envio
+// offline todas as fotos iam com url:null e nada permitia o join com
+// TECH_ATTACHMENTS depois. Remonta a lista NA HORA DO ENVIO a partir do store
+// durável de fotos (fonte da verdade: tem uploadUrl confirmada e foto_uid).
+// Se o store estiver vazio (aba privada / instância já limpa) mantém o congelado.
+async function fotosJsonDoStore(draftId, congelado){
+  var ps=[];
+  try{ ps=await PS.photosOf(draftId); }catch(e){ return congelado; }
+  if(!ps || !ps.length) return congelado;
+  ps.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
+  return ps.map(function(p){
+    return { url:p.uploadUrl||null, fileName:p.fileName, secao:p.pointKey,
+             caption:p.caption||'', status:(p.uploadStatus==='ok'?'ok':'pending'),
+             foto_uid:p.fotoUid||('f_'+_formUid+'_'+p.photoId), client_ts:p.clientTs||0 };
+  });
+}
 
 // ══ REGIME (turnos) + HORÍMETRO ════════════════════════════════════════════
 let _turnoSeq = 0;
@@ -902,6 +990,30 @@ function draftKeyFor(osId, tarefaId){
   return 'corretiva::avulsa::'+u;
 }
 function ensureDraftId(){ if(!_draftId) _draftId=draftKeyFor(_osId,_tarefaId); return _draftId; }
+// 29/07 (F-27a): o uid da avulsa (AVULSA_UID_KEY) era POR APARELHO e nunca
+// rotacionava → ao abrir a corretiva avulsa para a máquina Y o técnico recebia o
+// rascunho da máquina X. Ao SELAR a instância (Concluir) o uid roda: a instância
+// selada segue com o _draftId já resolvido em memória e a PRÓXIMA avulsa nasce
+// limpa. Só vale para avulsa (com os_id a chave já é única por OS).
+function rotacionarUidAvulsa(){
+  if(_osId) return;
+  try{ localStorage.setItem(AVULSA_UID_KEY, pgpUid()); }catch(e){}
+}
+// Instâncias seladas de sessões anteriores (avulsas já rotacionadas) que não têm
+// mais nada a enviar ficariam para sempre no IndexedDB — limpa no boot.
+async function limparInstanciasConcluidas(){
+  try{
+    var ds=await PS.listDrafts();
+    for(var i=0;i<ds.length;i++){
+      var d=ds[i];
+      if(!d || d.formType!=='corretiva' || d.draftId===_draftId) continue;
+      if(d.status!=='sending' || d.pdfPending) continue;
+      var js=await PS.jobsOf(d.draftId), vivos=0;
+      for(var k=0;k<js.length;k++){ if(js[k].status==='pending'||js[k].status==='dead') vivos++; }
+      if(vivos===0){ await PS.dropJobsOf(d.draftId); await PS.dropPhotos(d.draftId); await PS.dropDraft(d.draftId); }
+    }
+  }catch(e){}
+}
 function draftRecord(){
   captura();
   return { draftId:ensureDraftId(), formType:'corretiva', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
@@ -970,7 +1082,8 @@ async function restoreDraft(){
     photos.forEach(function(p){
       if(!state.fotos[p.pointKey]) state.fotos[p.pointKey]=[];
       var okp=(p.uploadStatus==='ok');
-      state.fotos[p.pointKey].push({ photoId:p.photoId, caption:p.caption, secao:p.pointKey, status:(okp?'ok':'pending'), url:p.uploadUrl||null, fileName:p.fileName });
+      state.fotos[p.pointKey].push({ photoId:p.photoId, caption:p.caption, secao:p.pointKey, status:(okp?'ok':'pending'), url:p.uploadUrl||null, fileName:p.fileName,
+        foto_uid:p.fotoUid||'', client_ts:p.clientTs||0 });
       var cont=document.getElementById('thumbs-'+p.pointKey); if(!cont) return;
       var img=document.createElement('img'); img.src=p.dataUrl; img.setAttribute('data-pid',String(p.photoId));
       img.className='thumb '+(okp?'ok':'pending'); cont.appendChild(img);
@@ -1007,7 +1120,9 @@ async function enviar(){
   // Aproveita a visita pra atualizar horímetro + regime no cadastro da máquina (best-effort)
   try{ await atualizarMaquinaCadastro(); }catch(e){}
   if(_osId){ await enfileirarPdf(); }
+  else { await gerarLaudoAvulso(); }            // 29/07 (F-27b): avulsa também tem laudo
   _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
+  rotacionarUidAvulsa();                        // 29/07 (F-27a): próxima avulsa nasce limpa
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
   atualizarOkScreen();
@@ -1018,6 +1133,10 @@ async function enviar(){
 function registrarSender(){
   PS.setSender(async function(job){
     try{
+      // 29/07 (F-26): estado ATUAL das fotos no momento do envio (não o do Concluir)
+      if(job.kind==='saveFormulario' && job.body){
+        try{ job.body.fotos_json = await fotosJsonDoStore(job.draftId, job.body.fotos_json); }catch(e){}
+      }
       var r=await fetch(job.url,{ method:'POST', body:gcBody(job.body) });
       var txt=await r.text(); var d=null; try{ d=JSON.parse(txt); }catch(e){}
       var ok = d && (d.status==='ok' || d.ok===true);
@@ -1054,9 +1173,17 @@ async function atualizarOkScreen(){
   var pend=jobs.filter(function(j){return j.status==='pending';}).length;
   var dead=jobs.filter(function(j){return j.status==='dead';}).length;
   if(filaBtn) filaBtn.style.display=(pend+dead>0)?'':'none';
-  if(!_osId){ if(okSub) okSub.textContent='Fotos e laudo guardados no aparelho. Sem OS vinculada, os dados do formulário não ficam no sistema.'; }
+  var avBtn=document.getElementById('okAvulsoBtn');
+  if(!_osId){
+    // 29/07 (F-27b): a tela agora diz a VERDADE sobre o laudo da avulsa
+    if(okSub) okSub.textContent = _pdfPendente
+      ? 'Fotos guardadas no aparelho. O laudo em PDF NÃO foi gerado — toque em "Baixar laudo (PDF)" para tentar de novo. Sem OS vinculada, os dados do formulário não ficam no sistema.'
+      : 'Laudo em PDF baixado no aparelho e fotos guardadas. Sem OS vinculada, os dados do formulário não ficam no sistema.';
+    if(avBtn) avBtn.style.display='';
+  } else if(avBtn) avBtn.style.display='none';
   if(pend+dead===0 && !_pdfPendente){
-    if(big) big.textContent='✅'; if(title) title.textContent='Corretiva enviada';
+    if(big) big.textContent='✅';
+    if(title) title.textContent = _osId ? 'Corretiva enviada' : 'Corretiva concluída (avulsa)';   // 29/07 (F-27b)
     if(_osId&&okSub) okSub.textContent='A tarefa foi concluída e o servidor confirmou tudo (dados, fotos e PDF).';
     if(okStatus) okStatus.textContent='';
   } else if(dead>0){
@@ -1179,6 +1306,25 @@ function buildPdfLayout(photosByKey){
   document.getElementById('pdf-layout').innerHTML = html;
 }
 // Carrega as fotos guardadas no aparelho (IndexedDB) agrupadas por ponto de leitura.
+// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
+// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
+// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
+// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
+// vira ERRO visível em vez de PDF branco.
+function _pdfScaleSeguro(el){
+  var MAXPX = 16000000;
+  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
+  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
+  var s = Math.sqrt(MAXPX / (w * h));
+  if (!isFinite(s) || s <= 0) s = 1;
+  s = Math.min(2, s);
+  return Math.max(0.5, Math.round(s * 100) / 100);
+}
+function _pdfChecarCanvas(canvas, imgData){
+  if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+}
+
 async function loadPhotosByKey(){
   var byKey={};
   try{
@@ -1190,7 +1336,9 @@ async function loadPhotosByKey(){
 }
 // Gera o PDF do laudo (com as fotos embutidas) e devolve o base64. Lança erro se
 // as bibliotecas de PDF não carregaram (ex.: CDN bloqueada no 1º acesso em campo).
-async function buildPdfBase64(){
+// 29/07 (F-27b): extraído de buildPdfBase64 (mesma lógica, sem renomear nada) —
+// a avulsa precisa do documento em si para baixar no aparelho, não do base64.
+async function _buildPdfDoc(){
   if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
   var el=document.getElementById('pdf-layout');
   var photosByKey=await loadPhotosByKey();
@@ -1198,16 +1346,44 @@ async function buildPdfBase64(){
   el.classList.add('pdf-capturing');
   el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
   try{
-    var canvas=await html2canvas(el,{ scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    var _scale=_pdfScaleSeguro(el);   // 29/07 (F-30)
+    var canvas=await html2canvas(el,{ scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     var jsPDF=window.jspdf.jsPDF;
     var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
     var imgData=canvas.toDataURL('image/jpeg',0.92);
+    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe/baixa PDF branco
     var heightLeft=imgH, position=0;
     pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
     while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
-    return pdf.output('datauristring').split(',')[1];
+    return pdf;
   } finally { el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
+}
+async function buildPdfBase64(){
+  var pdf = await _buildPdfDoc();
+  return pdf.output('datauristring').split(',')[1];
+}
+// 29/07 (F-27b): a corretiva AVULSA não gerava laudo nenhum (o PDF era condicionado
+// a _osId) mas a tela dizia "Fotos e laudo guardados no aparelho". Agora gera de
+// verdade e baixa no aparelho — sem OS não existe pasta no Drive para onde subir.
+var _avulsoPdfDoc=null, _avulsoPdfName='';
+async function gerarLaudoAvulso(){
+  try{
+    var doc=await _buildPdfDoc();
+    var i=state.identificacao||{};
+    var quem=String(i.equipamento||i.cliente||'avulsa').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,40) || 'avulsa';
+    _avulsoPdfDoc=doc;
+    _avulsoPdfName='Corretiva_avulsa_'+quem+'_'+new Date().toISOString().slice(0,10)+'.pdf';
+    doc.save(_avulsoPdfName);
+    _pdfPendente=false; await marcarPdfPendente(false);
+  }catch(e){
+    _pdfPendente=true; await marcarPdfPendente(true);
+    toast('Laudo não gerado: '+((e&&e.message)||'erro'));
+  }
+}
+function baixarLaudoAvulso(){
+  if(_avulsoPdfDoc){ try{ _avulsoPdfDoc.save(_avulsoPdfName||'Corretiva_avulsa.pdf'); return; }catch(e){} }
+  gerarLaudoAvulso();
 }
 // Gera o PDF e ENFILEIRA o envio ao Drive (durável). Se as libs não carregaram,
 // marca pendência: o PDF é gerado automaticamente ao reabrir o form com internet.
@@ -1226,7 +1402,7 @@ async function enfileirarPdf(){
     _pdfPendente=false; await marcarPdfPendente(false);
   }catch(e){
     _pdfPendente=true; await marcarPdfPendente(true);
-    toast('Dados salvos. O PDF do laudo será gerado ao reabrir com internet.');
+    toast('Dados salvos. PDF do laudo pendente: '+((e&&e.message)||'será gerado ao reabrir com internet.'));
   }
 }
 
@@ -1259,8 +1435,7 @@ function selMaquina(){
 async function carregarMaquinasOS(){
   if(!_osId) return;
   try{
-    const resp=await fetch(GAS_URL,{ method:'POST', body:gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
-    const data=JSON.parse(await resp.text());
+    const data=await gcFetchJson({ action:'getMaquinasByOS', id_os:_osId });
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -1299,8 +1474,7 @@ async function atualizarMaquinaCadastro(){
     regimeData: turnos.length ? turnos : (_maqAtual.regimeData || [])
   });
   try{
-    var r = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'saveMachine', machine: machineUpdate }) });
-    var d = JSON.parse(await r.text());
+    var d = await gcFetchJson({ action:'saveMachine', machine: machineUpdate });
     if(d && d.status==='ok'){ _maqAtual.hourTotal = novoHor; _maqAtual.regimeData = machineUpdate.regimeData; toast('Cadastro da máquina atualizado'); }
   }catch(e){ /* silencioso — o dado também está no laudo */ }
 }
@@ -1326,6 +1500,7 @@ function wireInputs(){
   await PS.open();
   try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}   // limpa rascunho do formato antigo
   ensureDraftId();
+  limparInstanciasConcluidas();                          // 29/07 (F-27a)
   var restaurou=false; try{ restaurou=await restoreDraft(); }catch(e){}
   if(restaurou){ hydrateUI(); toast(_sending?'Retomando os envios desta corretiva':'Rascunho restaurado'); }
   else {
@@ -1343,7 +1518,9 @@ function wireInputs(){
   if(_sending){
     document.getElementById('app').style.display='none';
     document.getElementById('okScreen').style.display='';
-    if(_pdfPendente && window.jspdf && window.html2canvas){ try{ await enfileirarPdf(); }catch(e){} }
+    if(_pdfPendente && window.jspdf && window.html2canvas){
+      try{ if(_osId) await enfileirarPdf(); else await gerarLaudoAvulso(); }catch(e){}   // 29/07 (F-27b)
+    }
     atualizarOkScreen();
   }
   // ── Proteções de salvamento ──
@@ -1352,6 +1529,7 @@ function wireInputs(){
   window.addEventListener('online', function(){ PS.pump(); });
   window.addEventListener('beforeunload', function(e){ if(_psHasPending){ e.preventDefault(); e.returnValue=''; return ''; } });
   setInterval(function(){ if(!_sending) saveDraft(); }, 8000);   // autosave periódico
+  setInterval(function(){ PS.pump(); }, 30000);                  // 29/07 (F-25a): rede de segurança da fila
   // Retoma envios pendentes de sessões anteriores (fim de turno, app fechado, queda de sinal)
   psRefreshBadge();
   PS.pump();

@@ -1,5 +1,22 @@
 <!DOCTYPE html>
 <!--
+form03.html — 29/07/2026 — pacote pós-teste profundo (F-12, F-12b, F-13, F-01, F-01b, F-14, F-30)
+  - F-12: gasPostJson (parse seguro + 3 tentativas com backoff), bloco canônico do
+    form01. Todos os JSON.parse crus de resposta (foto, saveFormulario, PDF,
+    getMaquinasByOS) passaram a usá-lo — o GAS às vezes devolve página HTML de erro.
+  - F-12b: o envio do laudo ao Drive deixou de ser fire-and-forget silencioso: a
+    tela final mostra "📄 Enviando laudo…" → "✅ Laudo enviado" / "⚠️ Laudo NÃO
+    enviado" e ganha o botão "↻ Reenviar laudo". Não bloqueia a tela de sucesso.
+  - F-13: RASCUNHO POR OS (padrão form02 pós-28/07) — chave
+    'proper_draft_form03:<os_id>' resolvida DEPOIS de ler a URL; sem os_id usa a
+    chave legada; migração do rascunho legado só com _draft_os_id da MESMA OS;
+    autosave com debounce; limpeza só quando o servidor confirma o envio.
+  - F-01: client_ts + foto_uid congelados na captura + legenda humana (rótulo do
+    item do schema) no salvarFotoForm.
+  - F-01b: pdf_uid estável no salvarPdfDrive.  - F-14: origem= propagada.
+  - F-30: scale do html2canvas limitado a ~16 Mpx + recusa de PDF branco.
+  Tudo ADITIVO (data-v/data-k novos nos botões/campos; nada renomeado).
+  ----------------------------------------------------------------------------
 form03.html — 15/07/2026 — PDF da peritagem → Drive/Gestão de Documentos (ADITIVO)
   - No envio (enviar, se houver os_id), monta um #pdf-layout no ESTILO do Form 02
     (cabeçalho Proper, seções do schema em tabela com badges Sim/Não/N/A, parecer),
@@ -119,6 +136,8 @@ form03.html — 13/07/2026 — Peritagem Mecânica STANDALONE (separado do perit
 <div id="okScreen" style="display:none">
   <div class="ok-msg"><div class="big">✅</div><h1 style="margin-top:10px">Peritagem registrada</h1>
   <div class="sub" id="okSub"></div>
+  <div class="sub" id="okPdfStatus" style="margin-top:10px"></div>
+  <button class="btn no-print" id="btnReenviarPdf" style="display:none;margin-top:8px" onclick="reenviarPdf()">↻ Reenviar laudo</button>
   <button class="btn" onclick="window.print()">🖨️ Gerar PDF</button></div>
 </div>
 <div id="pdf-layout"></div>
@@ -129,6 +148,26 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9
 const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+
+// 29/07 (F-12): POST robusto ao GAS — parse seguro + retry (bloco canônico do
+// form01, 28/07). O Apps Script às vezes responde página HTML de erro; o
+// JSON.parse cru estourava "JSON Parse error: Unrecognized token '<'".
+async function gasPostJson(payload, tentativas){
+  tentativas = tentativas || 3;
+  let ultimoErro = null;
+  for (let i = 0; i < tentativas; i++){
+    try{
+      const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      const text = await resp.text();
+      try { return JSON.parse(text); }
+      catch(ePar){ throw new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){
+      ultimoErro = e;
+      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  throw new Error((ultimoErro && ultimoErro.message) || 'falha de comunicação');
+}
 
 // ══ ESQUEMA — Peritagem Mecânica (Form 03) ═══════════════════════════════════
 // c: sn | snnt | escala | med | texto | escolha | foto ; unit p/ med ; opts p/ escolha ; gw restringe ao gateway
@@ -221,8 +260,10 @@ const URGENCIAS = ['Normal','Alta','Crítica'];
 
 let SC, _osId='', _tarefaId='', _enviado=false, _gwVal='';
 let _maqAtual=null, _pdfEnviado=false;   // etiqueta máquina + sobe PDF 1x/sessão
+let _origem='';                          // 29/07 (F-14): ?origem= vindo da OS Genérica
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 const _formUid = pgpUid();
+const _pdfUid  = 'pdf_' + _formUid;      // 29/07 (F-01b): uid estável do PDF (dedupe no GAS)
 const state = { fotos:{}, itens:{}, parecer:{} };
 
 // ══ RENDER ══
@@ -245,15 +286,15 @@ function render(){
   `, false);
   // Gateway
   h += card('gw', SC.gateway.label, `<div class="pills" id="gwPills">
-    ${SC.gateway.opts.map(o=>`<button onclick="setGw('${esc(o)}',this)">${o}</button>`).join('')}</div>`, false);
+    ${SC.gateway.opts.map(o=>`<button data-v="${escHtml(o)}" onclick="setGw('${esc(o)}',this)">${o}</button>`).join('')}</div>`, false);
   // Seções
   SC.secoes.forEach(s=>{ h += card('sec_'+s.id, s.t, s.itens.map(renderItem).join(''), true, 'data-sec="'+s.id+'"'); });
   // Observações
   h += card('obs','D — Observações e recomendações', `<textarea id="o_obs" placeholder="Texto livre"></textarea>`, true);
   // Parecer
   h += card('par','E — Parecer técnico', `
-    <label>Parecer</label><div class="pills" id="parPills">${SC.parecer.opts.map(o=>`<button onclick="setPar('parecer','${esc(o)}',this)">${o}</button>`).join('')}</div>
-    <label>Urgência</label><div class="pills" id="urgPills">${URGENCIAS.map(o=>`<button onclick="setPar('urgencia','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Parecer</label><div class="pills" id="parPills">${SC.parecer.opts.map(o=>`<button data-v="${escHtml(o)}" onclick="setPar('parecer','${esc(o)}',this)">${o}</button>`).join('')}</div>
+    <label>Urgência</label><div class="pills" id="urgPills">${URGENCIAS.map(o=>`<button data-v="${escHtml(o)}" onclick="setPar('urgencia','${esc(o)}',this)">${o}</button>`).join('')}</div>
     <label>Assinatura do responsável (nome)</label><input type="text" id="p_assinatura">`, false);
   document.getElementById('form').innerHTML = h;
   applyGwVisibility();
@@ -267,24 +308,24 @@ function renderItem(it){
   let ctrl='';
   if (it.c==='sn'||it.c==='snnt'){
     const opts = it.c==='snnt' ? [['Sim','sim'],['Não','nao'],['N/A','na'],['NT','nt']] : [['Sim','sim'],['Não','nao'],['N/A','na']];
-    ctrl = `<div class="pills" data-k="${it.k}">${opts.map(([l,v])=>`<button class="${v}" onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+    ctrl = `<div class="pills" data-k="${it.k}">${opts.map(([l,v])=>`<button class="${v}" data-v="${v}" onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
   } else if (it.c==='escala'){
-    ctrl = `<div class="pills" data-k="${it.k}">${[['Bom','bom'],['Regular','regular'],['Ruim','ruim']].map(([l,v])=>`<button onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
+    ctrl = `<div class="pills" data-k="${it.k}">${[['Bom','bom'],['Regular','regular'],['Ruim','ruim']].map(([l,v])=>`<button data-v="${v}" onclick="setItem('${it.k}','${v}',this)">${l}</button>`).join('')}</div>`;
   } else if (it.c==='escolha'){
-    ctrl = `<div class="pills" data-k="${it.k}">${it.opts.map(o=>`<button onclick="setItem('${it.k}','${esc(o)}',this)">${o}</button>`).join('')}</div>`;
+    ctrl = `<div class="pills" data-k="${it.k}">${it.opts.map(o=>`<button data-v="${escHtml(o)}" onclick="setItem('${it.k}','${esc(o)}',this)">${o}</button>`).join('')}</div>`;
   } else if (it.c==='med'){
-    ctrl = `<div class="med"><input type="number" step="any" onchange="setItem('${it.k}',this.value)"><span class="u">${it.unit||''}</span></div>`;
+    ctrl = `<div class="med"><input type="number" step="any" data-k="${it.k}" onchange="setItem('${it.k}',this.value)"><span class="u">${it.unit||''}</span></div>`;
   } else if (it.c==='texto'){
-    ctrl = `<textarea onchange="setItem('${it.k}',this.value)"></textarea>`;
+    ctrl = `<textarea data-k="${it.k}" onchange="setItem('${it.k}',this.value)"></textarea>`;
   } else if (it.c==='foto'){
     state.fotos[it.k]=state.fotos[it.k]||[];
     ctrl = `<button class="btn-foto no-print" onclick="pickPhoto('${it.k}')">📷 Adicionar foto</button><div class="thumbs" id="thumbs-${it.k}"></div>`;
   }
   return `<div class="item" data-gw="${it.gw?esc(it.gw):''}"><div class="item-label">${it.label}</div>${ctrl}</div>`;
 }
-function setItem(k,v,btn){ state.itens[k]=v; if(btn){ const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); } }
-function setGw(v,btn){ _gwVal=v; state.gateway=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); applyGwVisibility(); }
-function setPar(k,v,btn){ state.parecer[k]=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); }
+function setItem(k,v,btn){ state.itens[k]=v; if(btn){ const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); } scheduleSave(); }
+function setGw(v,btn){ _gwVal=v; state.gateway=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); applyGwVisibility(); scheduleSave(); }
+function setPar(k,v,btn){ state.parecer[k]=v; const p=btn.parentElement; p.querySelectorAll('button').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); scheduleSave(); }
 function applyGwVisibility(){
   document.querySelectorAll('.item[data-gw]').forEach(el=>{
     const gw=el.getAttribute('data-gw'); el.style.display = (!gw || gw===_gwVal) ? '' : 'none';
@@ -306,17 +347,29 @@ function handlePhoto(secao,file){
   }; img.src=reader.result; };
   reader.readAsDataURL(file);
 }
+// 29/07 (F-01): legenda humana da foto (rótulo do item do schema) → coluna Caption
+function _labelFoto(k){
+  for (var i=0;i<SC.secoes.length;i++){
+    var its=SC.secoes[i].itens||[];
+    for (var j=0;j<its.length;j++){ if (its[j].k===k) return its[j].label||k; }
+  }
+  return k;
+}
 async function uploadPhoto(secao,dataUrl,fileName){
   const cont=document.getElementById('thumbs-'+secao);
   const el=document.createElement('img');el.className='thumb uploading';el.src=dataUrl;cont.appendChild(el);
   state.fotos[secao]=state.fotos[secao]||[];
+  // 29/07 (F-01): gerados UMA vez, na captura. O payload abaixo é montado uma
+  // única vez e reusado pelas 3 tentativas do gasPostJson → nunca é regerado.
+  const _clientTs = Date.now();
+  const _fotoUid  = 'f_' + _formUid + '_' + _clientTs + '_' + Math.random().toString(36).slice(2,8);
   try{
-    const payload={action:'salvarFotoForm',os:curOs(),cliente:val('i_cliente')||'SemCliente',secao,nomeArquivo:fileName,base64:dataUrl.split(',')[1],mimeType:'image/jpeg',categoria:'foto_'+SC.tipoForm,entity_type:SC.tipoForm};
-    const resp=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
-    const data=JSON.parse(await resp.text());
+    const payload={action:'salvarFotoForm',os:curOs(),cliente:val('i_cliente')||'SemCliente',secao,nomeArquivo:fileName,base64:dataUrl.split(',')[1],mimeType:'image/jpeg',categoria:'foto_'+SC.tipoForm,entity_type:SC.tipoForm,
+      client_ts:_clientTs, foto_uid:_fotoUid, legenda:_labelFoto(secao)};
+    const data=await gasPostJson(payload);   // 29/07 (F-12): parse seguro + retry
     if(!data||data.ok!==true) throw new Error(data.error||'falha');
-    el.className='thumb ok'; state.fotos[secao].push({url:data.url,fileName,status:'ok'});
-  }catch(err){ el.className='thumb erro'; state.fotos[secao].push({url:null,fileName,status:'erro'}); toast('Erro ao enviar foto'); }
+    el.className='thumb ok'; state.fotos[secao].push({url:data.url,fileName,status:'ok',foto_uid:_fotoUid,client_ts:_clientTs}); scheduleSave();
+  }catch(err){ el.className='thumb erro'; state.fotos[secao].push({url:null,fileName,status:'erro',foto_uid:_fotoUid,client_ts:_clientTs}); toast('Erro ao enviar foto'); scheduleSave(); }
 }
 function curOs(){ return val('i_os')||_osId||'SemOS'; }
 
@@ -340,9 +393,10 @@ async function enviar(){
       const payload={action:'saveFormulario',os_id:_osId,tarefa_id:_tarefaId,tipo_formulario:SC.tipoForm,form_uid:_formUid,
         tecnico_nome:state.identificacao.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'',
         tecnico_id:(_sess&&_sess.tecnico&&_sess.tecnico.id)||'',campos_json:state,fotos_json:fotosFlat};
-      const r=await fetch(GAS_URL,{method:'POST',body:gcBody(payload)});
-      const d=JSON.parse(await r.text());
-      if(d.status!=='ok') throw new Error(d.message||'Erro do servidor');
+      if(_origem) payload.origem=_origem;                 // 29/07 (F-14)
+      const d=await gasPostJson(payload);                 // 29/07 (F-12): parse seguro + retry
+      if(d.status!=='ok') throw new Error(d.message||d.error||'Erro do servidor');
+      limparRascunho();                                   // 29/07 (F-13): só com OK do servidor
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem'; toast('Erro ao enviar: ' + e.message); return; }
   }
   // Gera o PDF da peritagem (estilo Form 02) e sobe ao Drive → Gestão de Documentos
@@ -357,7 +411,27 @@ async function enviar(){
 // Monta um #pdf-layout com o cabeçalho Proper + seções do schema + parecer,
 // captura com html2canvas, pagina num PDF A4 (jsPDF) e sobe via salvarPdfDrive
 // (ação já existente no GAS v68+). ADITIVO: sem mudança de GAS; 1x/sessão.
+// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
+// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
+// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
+// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
+// vira ERRO visível em vez de PDF branco.
+function _pdfScaleSeguro(el){
+  var MAXPX = 16000000;
+  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
+  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
+  var s = Math.sqrt(MAXPX / (w * h));
+  if (!isFinite(s) || s <= 0) s = 1;
+  s = Math.min(2, s);
+  return Math.max(0.5, Math.round(s * 100) / 100);
+}
+function _pdfChecarCanvas(canvas, imgData){
+  if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+}
+
 function _pdfResHtml(it){
+
   var v = state.itens[it.k];
   if (it.c==='foto'){ var arr=state.fotos[it.k]||[]; return arr.length ? (arr.length+' foto(s)') : '—'; }
   if (v==null || v==='') return '—';
@@ -403,16 +477,36 @@ function buildPdfLayout(){
     + '<div class="pl-footer">propercompressores.com.br &bull; '+escHtml(SC.titulo)+' &bull; documento gerado automaticamente</div>';
   document.getElementById('pdf-layout').innerHTML = html;
 }
+// 29/07 (F-12b): o envio do laudo deixou de ser fire-and-forget silencioso —
+// a tela final mostra o estado do PDF e oferece "↻ Reenviar laudo" quando falha.
+function pdfStatus(txt, erro){
+  var e=document.getElementById('okPdfStatus');
+  if(e){ e.textContent=txt||''; e.style.color = erro ? '#fca5a5' : ''; }
+  var b=document.getElementById('btnReenviarPdf');
+  if(b) b.style.display = erro ? '' : 'none';
+}
+async function reenviarPdf(){
+  var b=document.getElementById('btnReenviarPdf');
+  if(b){ b.disabled=true; b.textContent='Reenviando…'; }
+  _pdfEnviado=false;
+  await enviarPdfParaDrive();
+  if(b){ b.disabled=false; b.textContent='↻ Reenviar laudo'; }
+}
 async function enviarPdfParaDrive(){
   if (_pdfEnviado || !_osId) return;
-  if (!window.jspdf || !window.html2canvas) return;
+  if (!window.jspdf || !window.html2canvas){
+    pdfStatus('⚠️ Laudo NÃO enviado: a biblioteca de PDF não carregou. Recarregue a página e toque em Reenviar.', true);
+    return;
+  }
   _pdfEnviado = true;
+  pdfStatus('📄 Enviando laudo ao Drive…');
   var el = document.getElementById('pdf-layout');
   try{
     buildPdfLayout();
     el.classList.add('pdf-capturing');
     el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
-    var canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    var _scale = _pdfScaleSeguro(el);   // 29/07 (F-30)
+    var canvas = await html2canvas(el, { scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none';
 
     var jsPDF = window.jspdf.jsPDF;
@@ -420,6 +514,7 @@ async function enviarPdfParaDrive(){
     var pageW = 210, pageH = 297, imgW = pageW;
     var imgH = canvas.height * imgW / canvas.width;
     var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
     var heightLeft = imgH, position = 0;
     pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH;
     while (heightLeft > 0){ position = heightLeft - imgH; pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH; }
@@ -435,20 +530,122 @@ async function enviarPdfParaDrive(){
       maquina_id: (_maqAtual && _maqAtual.id) || '',
       maquina_label: (_maqAtual ? maqLabel(_maqAtual) : (id.equipamento || '')),
       base64: base64, fileName: nomeCurto + '_' + SC.tipoForm + '_' + (_num || _osId || 's_os') + '.pdf',
-      categoria: 'pdf_' + SC.tipoForm, caption: SC.titulo,
+      categoria: 'pdf_' + SC.tipoForm, caption: SC.titulo, pdf_uid: _pdfUid,
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
-    var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
-    var d = JSON.parse(await r.text());
+    var d = await gasPostJson(payload);   // 29/07 (F-12): parse seguro + retry
     if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
+    pdfStatus('✅ Laudo enviado ao Drive (Gestão de Documentos).');
     toast('PDF da peritagem salvo no Drive');
   }catch(e){
     _pdfEnviado = false;
     if (el){ el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none'; }
+    pdfStatus('⚠️ Laudo NÃO enviado: ' + e.message, true);
     toast('Peritagem enviada; PDF ao Drive falhou: ' + e.message);
   }
 }
 
+// ══ 29/07 (F-13) RASCUNHO POR OS ══════════════════════════════════════════
+// A chave era inexistente aqui (nenhum rascunho) e no form02 era GLOBAL — abrir
+// uma OS nova trazia o rascunho da OS anterior (bug de 28/07). Aqui já nasce por
+// OS: resolveDraftKey() roda no init DEPOIS de ler os_id da URL; sem os_id (uso
+// avulso) usa a chave legada; a migração do rascunho legado só acontece se ele
+// declarar (_draft_os_id) ser DESTA OS.
+const DRAFT_KEY_LEGADO = 'proper_draft_form03';
+let DRAFT_KEY = DRAFT_KEY_LEGADO;
+function resolveDraftKey(){
+  DRAFT_KEY = _osId ? (DRAFT_KEY_LEGADO + ':' + _osId) : DRAFT_KEY_LEGADO;
+  if (_osId && !localStorage.getItem(DRAFT_KEY)){
+    try{
+      const leg = JSON.parse(localStorage.getItem(DRAFT_KEY_LEGADO) || 'null');
+      if (leg && leg._draft_os_id === _osId){
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(leg));
+        localStorage.removeItem(DRAFT_KEY_LEGADO);
+      }
+    }catch(e){}
+  }
+}
+let _saveTimer = null;
+function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer = setTimeout(saveDraft, 500); }
+// Um rascunho VAZIO não vira registro: evita criar chave e "restaurar" nada.
+function _rascunhoTemConteudo(d){
+  if(!d) return false;
+  if(d.itens && Object.keys(d.itens).length) return true;
+  if(d.observacoes) return true;
+  if(d.gateway) return true;
+  if(d.parecer && (d.parecer.parecer || d.parecer.urgencia || d.parecer.assinatura)) return true;
+  if(d.fotos && Object.keys(d.fotos).some(function(k){ return (d.fotos[k]||[]).length; })) return true;
+  var i=d.identificacao||{};
+  return !!(i.cliente || i.equipamento || i.modelo || i.horimetro || i.ano || i.os);
+}
+function saveDraft(){
+  if (_enviado) return;                       // instância já confirmada: não regrava
+  try{
+    captura();
+    state.gateway = _gwVal;
+    state._draft_os_id = _osId || '';         // carimbo da OS dona do rascunho
+    if(!_rascunhoTemConteudo(state)) return;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+  }catch(e){}
+}
+function loadDraft(){
+  try{ const raw = localStorage.getItem(DRAFT_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+}
+function limparRascunho(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function setVal(id,v){ var el=document.getElementById(id); if(el && v!=null && v!=='') el.value=v; }
+function _marcarPill(box,v){
+  if(!box || v==null || v==='') return false;
+  var bts=box.querySelectorAll('button'), alvo=null;
+  for(var i=0;i<bts.length;i++){ if(bts[i].getAttribute('data-v')===String(v)) alvo=bts[i]; }
+  if(!alvo) return false;
+  for(var j=0;j<bts.length;j++) bts[j].classList.remove('on');
+  alvo.classList.add('on');
+  return true;
+}
+function hydrateUI(d){
+  if(!d || typeof d!=='object') return;
+  var i = d.identificacao || {};
+  setVal('i_tecnico',i.tecnico); setVal('i_data',i.data); setVal('i_os',i.os); setVal('i_cliente',i.cliente);
+  setVal('i_equip',i.equipamento); setVal('i_modelo',i.modelo); setVal('i_horimetro',i.horimetro); setVal('i_ano',i.ano);
+  SC.idExtra.forEach(function(f){ setVal('ix_'+f.k, i[f.k]); });
+  state.identificacao = i;
+  if(d.gateway){ _gwVal=d.gateway; state.gateway=d.gateway; _marcarPill(document.getElementById('gwPills'), d.gateway); applyGwVisibility(); }
+  if(d.itens){
+    Object.keys(d.itens).forEach(function(k){
+      var v=d.itens[k]; state.itens[k]=v;
+      if(_marcarPill(document.querySelector('.pills[data-k="'+k+'"]'), v)) return;
+      var inp=document.querySelector('input[data-k="'+k+'"]') || document.querySelector('textarea[data-k="'+k+'"]');
+      if(inp && v!=null) inp.value=v;
+    });
+  }
+  if(d.observacoes){ setVal('o_obs', d.observacoes); state.observacoes=d.observacoes; }
+  if(d.parecer){
+    state.parecer = Object.assign({}, d.parecer);
+    _marcarPill(document.getElementById('parPills'), d.parecer.parecer);
+    _marcarPill(document.getElementById('urgPills'), d.parecer.urgencia);
+    setVal('p_assinatura', d.parecer.assinatura);
+  }
+  // Fotos: os bytes NÃO ficam no rascunho (só as URLs do Drive). Restaura as refs
+  // para o fotos_json sair completo e avisa o técnico do que já subiu.
+  if(d.fotos){
+    Object.keys(d.fotos).forEach(function(k){
+      var arr=d.fotos[k]||[]; if(!arr.length) return;
+      state.fotos[k]=arr;
+      var cont=document.getElementById('thumbs-'+k); if(!cont) return;
+      var nOk=arr.filter(function(f){ return f && f.status==='ok'; }).length;
+      var nota=document.createElement('div');
+      nota.style.cssText='font-size:12px;color:#94a3b8;margin-top:4px';
+      nota.textContent=arr.length+' foto(s) deste rascunho · '+nOk+' já no Drive.';
+      cont.appendChild(nota);
+    });
+  }
+}
+function wireInputs(){
+  document.querySelectorAll('#form input, #form textarea, #form select').forEach(function(el){
+    el.addEventListener('input', scheduleSave);
+    el.addEventListener('change', scheduleSave);
+  });
+}
 function val(id){ const e=document.getElementById(id); return e?e.value.trim():''; }
 function esc(s){ return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 function escHtml(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
@@ -495,8 +692,7 @@ function selMaquina(){
 async function carregarMaquinasOS(){
   if(!_osId) return;
   try{
-    const resp=await fetch(GAS_URL,{method:'POST',body:gcBody({action:'getMaquinasByOS',id_os:_osId})});
-    const data=JSON.parse(await resp.text());
+    const data=await gasPostJson({action:'getMaquinasByOS',id_os:_osId});   // 29/07 (F-12)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -517,14 +713,21 @@ function preencherResponsavelSessao(){
   const p=new URLSearchParams(location.search);
   SC=SCHEMAS['03'];
   _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||''; window._GC=p.get('gc')||window._GC||'';
+  _origem=p.get('origem')||'';       // 29/07 (F-14): propagada pela OS Genérica
+  resolveDraftKey();                 // 29/07 (F-13): DEPOIS de ler os_id da URL
   render();
-  if(p.get('cliente')) document.getElementById('i_cliente').value=p.get('cliente');
-  if(p.get('os_numero')) document.getElementById('i_os').value=p.get('os_numero');
+  var _d=loadDraft();                // 29/07 (F-13): rascunho DESTA OS (nunca de outra)
+  if(_rascunhoTemConteudo(_d)){ hydrateUI(_d); toast('Rascunho restaurado'); }
+  if(p.get('cliente')) setIfEmpty('i_cliente',p.get('cliente'));
+  if(p.get('os_numero')) setIfEmpty('i_os',p.get('os_numero'));
   prefillFromUrl(p);                 // cabeçalho por URL (prioridade)
-  document.getElementById('i_data').value=new Date().toISOString().slice(0,10);
+  if(!val('i_data')) document.getElementById('i_data').value=new Date().toISOString().slice(0,10);
   if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId); }
   preencherResponsavelSessao();
   carregarMaquinasOS();              // preenche o que a URL não trouxe
+  wireInputs();                      // 29/07 (F-13): autosave com debounce
+  window.addEventListener('pagehide', function(){ saveDraft(); });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
 })();
 </script>
 </body>

@@ -1,4 +1,15 @@
 <!--
+form02.html — 29/07/2026 — pacote pós-teste profundo (F-01, F-01b, F-14, F-30)
+  - F-01: client_ts + foto_uid CONGELADOS na compressão da foto (viajam dentro do
+    objeto 'compressed', que é o mesmo reusado pelo retry) → o servidor deixa de
+    carimbar Date.now() próprio e o reenvio não vira arquivo duplicado.
+  - F-01b: pdf_uid estável (1x por sessão) no salvarPdfDrive → dedupe no GAS.
+  - F-14: ?origem= lido da URL e enviado no saveFormulario (a OS Genérica abre os
+    forms com origem=generica; o GAS v79 não fecha tarefa de pipeline nesse caso).
+  - F-30: scale do html2canvas limitado a ~16 Mpx + recusa de PDF branco (o laudo
+    num único canvas saía em branco no iOS com muitas fotos, em silêncio).
+  Tudo ADITIVO: nenhum id/name/data-key/função/action renomeado.
+  ----------------------------------------------------------------------------
 form02.html — 28/07/2026 — RASCUNHO POR OS + ENVIO ROBUSTO + FOTOS NO PDF (chamado do Fernando). Par: GAS v78.
   4 correções aditivas (varredura pipeline OS Reforma):
   (1) RASCUNHO POR OS: DRAFT_KEY era GLOBAL ('proper_draft_form02') — abrir o form02
@@ -1325,6 +1336,8 @@ var _tarefaId = '';
 var _formularioEnviado = false; // FP-05: evita gravar FORMULARIOS de novo ao reabrir a tela final
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 var _formUid = pgpUid();
+var _pdfUid  = 'pdf_' + _formUid;   // 29/07 (F-01b): uid estável do PDF (dedupe no GAS)
+var _origem  = '';                  // 29/07 (F-14): ?origem= vindo da OS Genérica
 function gcBody(obj) {
   return JSON.stringify(Object.assign({}, obj, { google_credential: window._GC || '' }));
 }
@@ -1887,7 +1900,11 @@ function compressImage(file) {
         const base64   = dataUrl.split(',')[1];
         const ts       = Date.now();
         const baseName = (file.name || 'foto').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-        resolve({ base64, mimeType:'image/jpeg', fileName: ts + '_' + baseName, dataUrl });
+        // 29/07 (F-01): client_ts/foto_uid CONGELADOS aqui — este objeto é o mesmo
+        // reusado pelo retry (_fotoRetryStore), então o uid nunca é regerado.
+        const clientTs = ts;
+        const fotoUid  = 'f_' + _formUid + '_' + ts + '_' + Math.random().toString(36).slice(2, 8);
+        resolve({ base64, mimeType:'image/jpeg', fileName: ts + '_' + baseName, dataUrl, clientTs, fotoUid });
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -1927,12 +1944,16 @@ async function uploadPhoto(secao, compressed) {
 const _fotoRetryStore = {};
 async function _tentarUploadFoto(secao, compressed, thumbId, os, cliente) {
   const { base64, mimeType, fileName } = compressed;
+  // 29/07 (F-01): valores congelados na captura; fallback só p/ fotos de rascunho antigo
+  const _clientTs = compressed.clientTs || Date.now();
+  const _fotoUid  = compressed.fotoUid  || ('f_' + _formUid + '_' + _clientTs);
   try {
     const payload = {
       action: 'salvarFotoForm',
       key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
       os, cliente, secao, nomeArquivo: fileName, base64, mimeType,
-      entity_type: 'form02', categoria: 'foto_form02'
+      entity_type: 'form02', categoria: 'foto_form02',
+      client_ts: _clientTs, foto_uid: _fotoUid
     };
     const data = await gasPostJson(payload);
     if (!data || data.ok !== true) throw new Error(data.error || 'Falha no upload');
@@ -1942,7 +1963,7 @@ async function _tentarUploadFoto(secao, compressed, thumbId, os, cliente) {
     if (img0) { img0.onclick = null; img0.title = ''; }
     delete _fotoRetryStore[thumbId];
     if (!state.fotos[secao]) state.fotos[secao] = [];
-    state.fotos[secao].push({ url: data.url, fileName, status:'ok' });
+    state.fotos[secao].push({ url: data.url, fileName, status:'ok', foto_uid: _fotoUid, client_ts: _clientTs });
     saveDraft();
   } catch(err) {
     updateThumbState(thumbId, 'erro');
@@ -2004,6 +2025,7 @@ async function goToFinal() {
         campos_json: state,
         fotos_json: state.fotos || []
       };
+      if (_origem) _payload.origem = _origem;   // 29/07 (F-14): só quando a URL trouxe
       const d = await gasPostJson(_payload); // 28/07: parse seguro + retry
       if (d.status !== 'ok') throw new Error(d.message || d.error || 'Erro do servidor');
     } catch (e) {
@@ -2026,7 +2048,27 @@ async function goToFinal() {
 // Captura o layout de impressão (#pdf-layout) com html2canvas, monta um PDF A4
 // paginado com jsPDF e envia via salvarPdfDrive (ação já existente no GAS v68+).
 // ADITIVO: sem mudança de GAS; roda 1x por sessão do form (_pdfEnviado).
+// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
+// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
+// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
+// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
+// vira ERRO visível em vez de PDF branco.
+function _pdfScaleSeguro(el){
+  var MAXPX = 16000000;
+  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
+  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
+  var s = Math.sqrt(MAXPX / (w * h));
+  if (!isFinite(s) || s <= 0) s = 1;
+  s = Math.min(2, s);
+  return Math.max(0.5, Math.round(s * 100) / 100);
+}
+function _pdfChecarCanvas(canvas, imgData){
+  if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+}
+
 async function enviarPdfParaDrive() {
+
   if (_pdfEnviado || !_osId) return;
   if (!window.jspdf || !window.html2canvas) {
     // 28/07: era um return SILENCIOSO (classe do achado #2 da OS-0016) — agora avisa
@@ -2043,7 +2085,8 @@ async function enviarPdfParaDrive() {
     el.classList.add('pdf-capturing');
     el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
 
-    var canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    var _scale = _pdfScaleSeguro(el);   // 29/07 (F-30)
+    var canvas = await html2canvas(el, { scale: _scale, backgroundColor: '#ffffff', useCORS: true, logging: false });
 
     // Restaura o estado escondido do layout.
     el.classList.remove('pdf-capturing');
@@ -2055,6 +2098,7 @@ async function enviarPdfParaDrive() {
     var imgW = pageW;
     var imgH = canvas.height * imgW / canvas.width;
     var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
     var heightLeft = imgH, position = 0;
     pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
     heightLeft -= pageH;
@@ -2082,6 +2126,7 @@ async function enviarPdfParaDrive() {
       fileName: fileName,
       categoria: 'pdf_form02',
       caption: 'Diagnóstico sem desmontagem (Form 02)',
+      pdf_uid: _pdfUid,
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
     var d = await gasPostJson(payload); // 28/07: parse seguro + retry
@@ -2601,8 +2646,7 @@ function selMaquina(){
 async function carregarMaquinasOS(){
   if (!_osId) return;
   try{
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', key: FORM_KEY, id_os:_osId }) });
-    const data = JSON.parse(await resp.text());
+    const data = await gasPostJson({ action:'getMaquinasByOS', key: FORM_KEY, id_os:_osId });   // 29/07 (F-12): último JSON.parse cru do arquivo
     const machines = (data && data.machines) || [];
     if (!machines.length) return;
     _maquinas = machines;
@@ -2638,6 +2682,7 @@ document.addEventListener('DOMContentLoaded', () => {
   var _p = new URLSearchParams(location.search);
   _osId     = _p.get('os_id')     || '';
   _tarefaId = _p.get('tarefa_id') || '';
+  _origem   = _p.get('origem')    || '';   // 29/07 (F-14): propagada pela OS Genérica
   var _cli  = _p.get('cliente')   || _p.get('client')     || '';
   var _num  = _p.get('os_numero') || _p.get('os')         || '';
   resolveDraftKey(); // 28/07: chave por OS

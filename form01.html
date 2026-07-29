@@ -1,5 +1,18 @@
 <!DOCTYPE html>
 <!--
+form01.html — 29/07/2026 — pacote pós-teste profundo (F-01, F-01b, F-14, F-30)
+  - F-01: client_ts/foto_uid CONGELADOS no momento da captura da foto (mapa
+    _fotoMeta por thumbId). O retry reenvia EXATAMENTE o mesmo client_ts —
+    antes o payload era remontado a cada tentativa e o servidor carimbava
+    Date.now() dele, gerando arquivos duplicados com nomes diferentes.
+  - F-01b: pdf_uid estável (1x por sessão) no salvarPdfDrive → dedupe no GAS.
+  - F-14: ?origem= (ex.: origem=generica) é lido da URL e vai no saveFormulario;
+    o GAS v79 usa isso para NÃO fechar tarefa de pipeline indevidamente.
+  - F-30: o termo é capturado num único canvas — com muitas fotos/linhas o canvas
+    estourava o limite do iOS e subia um PDF BRANCO em silêncio. Agora o scale cai
+    para caber em ~16 Mpx e um resultado suspeito vira erro visível.
+  Tudo ADITIVO: nenhum id/name/data-key/função/action renomeado.
+  ----------------------------------------------------------------------------
 form01.html — 28/07/2026 — ENVIO ROBUSTO + FOTO REENVIÁVEL (chamado do Fernando)
   - gasPostJson: o GAS às vezes responde página HTML de erro em vez de JSON →
     "JSON Parse error: Unrecognized token '<'" e a foto ficava com contorno
@@ -214,9 +227,10 @@ async function gasPostJson(payload, tentativas){
   throw new Error((ultimoErro && ultimoErro.message) || 'falha de comunicação');
 }
 
-let _osId = '', _tarefaId = '', _enviado = false;
+let _osId = '', _tarefaId = '', _enviado = false, _origem = '';   // 29/07 (F-14): origem da URL
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 const _formUid = pgpUid();
+const _pdfUid  = 'pdf_' + _formUid;   // 29/07 (F-01b): uid estável do PDF (dedupe no GAS)
 const state = { fotos: { chegada: [] }, checklist: {} };
 
 const CHECK_ITENS = [
@@ -268,8 +282,12 @@ function handlePhoto(secao, file){
   };
   reader.readAsDataURL(file);
 }
+// 29/07 (F-01): metadados CONGELADOS por foto — gerados 1x na captura e reusados
+// em todo retry (o payload é remontado a cada tentativa; o uid/ts não pode mudar).
+const _fotoMeta = {};
 async function uploadPhoto(secao, dataUrl, fileName){
   const thumbId = 'th-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+  _fotoMeta[thumbId] = { client_ts: Date.now(), foto_uid: 'f_' + _formUid + '_' + thumbId };
   const cont = document.getElementById('thumbs-' + secao);
   const el = document.createElement('img'); el.className='thumb uploading'; el.id=thumbId; el.src=dataUrl; cont.appendChild(el);
   await _tentarUploadFoto01(secao, dataUrl, fileName, thumbId);
@@ -281,12 +299,14 @@ async function _tentarUploadFoto01(secao, dataUrl, fileName, thumbId){
   const el = document.getElementById(thumbId);
   const base64 = dataUrl.split(',')[1];
   try{
-    const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_form01', entity_type:'form01' };
+    const _meta = _fotoMeta[thumbId] || { client_ts: Date.now(), foto_uid: 'f_' + _formUid + '_' + thumbId };
+    const payload = { action:'salvarFotoForm', os: state_os(), cliente: val('f_cliente')||'SemCliente', secao, nomeArquivo:fileName, base64, mimeType:'image/jpeg', categoria:'foto_form01', entity_type:'form01',
+      client_ts: _meta.client_ts, foto_uid: _meta.foto_uid };   // 29/07 (F-01): congelados na captura
     const data = await gasPostJson(payload);
     if (!data || data.ok !== true) throw new Error(data.error||'falha');
     if (el){ el.className='thumb ok'; el.onclick=null; el.title=''; }
     delete _fotoRetryStore[thumbId];
-    state.fotos[secao].push({ url:data.url, fileName, status:'ok' });
+    state.fotos[secao].push({ url:data.url, fileName, status:'ok', foto_uid:_meta.foto_uid, client_ts:_meta.client_ts });
   }catch(err){
     if (el){
       el.className='thumb erro';
@@ -328,6 +348,7 @@ async function enviar(){
       const payload = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'form01', form_uid:_formUid,
         tecnico_nome: state.identificacao.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
         tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '', campos_json: state, fotos_json: state.fotos.chegada||[] };
+      if (_origem) payload.origem = _origem;   // 29/07 (F-14): só vai quando a URL trouxe
       const d = await gasPostJson(payload); // 28/07: parse seguro + retry
       if (d.status !== 'ok') throw new Error(d.message || d.error || 'Erro do servidor');
     }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir recebimento'; toast('Erro ao enviar: ' + e.message); return; }
@@ -345,6 +366,25 @@ async function enviar(){
 // pagina num PDF A4 (jsPDF) e envia via salvarPdfDrive (ação já existente no GAS
 // v68+). ADITIVO: sem mudança de GAS; roda 1x por sessão do form (_pdfEnviado).
 const _CHK_LABEL = { sim:'SIM', nao:'NÃO', na:'N/A' };
+// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
+// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
+// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
+// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
+// vira ERRO visível em vez de PDF branco.
+function _pdfScaleSeguro(el){
+  var MAXPX = 16000000;
+  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
+  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
+  var s = Math.sqrt(MAXPX / (w * h));
+  if (!isFinite(s) || s <= 0) s = 1;
+  s = Math.min(2, s);
+  return Math.max(0.5, Math.round(s * 100) / 100);
+}
+function _pdfChecarCanvas(canvas, imgData){
+  if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+}
+
 function _cb(v, target){ return '<span class="p1-cb' + (v===target?' marked':'') + '">' + (v===target?'✓':'') + '</span>'; }
 function buildPdfLayout(){
   const id = state.identificacao || {};
@@ -398,7 +438,8 @@ async function enviarPdfParaDrive(){
     buildPdfLayout();
     el.classList.add('pdf-capturing');
     el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
-    var canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    var _scale = _pdfScaleSeguro(el);   // 29/07 (F-30)
+    var canvas = await html2canvas(el, { scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     el.classList.remove('pdf-capturing');
     el.style.cssText = 'display:none';
 
@@ -407,6 +448,7 @@ async function enviarPdfParaDrive(){
     var pageW = 210, pageH = 297, imgW = pageW;
     var imgH = canvas.height * imgW / canvas.width;
     var imgData = canvas.toDataURL('image/jpeg', 0.92);
+    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
     var heightLeft = imgH, position = 0;
     pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
     heightLeft -= pageH;
@@ -427,7 +469,7 @@ async function enviarPdfParaDrive(){
       maquina_id: (_maqAtual && _maqAtual.id) || '',
       maquina_label: (_maqAtual ? maqLabel(_maqAtual) : (id.equipamento || '')),
       base64: base64, fileName: 'Recebimento_Form01_' + (_num || _osId || 's_os') + '.pdf',
-      categoria:'pdf_form01', caption:'Recebimento de máquina (Form 01)',
+      categoria:'pdf_form01', caption:'Recebimento de máquina (Form 01)', pdf_uid: _pdfUid,
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
     var d = await gasPostJson(payload); // 28/07: parse seguro + retry
@@ -512,6 +554,7 @@ function preencherResponsavelSessao(){
   initChecklist();
   const p = new URLSearchParams(location.search);
   _osId = p.get('os_id') || ''; _tarefaId = p.get('tarefa_id') || '';
+  _origem = p.get('origem') || '';   // 29/07 (F-14): propagada pela OS Genérica
   window._GC = p.get('gc') || window._GC || '';
   if (p.get('cliente')) document.getElementById('f_cliente').value = p.get('cliente');
   if (p.get('os_numero')) document.getElementById('f_os').value = p.get('os_numero');

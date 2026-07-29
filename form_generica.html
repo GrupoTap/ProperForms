@@ -1,5 +1,15 @@
 <!DOCTYPE html>
 <!--
+form_generica.html — 29/07/2026 — pacote pós-teste profundo (F-25, F-26, F-30, F-01)
+  - F-25a/b/c: mesmas correções do motor ProperSafe da corretiva (o motor é uma
+    cópia): reagendamento do pump (job órfão), backoff real com nextRetryAt e
+    releitura do job antes do put (Descartar em voo não ressuscita mais).
+  - F-26: fotos_json com foto_uid/client_ts e REMONTADO no sender, na hora do
+    envio, a partir do store durável (antes congelava url:null quando offline).
+  - F-01: client_ts congelado na captura da foto (junto do foto_uid já existente).
+  - F-30: scale do html2canvas limitado a ~16 Mpx + recusa de PDF branco.
+  Tudo ADITIVO: nenhum id/name/data-key/função/action renomeado.
+  ----------------------------------------------------------------------------
 form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (ProperCare)
   ETAPA B (27/07, mesma data): (1) FOTO agora tem dois caminhos — 📷 Câmera (input com
   capture=environment) e 🖼 Galeria (input SEM capture, multi-seleção): o capture=
@@ -417,14 +427,20 @@ window.PS = (function(){
   function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
 
   // ─ Outbox ─
-  function enqueue(job){ job.tries=0; job.status='pending'; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
+  function enqueue(job){ job.tries=0; job.status='pending'; job.nextRetryAt=0; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
   function listJobs(){ return all('outbox'); }
   function jobsOf(draftId){ return all('outbox').then(function(a){ return a.filter(function(j){return j.draftId===draftId;}); }); }
   function dropJobsOf(draftId){ return all('outbox').then(function(a){ return Promise.all(a.filter(function(j){return j.draftId===draftId;}).map(function(j){ return del('outbox',j.jobId); })); }); }
-  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
+  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; j.nextRetryAt=0; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
   function dropJob(id){ return del('outbox',id).then(function(){ emit(); }); }
 
   function setSender(fn){ sender=fn; }
+
+  // 29/07 (F-25b): backoff REAL. Antes as 6 tentativas queimavam em milissegundos
+  // (o pump roda os jobs em sequência) e o job caía em dead-letter ANTES de a rede
+  // voltar. Agora cada falha marca nextRetryAt = 2^tentativas * 5s (teto 10 min) e
+  // o pump PULA jobs cuja janela ainda não chegou.
+  function _backoffMs(tries){ return Math.min(Math.pow(2, tries) * 5000, 600000); }
 
   async function pump(){
     if(pumping || !sender) return;
@@ -435,16 +451,31 @@ window.PS = (function(){
       var pend=jobs.filter(function(j){ return j.status==='pending'; }).sort(function(a,b){ return a.createdAt-b.createdAt; });
       for(var i=0;i<pend.length;i++){
         var j=pend[i], r;
+        if(j.nextRetryAt && j.nextRetryAt > Date.now()) continue;   // 29/07 (F-25b)
         try{ r=await sender(j); }catch(e){ r={ status:'retry', error:(e&&e.message)||'erro' }; }
         j.tries=(j.tries||0)+1; j.updatedAt=Date.now();
-        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; }
-        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); }
-        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending'; }
+        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; j.nextRetryAt=0; }
+        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); j.nextRetryAt=0; }
+        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending';
+               j.nextRetryAt=(j.status==='pending')?(Date.now()+_backoffMs(j.tries)):0; }
+        // 29/07 (F-25c): o técnico pode ter tocado em "Descartar" com este envio EM
+        // VOO — relê o job e só regrava se ele ainda existir (antes ressuscitava).
+        var aindaExiste=await get('outbox', j.jobId);
+        if(!aindaExiste){ emit(); continue; }
         await put('outbox',j);
         emit();
       }
     } finally { pumping=false; }
     emit();
+    // 29/07 (F-25a): job enfileirado DURANTE um pump ativo ficava órfão — o enqueue
+    // chama pump(), que sai no guard 'pumping', e ninguém mais o pegava até um
+    // reload/evento 'online'. Se sobrou pendente (novo ou em backoff), reagenda.
+    try{
+      var resto=await listJobs();
+      var sobrou=false;
+      for(var q=0;q<resto.length;q++){ if(resto[q].status==='pending'){ sobrou=true; break; } }
+      if(sobrou) setTimeout(function(){ pump(); }, 5000);
+    }catch(e){}
   }
 
   function counts(){ return listJobs().then(function(a){
@@ -468,6 +499,24 @@ const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 const LOGO_DATAURL = 'data:image/png;base64,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';
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+// V29/07 F-12b: leitura auxiliar com parse seguro + 2 tentativas. O GAS às vezes responde
+// uma PÁGINA HTML de erro (cold start/quota) e o JSON.parse cru morria dentro de um catch
+// silencioso — o técnico via campos vazios sem saber por quê. NÃO usa a fila durável de
+// propósito: estas chamadas são auxiliares (ler máquinas da OS / atualizar cadastro) e não
+// podem competir com a outbox de fotos/formulário.
+async function gcFetchJson(payload, tentativas){
+  var n = tentativas || 2, ultimo = null;
+  for (var i = 1; i <= n; i++){
+    try{
+      var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      var t = await r.text();
+      try { return JSON.parse(t); }
+      catch(e){ ultimo = new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){ ultimo = e; }
+    if (i < n) await new Promise(function(res){ setTimeout(res, 700 * i); });
+  }
+  throw (ultimo || new Error('falha de rede'));
+}
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 
 let _osId = '', _tarefaId = '', _draftId = '';
@@ -730,13 +779,19 @@ async function addPhoto(uid, dataUrl, fileName){
   if(!Array.isArray(_fotosByBlock[uid])) _fotosByBlock[uid]=[];
   var ref = { photoId:null, caption:caption, secao:uid, status:'pending', url:null, fileName:fileName };
   _fotosByBlock[uid].push(ref);
+  // 29/07 (F-01): ms da CAPTURA, gerado 1x. O corpo do job é gravado no IndexedDB
+  // e reenviado tal e qual — nunca é remontado, logo o client_ts nunca muda.
+  var _clientTs = Date.now();
   await ensureDraftSaved();
   try{
-    var photoId = await PS.savePhoto({ draftId:_draftId, pointKey:uid, caption:caption, fileName:fileName, dataUrl:dataUrl, uploadStatus:'pending', uploadUrl:'' });
+    var photoId = await PS.savePhoto({ draftId:_draftId, pointKey:uid, caption:caption, fileName:fileName, dataUrl:dataUrl, uploadStatus:'pending', uploadUrl:'', clientTs:_clientTs });
     ref.photoId = photoId; el.setAttribute('data-pid', String(photoId));
+    var fotoUid = 'f_'+_formUid+'_'+photoId;
+    ref.foto_uid = fotoUid; ref.client_ts = _clientTs;
     var body = { action:'salvarFotoForm', os:state_os(), cliente:val('f_cliente')||'SemCliente', secao:uid, legenda:caption,
       nomeArquivo:fileName, base64:dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_generica', entity_type:'generica',
-      foto_uid:'f_'+_formUid+'_'+photoId };
+      foto_uid:fotoUid, client_ts:_clientTs };   // 29/07 (F-01): client_ts congelado na captura
+    try{ await PS.updatePhoto(photoId,{ fotoUid:fotoUid, clientTs:_clientTs }); }catch(e){}
     await PS.enqueue({ draftId:_draftId, kind:'salvarFotoForm', url:GAS_URL, body:body, photoId:photoId, label:caption });
   }catch(e){ el.className='thumb erro'; toast('Não consegui guardar a foto no aparelho'); }
   scheduleSave();
@@ -754,10 +809,25 @@ function fotosFlat(){
   document.querySelectorAll('#stack .blk[data-tipo="foto"]').forEach(function(el){
     var uid=el.dataset.uid, leg=legendaDoBloco(uid);
     (_fotosByBlock[uid]||[]).forEach(function(f){
-      out.push({ url:f.url||null, fileName:f.fileName, secao:uid, caption:leg, status:f.status||'pending' });
+      out.push({ url:f.url||null, fileName:f.fileName, secao:uid, caption:leg, status:f.status||'pending',
+                 foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 });
     });
   });
   return out;
+}
+// 29/07 (F-26, mesma classe da corretiva): o fotos_json era congelado no Concluir —
+// num envio offline TODAS as fotos iam com url:null. Remonta na hora do envio a
+// partir do store durável (uploadUrl confirmada + foto_uid p/ join posterior).
+async function fotosJsonDoStore(draftId, congelado){
+  var ps=[];
+  try{ ps=await PS.photosOf(draftId); }catch(e){ return congelado; }
+  if(!ps || !ps.length) return congelado;
+  ps.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
+  return ps.map(function(p){
+    return { url:p.uploadUrl||null, fileName:p.fileName, secao:p.pointKey,
+             caption:p.caption||'', status:(p.uploadStatus==='ok'?'ok':'pending'),
+             foto_uid:p.fotoUid||('f_'+_formUid+'_'+p.photoId), client_ts:p.clientTs||0 };
+  });
 }
 
 // ══ ASSINATURAS CONFIGURÁVEIS (motor de coleta V63 + slots dinâmicos) ═══════
@@ -991,7 +1061,7 @@ function captura(){
         unidade:q(el,'.b-unid').value, unidadeOutra:q(el,'.b-unid-outra').value });
     } else if(tipo==='foto'){
       state.blocos.push({ uid:uid, tipo:'foto', legenda:q(el,'.b-leg').value,
-        fotos:(_fotosByBlock[uid]||[]).map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName }; }) });
+        fotos:(_fotosByBlock[uid]||[]).map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }; }) });
     } else if(tipo==='form'){
       var fid=q(el,'.b-form').value;
       var fdef=null; for(var fi=0; fi<FORM_CATALOGO.length; fi++){ if(FORM_CATALOGO[fi].id===fid){ fdef=FORM_CATALOGO[fi]; break; } }
@@ -1089,6 +1159,10 @@ async function enviar(){
 function registrarSender(){
   PS.setSender(async function(job){
     try{
+      // 29/07 (F-26): estado ATUAL das fotos no momento do envio (não o do Concluir)
+      if(job.kind==='saveFormulario' && job.body){
+        try{ job.body.fotos_json = await fotosJsonDoStore(job.draftId, job.body.fotos_json); }catch(e){}
+      }
       var r=await fetch(job.url,{ method:'POST', body:gcBody(job.body) });
       var txt=await r.text(); var d=null; try{ d=JSON.parse(txt); }catch(e){}
       var ok = d && (d.status==='ok' || d.ok===true);
@@ -1242,7 +1316,27 @@ async function loadPhotosByKey(){
   }catch(e){}
   return byKey;
 }
+// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
+// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
+// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
+// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
+// vira ERRO visível em vez de PDF branco.
+function _pdfScaleSeguro(el){
+  var MAXPX = 16000000;
+  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
+  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
+  var s = Math.sqrt(MAXPX / (w * h));
+  if (!isFinite(s) || s <= 0) s = 1;
+  s = Math.min(2, s);
+  return Math.max(0.5, Math.round(s * 100) / 100);
+}
+function _pdfChecarCanvas(canvas, imgData){
+  if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+}
+
 async function buildPdfBase64(){
+
   if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
   var el=document.getElementById('pdf-layout');
   var photosByKey=await loadPhotosByKey();
@@ -1251,11 +1345,13 @@ async function buildPdfBase64(){
   el.classList.add('pdf-capturing');
   el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
   try{
-    var canvas=await html2canvas(el,{ scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    var _scale=_pdfScaleSeguro(el);   // 29/07 (F-30)
+    var canvas=await html2canvas(el,{ scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     var jsPDF=window.jspdf.jsPDF;
     var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
     var imgData=canvas.toDataURL('image/jpeg',0.92);
+    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
     var heightLeft=imgH, position=0;
     pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
     while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
@@ -1308,8 +1404,7 @@ function selMaquina(){
 async function carregarMaquinasOS(){
   if(!_osId) return;
   try{
-    const resp=await fetch(GAS_URL,{ method:'POST', body:gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
-    const data=JSON.parse(await resp.text());
+    const data=await gcFetchJson({ action:'getMaquinasByOS', id_os:_osId });
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -1374,6 +1469,7 @@ function wireInputs(){
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
   window.addEventListener('pagehide', function(){ saveDraft(); });
   window.addEventListener('online', function(){ PS.pump(); });
+  setInterval(function(){ PS.pump(); }, 30000);   // 29/07 (F-25a): rede de segurança da fila
   window.addEventListener('beforeunload', function(e){ if(_psHasPending){ e.preventDefault(); e.returnValue=''; return ''; } });
   setInterval(function(){ if(!_sending) saveDraft(); }, 8000);   // autosave periódico
   psRefreshBadge();

@@ -1,5 +1,15 @@
 <!DOCTYPE html>
 <!--
+form05.html — 29/07/2026 — pacote pós-teste profundo (F-12, F-01b, F-14)
+  - F-12: gasPostJson (parse seguro + 3 tentativas com backoff), bloco canônico do
+    form01, nos 3 POSTs (getMaquinasByOS, salvarPdfDrive, saveFormulario). O
+    JSON.parse cru estourava quando o GAS respondia página HTML de erro — e aqui
+    a falha custava o termo inteiro (o técnico já estava com o cliente na frente).
+  - F-01b: pdf_uid estável (1x por sessão) no salvarPdfDrive → dedupe no GAS.
+  - F-14: ?origem= lido da URL e enviado no saveFormulario.
+  - F-01 (client_ts) NÃO se aplica: este form não captura fotos.
+  Tudo ADITIVO: nenhum id/name/função/action renomeado.
+  ----------------------------------------------------------------------------
 form05.html — 13/07/2026 — Termo de Desmontagem (novo form ProperForms)
   Fluxo de oficina: acionado quando o Form 02 (diagnóstico) indica que a máquina
   precisa ser desmontada para diagnosticar. Roda pelo pipeline via
@@ -95,10 +105,32 @@ const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
 function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10); }
 
+// 29/07 (F-12): POST robusto ao GAS — parse seguro + retry (bloco canônico do
+// form01, 28/07). O Apps Script às vezes responde página HTML de erro; o
+// JSON.parse cru estourava "JSON Parse error: Unrecognized token '<'".
+async function gasPostJson(payload, tentativas){
+  tentativas = tentativas || 3;
+  let ultimoErro = null;
+  for (let i = 0; i < tentativas; i++){
+    try{
+      const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      const text = await resp.text();
+      try { return JSON.parse(text); }
+      catch(ePar){ throw new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){
+      ultimoErro = e;
+      if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  throw new Error((ultimoErro && ultimoErro.message) || 'falha de comunicação');
+}
+
 const LOGO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCADwAPADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDwWiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKA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jo2Bke1XYPiD41g1K41KLxJerdXKJHM+VxIE+7lcbSRk4OMigD0fR/DfhnT9Rv8ASNS8N6Za6pNrj20EGrzXD28sO1NsFvdRjasuWzucdGX3rOfR9E8Oaj4V8PXPgq31STXXP22W4lkeeNjcvCYYXRgoaMLycHJ68Vwul+OvGOlvdvY+JNRha8mM9w3m7i8p6yZbOH/2hg03SPG3i7SNPlsNN8Q39tbSuzsiyZwzfeZSeVJ7kEE0AevReB/C1pplvaT6doF1YQ2OpT39891INRKwTzoksMathgNkf8JHXNc94l03wrZWfhzTIdK0We4vbXTHube0huW1R/NRHkZGz5RLcgAc/MO9ebWviLXLWWylt9UuY3sYZLe1Ib/VRyFi6D2be2Qeu41duPHHi+40eLSJvEF61hCkaRQ7gAix4KAEDI27RjntQB1nxU0vQm8Pf2x4c0zRUsoNTNobjT2niliBUlYbiCbJEnyk71OOCPSvMa3PEni7xN4khih13Wru/ihYuiSsMbiMFiABlsfxHJrDoAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP/9k=';
 
 let _osId = '', _tarefaId = '', _osNumero = '', _sent = false, _pdfDoc = null, _pdfName = 'termo.pdf';
+let _origem = '';                        // 29/07 (F-14): ?origem= vindo da OS Genérica
 const _formUid = pgpUid();
+const _pdfUid  = 'pdf_' + _formUid;      // 29/07 (F-01b): uid estável do PDF (dedupe no GAS)
 const state = { maquina: null, os: null };
 
 function val(id){ const e=document.getElementById(id); return e ? e.value.trim() : ''; }
@@ -127,8 +159,7 @@ var _clienteUrl = '';
 async function carregarDados(){
   if (!_osId) { renderDados(); return; }
   try{
-    const resp = await fetch(GAS_URL, { method:'POST', body: gcBody({ action:'getMaquinasByOS', id_os:_osId }) });
-    const data = JSON.parse(await resp.text());
+    const data = await gasPostJson({ action:'getMaquinasByOS', id_os:_osId });   // 29/07 (F-12)
     state.os = data && data.os ? data.os : null;
     var machines = (data && data.machines) || [];
     state.maquina = machines.length ? machines[0] : null;
@@ -270,9 +301,9 @@ async function gerar(){
       var base64 = _pdfDoc.output('datauristring').split(',')[1];
       var pdfPayload = { action:'salvarPdfDrive', os_id:_osId, os_numero:_osNumero, cliente:cliente,
         maquina_id: m.id || '', maquina_label: (equipStr(m) || m.tag || ''),
-        base64: base64, fileName: _pdfName, categoria:'pdf_termo_desmontagem', caption:'Termo de Desmontagem (Form 05)' };
-      var r1 = await fetch(GAS_URL, { method:'POST', body: gcBody(pdfPayload) });
-      var d1 = JSON.parse(await r1.text());
+        base64: base64, fileName: _pdfName, categoria:'pdf_termo_desmontagem', caption:'Termo de Desmontagem (Form 05)',
+        pdf_uid: _pdfUid };                                  // 29/07 (F-01b)
+      var d1 = await gasPostJson(pdfPayload);                // 29/07 (F-12): parse seguro + retry
       if (!d1 || d1.status !== 'ok') throw new Error((d1 && d1.error) || 'falha ao salvar PDF');
     }catch(e){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('Erro ao salvar no Drive: ' + e.message); return; }
 
@@ -284,9 +315,9 @@ async function gerar(){
           tecnico_nome: resp || (_sess && _sess.tecnico && _sess.tecnico.nome) || '',
           tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '',
           campos_json: { dias_uteis_entrega: dias, valor_diagnostico: valor, responsavel_recebimento: resp } };
-        var r2 = await fetch(GAS_URL, { method:'POST', body: gcBody(formPayload) });
-        var d2 = JSON.parse(await r2.text());
-        if (d2.status !== 'ok') throw new Error(d2.message || 'Erro do servidor');
+        if (_origem) formPayload.origem = _origem;           // 29/07 (F-14)
+        var d2 = await gasPostJson(formPayload);             // 29/07 (F-12): parse seguro + retry
+        if (d2.status !== 'ok') throw new Error(d2.message || d2.error || 'Erro do servidor');
       }catch(e){ _sent=false; btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('PDF salvo, mas falhou ao fechar a tarefa: ' + e.message); return; }
     }
   }
@@ -301,6 +332,7 @@ function baixarPdf(){ if (_pdfDoc) _pdfDoc.save(_pdfName); }
 (function init(){
   const p = new URLSearchParams(location.search);
   _osId = p.get('os_id') || ''; _tarefaId = p.get('tarefa_id') || '';
+  _origem = p.get('origem') || '';   // 29/07 (F-14): propagada pela OS Genérica
   _osNumero = p.get('os_numero') || p.get('os') || '';
   _clienteUrl = p.get('cliente') || '';
   window._GC = p.get('gc') || window._GC || '';
