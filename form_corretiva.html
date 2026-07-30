@@ -1466,12 +1466,20 @@ async function atualizarMaquinaCadastro(){
   var regimeIgual = JSON.stringify(turnos) === JSON.stringify(_maqAtual.regimeData||[]);
   if(novoHor===antigoHor && (regimeIgual || !turnos.length)) return;
   // guarda contra digitação errada: horímetro novo MENOR que o do cadastro
+  var _forcarHorimetro = false;
   if(hVal!=='' && antigoHor>0 && novoHor>0 && novoHor<antigoHor){
     if(!confirm('O horímetro informado ('+novoHor+' h) é MENOR que o do cadastro ('+antigoHor+' h). Isso só vale se o horímetro foi trocado/zerado. Atualizar mesmo assim?')) return;
+    // 30/07/2026 — par do GAS v80 F-31: saveMachine passou a BARRAR horímetro que
+    // regride (era o furo que deixava o espelho Supabase de 30 min sobrescrever
+    // leitura nova por leitura velha). Aqui a regressão é INTENCIONAL e já foi
+    // confirmada pelo técnico, então viaja o escape explícito — sem ele, o
+    // servidor preservaria o valor antigo e a correção não teria efeito nenhum.
+    _forcarHorimetro = true;
   }
   var machineUpdate = Object.assign({}, _maqAtual, {
     hourTotal: novoHor,
-    regimeData: turnos.length ? turnos : (_maqAtual.regimeData || [])
+    regimeData: turnos.length ? turnos : (_maqAtual.regimeData || []),
+    forceHorimetro: _forcarHorimetro
   });
   try{
     var d = await gcFetchJson({ action:'saveMachine', machine: machineUpdate });
