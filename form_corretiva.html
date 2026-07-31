@@ -59,6 +59,16 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   textarea{resize:vertical;min-height:64px}
   .row2{display:flex;gap:8px}.row2>div{flex:1}
   .row3{display:flex;gap:8px}.row3>div{flex:1}
+  /* V2.1 (P3) — TESTE SOFT 31/07: cada coluna do .row3 (tensão A-B/B-C/C-A,
+     corrente por fase) carrega um botão "📷 Foto da leitura" com white-space:nowrap.
+     Item flex nasce com min-width:auto, então a coluna não conseguia encolher
+     abaixo da largura desse botão (~128px): 3x128 + gaps + padding do body dava
+     431px e o formulário rolava de lado num celular de 360/414px — exatamente o
+     aparelho em que ele é preenchido. min-width:0 libera o encolhimento e o rótulo
+     do botão passa a quebrar em 2 linhas em vez de empurrar a página. */
+  .row2>div,.row3>div{min-width:0}
+  .row3 .btn-foto-mini,.row2 .btn-foto-mini{white-space:normal;line-height:1.15;padding:6px 8px;text-align:center}
+  .row3 .pfoto-cap,.row2 .pfoto-cap{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .grp-title{font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px;font-weight:700}
   .sn{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
   .sn button{flex:1;min-width:64px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px;font-size:13px;font-family:inherit;cursor:pointer}
