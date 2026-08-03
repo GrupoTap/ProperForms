@@ -220,63 +220,79 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   .pgp-sign-bottom{ flex:none; display:flex; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0)); background:#161b22; border-top:1px solid #30363d }
   .pgp-sign-bottom .pgp-sign-btn{ padding:12px 8px; font-size:15px }
 
-  #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:8pt;line-height:1.35}
-  #pdf-layout.pdf-capturing{display:block}
-  #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-  #pdf-layout .pdf-sec-head-amber,#pdf-layout .pdf-sec-head-blue,#pdf-layout .pdf-sec-head-dark{page-break-after:avoid}
-  #pdf-layout tr{page-break-inside:avoid}
-  /* HEADER */
-  .pdf-header{display:table;width:100%;border:1px solid #CCC;border-collapse:collapse;margin-bottom:5px}
-  .pdf-header-logo,.pdf-header-title,.pdf-header-fields{display:table-cell;vertical-align:middle}
-  .pdf-header-logo{width:60px;border-right:1px solid #CCC;text-align:center;padding:6px 5px;background:#F26522}
-  .pdf-header-logo img{width:46px;height:46px;display:inline-block}
-  .pdf-header-title{background:#3D3D3D;color:#fff;width:45%;border-right:1px solid #555;padding:7px 9px}
-  .pdf-form-name{font-size:11pt;font-weight:700;display:block;letter-spacing:.3px}
-  .pdf-form-sub{font-size:7.5pt;display:block;margin-top:2px;color:#DDD}
-  .pdf-form-ver{font-size:6.5pt;display:block;margin-top:4px;color:#BBB}
-  .pdf-header-fields{padding:5px 8px;vertical-align:top;font-size:7.5pt}
-  .pdf-id-row{display:flex;gap:4px;margin-bottom:3px;align-items:baseline}
-  .pdf-id-label{color:#555;flex-shrink:0}
-  .pdf-id-val{border-bottom:.5px solid #999;flex:1;min-width:24px;padding-bottom:1px;font-weight:600}
-  /* SECTION HEADS */
-  .pdf-sec-head-amber{background:#E07B2E;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
-  .pdf-sec-head-blue{background:#2E4057;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
-  .pdf-sec-head-dark{background:#3D3D3D;color:#fff;padding:3px 8px;font-size:9pt;font-weight:700;margin:5px 0 3px}
-  /* BODY + GRID */
-  .pdf-body{border:.5px solid #CCC;padding:5px 8px;margin-bottom:4px;font-size:7.5pt}
-  .pdf-grid{display:flex;flex-wrap:wrap;gap:3px 16px}
-  .pdf-grid>div{min-width:45%}
-  .pdf-obs{white-space:pre-wrap;word-wrap:break-word;min-height:9mm;border:.5px solid #DDD;padding:4px;margin-top:2px;background:#FCFCFC}
-  /* TABLES */
-  #pdf-layout table.pdf-tbl{width:100%;border-collapse:collapse;font-size:7pt;margin-bottom:4px}
-  #pdf-layout .pdf-tbl th{background:#2E4057;color:#fff;padding:2px 5px;text-align:left;font-weight:600}
-  #pdf-layout .pdf-tbl td{padding:2px 5px;border:.5px solid #CCC;vertical-align:middle}
-  #pdf-layout .pdf-tbl tr:nth-child(even) td{background:#F5F5F5}
-  .pdf-cb{display:inline-block;width:9px;height:9px;border:.75px solid #555;text-align:center;line-height:9px;font-size:7pt;vertical-align:middle;margin-right:2px}
-  .pdf-cb.marked{background:#333;color:#fff}
-  /* SIGNATURES + FOOTER */
-  .pdf-ef{display:table;width:100%;table-layout:fixed;border-collapse:collapse;margin-top:2px}
-  .pdf-sig-col{display:table-cell;width:50%;vertical-align:top;border:.5px solid #CCC;padding:6px 8px}
-  .pdf-sig-col.left{border-right:none}
-  .pdf-sig-img{height:44px;max-width:200px;object-fit:contain;display:block;margin-bottom:2px}
-  .pdf-sig-line{border-bottom:.5px solid #999;height:40px;display:block;margin-bottom:2px}
-  .pdf-sig-name{font-size:7.5pt;font-weight:600}
-  .pdf-sig-role{font-size:6.5pt;color:#666}
-  .pdf-footer{font-size:6pt;font-style:italic;text-align:center;color:#555;border-top:.5px solid #CCC;padding-top:3px;margin-top:6px}
-  /* Grade de fotos do laudo (embutidas no PDF, cada uma com a legenda da leitura) */
-  #pdf-layout .pdf-photos{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
-  #pdf-layout .pdf-photo{width:48.5%;border:.5px solid #CCC;padding:3px;background:#fff;page-break-inside:avoid}
-  #pdf-layout .pdf-photo img{width:100%;height:auto;max-height:58mm;object-fit:contain;display:block}
-  #pdf-layout .pdf-photo .cap{font-size:6.5pt;color:#333;margin-top:2px;text-align:center;line-height:1.2}
-  /* itens sequenciais do PDF da OS genérica (na ordem de execução) */
-  #pdf-layout .pdf-item{border:.5px solid #CCC;padding:5px 8px;margin-bottom:4px;font-size:7.5pt;page-break-inside:avoid}
-  #pdf-layout .pdf-item .tag{display:inline-block;font-size:6pt;font-weight:700;color:#fff;background:#2E4057;border-radius:2px;padding:1px 5px;margin-bottom:3px;letter-spacing:.4px}
-  #pdf-layout .pdf-item.i-obs .tag{background:#3D3D3D}
-  #pdf-layout .pdf-item.i-med .tag{background:#E07B2E}
-  #pdf-layout .pdf-item.i-form .tag{background:#6C3A9E}
-  #pdf-layout .pdf-item .q{font-weight:700;margin-bottom:2px}
-  #pdf-layout .pdf-item .med-line{font-size:8pt}
-  #pdf-layout .pdf-item .med-line b{font-size:9pt}
+  /* ══ MOTOR DE PDF PAGINADO (tp-*) — 03/08/2026 ══════════════════════════════
+     Padrao visual do Relatorio Consolidado de Preventiva: barra preta de secao,
+     regua laranja, tabelas com coluna-rotulo cinza, fotos em grade e rodape com
+     Pag. X/Y. Cada .tp-page e' uma folha A4 EXATA (794x1123 @96dpi) capturada
+     separadamente — por isso nada mais e' cortado no meio ao virar a pagina. */
+  #pdf-layout{display:none}
+  #pdf-layout.tp-capturing{display:block}
+  .tp-host,.tp-host *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  .tp-host{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff;font-size:8pt;line-height:1.4}
+  .tp-page{width:794px;height:1123px;padding:38px 44px 50px;position:relative;background:#fff;overflow:hidden}
+  .tp-el{padding-bottom:9px}
+  .tp-el>*{margin:0}
+
+  /* cabecalho da 1a pagina */
+  .tp-mast{display:table;width:100%;background:#1a1a1a;border-collapse:collapse}
+  .tp-mast>div{display:table-cell;vertical-align:middle}
+  .tp-mast-logo{width:70px;padding:11px 0 11px 14px}
+  .tp-mast-logo img{width:46px;height:46px;display:block}
+  .tp-mast-txt{padding:11px 14px}
+  .tp-eyebrow{font-size:6.5pt;letter-spacing:1.7px;font-weight:700;color:#f58220;margin-bottom:4px}
+  .tp-title{font-size:15pt;font-weight:700;color:#fff;line-height:1.12}
+  .tp-mast-sub{font-size:7.5pt;color:#b0b0b0;margin-top:4px}
+  .tp-mast-os{width:172px;padding:11px 14px;text-align:right;color:#fff}
+  .tp-mast-os span{display:block;font-size:6pt;letter-spacing:1.3px;color:#8f8f8f}
+  .tp-mast-os b{font-size:11.5pt;display:block;margin-top:2px}
+  .tp-rule{height:3px;background:#f58220}
+  .tp-client{font-size:13pt;font-weight:700;color:#e85d1f;padding-top:5px}
+  .tp-clientsub{font-size:8pt;color:#555;padding-top:2px}
+
+  /* secoes */
+  .tp-sec{background:#1a1a1a;color:#fff;font-size:8.5pt;font-weight:700;letter-spacing:.8px;padding:6px 10px;text-transform:uppercase}
+  .tp-sub{color:#e85d1f;font-size:8pt;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:1px 0 3px}
+
+  /* tabelas */
+  .tp-tbl{width:100%;border-collapse:collapse;font-size:8pt}
+  .tp-tbl th{background:#2b2b2b;color:#fff;font-weight:700;text-align:left;padding:5px 8px;border:1px solid #2b2b2b;font-size:7.5pt;letter-spacing:.3px}
+  .tp-tbl td{border:1px solid #d9d9d9;padding:5px 8px;vertical-align:top;background:#fff}
+  .tp-tbl td.k{background:#f4f4f4;font-weight:700;color:#333;width:150px}
+  .tp-tbl td.kw{background:#f4f4f4;font-weight:700;color:#333;width:190px}
+  .tp-tbl td.num{text-align:right;font-weight:700;white-space:nowrap;width:86px}
+  .tp-tbl td.un{color:#555;width:76px}
+  .tp-tbl td.resp{width:96px;text-align:center}
+  .tp-sim{color:#177245;font-weight:700}
+  .tp-nao{color:#b3261e;font-weight:700}
+  .tp-nd{color:#8a8a8a;font-weight:700}
+  .tp-vazio{font-size:8pt;color:#777;border:1px solid #e2e2e2;padding:9px;background:#fafafa}
+
+  /* registro fotografico */
+  .tp-fotos{display:table;width:100%;table-layout:fixed;border-collapse:separate;border-spacing:9px 0}
+  .tp-fcel{display:table-cell;width:50%;vertical-align:top}
+  .tp-fbox{border:1px solid #d9d9d9;padding:6px;background:#fff}
+  .tp-fimg{height:218px;background:#fafafa;text-align:center;line-height:218px;font-size:0}
+  .tp-fimg img{max-width:100%;max-height:218px;vertical-align:middle;display:inline-block}
+  .tp-fsem{color:#999;font-size:7.5pt;line-height:218px;font-style:italic}
+  .tp-fcap{font-size:7pt;color:#222;text-align:center;margin-top:6px;line-height:1.3;font-weight:700}
+
+  /* termo de aceite */
+  .tp-termo{border:1px solid #d9d9d9;border-left:4px solid #1a1a1a;padding:11px 13px;font-size:8pt;line-height:1.55;text-align:justify;background:#fbfbfb}
+  .tp-ressalva{border:1px solid #f3cba9;border-left:4px solid #f58220;background:#fff8f2;padding:9px 13px;font-size:8pt;line-height:1.45}
+
+  /* assinaturas */
+  .tp-sigs{display:table;width:100%;table-layout:fixed;border-collapse:separate;border-spacing:11px 0}
+  .tp-sig{display:table-cell;width:50%;border:1px solid #d9d9d9;padding:11px 13px;vertical-align:bottom}
+  .tp-sigimg{height:58px;text-align:center;line-height:58px;font-size:0}
+  .tp-sigimg img{max-height:58px;max-width:100%;vertical-align:middle;display:inline-block}
+  .tp-sigline{display:block;height:58px}
+  .tp-signome{font-size:8.5pt;font-weight:700;border-top:1px solid #333;padding-top:5px}
+  .tp-sigpapel{font-size:7pt;color:#666;margin-top:2px}
+
+  /* rodape por pagina */
+  .tp-foot{position:absolute;left:44px;right:44px;bottom:18px;height:24px;border-top:1px solid #ddd;padding-top:6px;font-size:6.5pt;color:#777}
+  .tp-foot .l{float:left}
+  .tp-foot .r{float:right}
   /* ── ADITIVO form_locacao 03/08 ─────────────────────────────────────────── */
   .chips{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
   .chip{background:var(--elev);border:1px solid var(--border);color:var(--text);
@@ -1364,87 +1380,331 @@ function psFecharPainel(){ var o=document.getElementById('psOverlay'); if(o) o.c
 async function psRetry(id){ await PS.retryJob(id); psAbrirPainel(); }
 async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa não irá ao servidor.')){ await PS.dropJob(id); psAbrirPainel(); psRefreshBadge(); } }
 
-// ══ PDF consolidado da OS (blocos NA ORDEM + assinaturas) → Drive ═══════════
+// ══ MOTOR DE PDF PAGINADO (03/08/2026) ══════════════════════════════════════
+// Substitui o motor "um canvas gigante fatiado". Problemas que ele resolve, todos
+// vistos no Termo_Entrega_Locacao_PGP20260028.pdf entregue em campo:
+//  1. UM CARTÃO POR ITEM: 10 perguntas viravam 10 caixas de largura inteira e
+//     ocupavam 2 páginas. Agora cada grupo é uma TABELA.
+//  2. FOTO PEQUENA COM MEIA FOLHA VAZIA: a foto ficava num bloco de ~390px num
+//     papel de 794px. Agora é grade de 2 colunas ocupando a largura útil.
+//  3. CORTE NO MEIO DA LINHA: o motor antigo capturava tudo num canvas só e
+//     fatiava por offset — "Temperatura do óleo: 80 °C" saía partida entre as
+//     páginas 2 e 3. Agora cada folha A4 é montada e capturada SEPARADAMENTE, e
+//     nenhum elemento é dividido: o que não cabe desce inteiro.
+//  4. SEM RODAPÉ/NUMERAÇÃO: agora toda página traz "Pág. X/Y".
+// Bônus: o orçamento de pixels do F-30 passa a valer POR PÁGINA (3,6 Mpx com
+// scale 2, contra os 16 Mpx do canvas único) — o PDF branco do iOS fica muito
+// mais difícil de acontecer.
+const TP_W = 794, TP_H = 1123;   // A4 @ 96dpi
+const TP_PAD_X = 44, TP_PAD_T = 38, TP_PAD_B = 50;
+const TP_CAP = TP_H - TP_PAD_T - TP_PAD_B;   // altura útil de conteúdo por folha
+
 function unidLabel(b){ return b.unidade==='outra' ? (b.unidadeOutra||'') : (b.unidade||''); }
-function _pdfFotoBloco(b, photosByKey){
-  var shots=(photosByKey[b.uid]||[]);
-  var leg = b.legenda || 'Foto do serviço';
-  if(!shots.length) return '<div class="pdf-item i-foto"><span class="tag">FOTO</span><div>'+esc(leg)+' <i>(foto não disponível no aparelho)</i></div></div>';
-  return '<div class="pdf-item i-foto"><span class="tag">FOTO</span><div class="pdf-photos">'
-    + shots.map(function(ph){ return '<div class="pdf-photo"><img src="'+ph.dataUrl+'"><div class="cap">'+esc(leg)+'</div></div>'; }).join('')
-    + '</div></div>';
+function tpData(d){ d=String(d||'').trim(); var m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[3]+'/'+m[2]+'/'+m[1]):d; }
+function tpOu(v, alt){ v=String(v==null?'':v).trim(); return v ? esc(v) : (alt||'<span class="tp-nd">—</span>'); }
+// Resposta Sim/Não/N.A. vira selo colorido; qualquer outro texto sai como está.
+function tpResposta(v){
+  var t=String(v||'').trim(); if(!t) return '<span class="tp-nd">—</span>';
+  var l=t.toLowerCase();
+  if(l==='sim') return '<span class="tp-sim">SIM</span>';
+  if(l==='não'||l==='nao') return '<span class="tp-nao">NÃO</span>';
+  if(l==='n.a.'||l==='na'||l==='n/a') return '<span class="tp-nd">N.A.</span>';
+  return esc(t);
 }
-function buildPdfLayout(photosByKey){
+// Tabela: vai INTEIRA no fluxo. Se não couber na folha, o empacotador parte por
+// LINHA e repete o <thead> no pedaço seguinte (nunca uma tabela decapitada, nunca
+// uma linha cortada ao meio). `tbl` é o que dá ao empacotador essa liberdade.
+function tpTblHtml(t){
+  return '<table class="tp-tbl">'+(t.head?('<thead>'+t.head+'</thead>'):'')
+    + '<tbody>'+t.rows.join('')+'</tbody></table>';
+}
+function tpTabela(head, rows){
+  if(!rows.length) return [{ html:'<div class="tp-vazio">— sem registro —</div>', keep:false }];
+  var t={ head:head||'', rows:rows };
+  return [{ html:tpTblHtml(t), keep:false, tbl:t }];
+}
+
+// Monta a lista de elementos indivisíveis do documento, na ordem final.
+function tpMontarFluxo(photosByKey){
   photosByKey = photosByKey || {};
   var i=state.identificacao||{}, at=state.atendimento||{}, lo=state.locacao||{}, te=state.termo||{};
-  var dataHora = esc((at.data||'')+(at.hora?(' '+at.hora):''));
-  function _br(d){ d=String(d||'').trim(); var m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[3]+'/'+m[2]+'/'+m[1]):d; }
-  var periodo = [_br(lo.inicio), _br(lo.previsao)].filter(Boolean).join(' até ');
-  var itens = '';
-  (state.blocos||[]).forEach(function(b){
-    if(b.tipo==='obs'){
-      itens += '<div class="pdf-item i-obs"><span class="tag">OBSERVAÇÃO</span><div class="pdf-obs">'+esc(b.texto||'')+'</div></div>';
-    } else if(b.tipo==='pr'){
-      itens += '<div class="pdf-item i-pr"><span class="tag">PERGUNTA / RESPOSTA</span>'
-        + '<div class="q">'+esc(b.pergunta||'—')+'</div><div class="pdf-obs">'+esc(b.resposta||'')+'</div></div>';
-    } else if(b.tipo==='med'){
-      itens += '<div class="pdf-item i-med"><span class="tag">MEDIÇÃO</span>'
-        + '<div class="med-line">'+esc(b.grandeza||'—')+': <b>'+esc(b.valor||'—')+' '+esc(unidLabel(b))+'</b></div></div>';
-    } else if(b.tipo==='foto'){
-      itens += _pdfFotoBloco(b, photosByKey);
-    } else if(b.tipo==='form'){
-      itens += '<div class="pdf-item i-form"><span class="tag">FORMULÁRIO</span>'
-        + '<div class="med-line">'+esc(b.formNome||'—')+'</div>'
-        + (b.obs?'<div class="pdf-obs">'+esc(b.obs)+'</div>':'')
-        + '<div class="pdf-obs" style="font-size:6.5pt;color:#666">'
-        + (b.aberto?('Aberto em campo em '+esc(b.aberto)+'. '):'')
-        + 'Conteúdo salvo pelo próprio formulário — ver Gestão de Documentos desta OS.</div></div>';
-    }
-  });
-  if(!itens) itens = '<div class="pdf-body">—</div>';
-  // assinaturas em pares (mesmo visual da corretiva)
-  var sigs=(state.assinaturas||[]);
-  var sigHtml='';
-  function sigCell(a){
-    var papel = a.papel==='Outro' ? (a.papelOutro||'Outro') : (a.papel||'');
-    if(a.dataUrl) return '<img class="pdf-sig-img" src="'+a.dataUrl+'"><div class="pdf-sig-name">'+esc(a.nome||'')+'</div><div class="pdf-sig-role">'+esc(papel)+(a.ts?(' — '+new Date(a.ts).toLocaleString('pt-BR')):'')+'</div>';
-    return '<span class="pdf-sig-line"></span><div class="pdf-sig-name">'+esc(a.nome||'')+'</div><div class="pdf-sig-role">'+esc(papel)+'</div>';
-  }
-  for(var s=0; s<sigs.length; s+=2){
-    sigHtml += '<div class="pdf-ef"><div class="pdf-sig-col left">'+sigCell(sigs[s])+'</div>'
-      + '<div class="pdf-sig-col">'+(sigs[s+1]?sigCell(sigs[s+1]):'')+'</div></div>';
-  }
-  var html = ''
-    + '<header class="pdf-header">'
-    +   '<div class="pdf-header-logo"><img src="'+LOGO_DATAURL+'" alt="Proper"></div>'
-    +   '<div class="pdf-header-title">'
-    +     '<span class="pdf-form-name">TERMO DE ENTREGA — MÁQUINA EM LOCAÇÃO</span>'
-    +     '<span class="pdf-form-sub">Instalação, partida e conferência registradas em campo</span>'
-    +     '<span class="pdf-form-ver">ProperCare · Proper Compressores</span>'
+  var blocos=state.blocos||[];
+  var prs   = blocos.filter(function(b){ return b.tipo==='pr'; });
+  var meds  = blocos.filter(function(b){ return b.tipo==='med'; });
+  var obss  = blocos.filter(function(b){ return b.tipo==='obs' && String(b.texto||'').trim(); });
+  var forms = blocos.filter(function(b){ return b.tipo==='form' && (b.formNome||b.obs); });
+  var fotos = blocos.filter(function(b){ return b.tipo==='foto'; });
+  var sigs  = state.assinaturas||[];
+
+  var flow=[], n=0;
+  function sec(t){ n++; flow.push({ html:'<div class="tp-sec">'+n+'. '+esc(t)+'</div>', keep:true }); }
+  function sub(t){ flow.push({ html:'<div class="tp-sub">'+esc(t)+'</div>', keep:true }); }
+  function push(a){ a.forEach(function(x){ flow.push(x); }); }
+
+  // ── capa/cabeçalho ──
+  var dataHora = tpData(at.data) + (at.hora ? (' · ' + at.hora) : '');
+  flow.push({ html:
+      '<div class="tp-mast">'
+    +   '<div class="tp-mast-logo"><img src="'+LOGO_DATAURL+'" alt="Proper"></div>'
+    +   '<div class="tp-mast-txt">'
+    +     '<div class="tp-eyebrow">PROPERCARE · PROPER COMPRESSORES</div>'
+    +     '<div class="tp-title">Termo de Entrega — Máquina em Locação</div>'
+    +     '<div class="tp-mast-sub">Instalação, partida e conferência registradas em campo</div>'
     +   '</div>'
-    +   '<div class="pdf-header-fields">'
-    +     '<div class="pdf-id-row"><span class="pdf-id-label">OS Nº</span><span class="pdf-id-val">'+esc(i.os||'')+'</span><span class="pdf-id-label">Data:</span><span class="pdf-id-val">'+dataHora+'</span></div>'
-    +     '<div class="pdf-id-row"><span class="pdf-id-label">Cliente:</span><span class="pdf-id-val">'+esc(i.cliente||'')+'</span></div>'
-    +     '<div class="pdf-id-row"><span class="pdf-id-label">Equipamento:</span><span class="pdf-id-val">'+esc(i.equipamento||'')+'</span><span class="pdf-id-label">Mod/Série:</span><span class="pdf-id-val">'+esc(i.modelo||'')+'</span></div>'
-    +     '<div class="pdf-id-row"><span class="pdf-id-label">Técnico:</span><span class="pdf-id-val">'+esc(i.tecnico||'')+'</span></div>'
-    +   '</div>'
-    + '</header>'
-    + '<div class="pdf-sec-head-dark">PARTES E CONTRATO DA LOCAÇÃO</div>'
-    + '<div class="pdf-header-fields">'
-    +   '<div class="pdf-id-row"><span class="pdf-id-label">Proprietário / Locador:</span><span class="pdf-id-val">'+esc(lo.proprietario||'—')+'</span></div>'
-    +   '<div class="pdf-id-row"><span class="pdf-id-label">Locatário:</span><span class="pdf-id-val">'+esc(lo.locatario||'—')+'</span></div>'
-    +   '<div class="pdf-id-row"><span class="pdf-id-label">Local de instalação:</span><span class="pdf-id-val">'+esc(lo.local||'—')+'</span></div>'
-    +   '<div class="pdf-id-row"><span class="pdf-id-label">Contrato/Proposta:</span><span class="pdf-id-val">'+esc(lo.contrato||'—')+'</span><span class="pdf-id-label">Período:</span><span class="pdf-id-val">'+esc(periodo||'—')+'</span></div>'
+    +   '<div class="tp-mast-os"><span>ORDEM DE SERVIÇO</span><b>'+esc(i.os||'—')+'</b></div>'
     + '</div>'
-    + '<div class="pdf-sec-head-amber">REGISTRO DA ENTREGA (na ordem de execução)</div>'
-    + itens
-    + (sigs.length ? ('<div class="pdf-sec-head-dark">TERMO DE ACEITE</div>'
-        + '<div class="pdf-termo">'+esc(te.texto||TERMO_TEXTO)+'</div>'
-        + (te.ressalva ? ('<div class="pdf-ressalva"><b>Ressalvas do locatário:</b> '+esc(te.ressalva)+'</div>') : '')
-        + '<div class="pdf-sec-head-dark">ASSINATURAS</div>'+sigHtml) : '')
-    + '<div class="pdf-footer">propercompressores.com.br · Termo de entrega em locação · documento gerado automaticamente pelo ProperCare</div>';
-  document.getElementById('pdf-layout').innerHTML = html;
+    + '<div class="tp-rule"></div>'
+    + '<div class="tp-client">'+esc(lo.locatario||i.cliente||'—')+'</div>'
+    + '<div class="tp-clientsub">'+esc(lo.local||'Local de instalação não informado')
+    +   (dataHora?(' · Entrega em '+esc(dataHora)):'')+'</div>', keep:true });
+
+  // ── 1. identificação ──
+  sec('Identificação do atendimento');
+  push(tpTabela('', [
+    '<tr><td class="k">Nº da OS</td><td>'+tpOu(i.os)+'</td><td class="k">Data / hora</td><td>'+tpOu(dataHora)+'</td></tr>',
+    '<tr><td class="k">Cliente da OS</td><td>'+tpOu(i.cliente)+'</td><td class="k">Técnico responsável</td><td>'+tpOu(i.tecnico)+'</td></tr>',
+    '<tr><td class="k">Equipamento / TAG</td><td>'+tpOu(i.equipamento)+'</td><td class="k">Modelo / Série</td><td>'+tpOu(i.modelo)+'</td></tr>'
+  ]));
+
+  // ── 2. partes e contrato ──
+  sec('Partes e contrato da locação');
+  push(tpTabela('', [
+    '<tr><td class="kw">Proprietário / Locador</td><td colspan="3">'+tpOu(lo.proprietario)+'</td></tr>',
+    '<tr><td class="kw">Locatário (recebeu a máquina)</td><td colspan="3">'+tpOu(lo.locatario)+'</td></tr>',
+    '<tr><td class="kw">Local de instalação</td><td colspan="3">'+tpOu(lo.local)+'</td></tr>',
+    '<tr><td class="kw">Contrato / Proposta</td><td>'+tpOu(lo.contrato)+'</td><td class="k">Período</td><td>'
+      + tpOu([tpData(lo.inicio), tpData(lo.previsao)].filter(Boolean).join(' até ')) + '</td></tr>'
+  ]));
+
+  // ── 3/4. verificações × itens entregues (separados pelo prefixo "Entregue:") ──
+  var ENTREGUE = /^\s*entregue\s*:/i;
+  var verif = prs.filter(function(b){ return !ENTREGUE.test(b.pergunta||''); });
+  var itens = prs.filter(function(b){ return  ENTREGUE.test(b.pergunta||''); });
+  function linhasPR(arr, tiraPrefixo){
+    return arr.map(function(b){
+      var p=String(b.pergunta||'').trim();
+      if(tiraPrefixo) p=p.replace(ENTREGUE,'').replace(/\?\s*$/,'').trim();
+      return '<tr><td>'+tpOu(p)+'</td><td class="resp">'+tpResposta(b.resposta)+'</td></tr>';
+    });
+  }
+  if(verif.length){
+    sec('Condições do local encontradas na entrega');
+    push(tpTabela('<tr><th>Verificação</th><th style="width:96px;text-align:center">Resposta</th></tr>',
+                  linhasPR(verif,false)));
+  }
+  if(itens.length){
+    sec('Itens entregues com a máquina');
+    push(tpTabela('<tr><th>Item</th><th style="width:96px;text-align:center">Entregue</th></tr>',
+                  linhasPR(itens,true)));
+  }
+
+  // ── 5. parâmetros após a partida ──
+  if(meds.length){
+    sec('Parâmetros medidos após a partida');
+    push(tpTabela('<tr><th>Parâmetro</th><th style="width:86px;text-align:right">Valor</th><th style="width:76px">Unidade</th></tr>',
+      meds.map(function(b){
+        var v=String(b.valor||'').trim();
+        return '<tr><td>'+tpOu(b.grandeza)+'</td>'
+             + '<td class="num">'+(v?esc(v):'<span class="tp-nd">não medido</span>')+'</td>'
+             + '<td class="un">'+(v?esc(unidLabel(b)):'')+'</td></tr>';
+      })));
+  }
+
+  // ── 6. registro fotográfico (grade de 2 colunas) ──
+  var cels=[];
+  fotos.forEach(function(b){
+    var leg = b.legenda || 'Foto do serviço';
+    var shots = photosByKey[b.uid] || [];
+    if(!shots.length){
+      cels.push('<div class="tp-fcel"><div class="tp-fbox">'
+        + '<div class="tp-fimg"><span class="tp-fsem">foto não disponível neste aparelho</span></div>'
+        + '<div class="tp-fcap">'+esc(leg)+'</div></div></div>');
+      return;
+    }
+    shots.forEach(function(ph){
+      cels.push('<div class="tp-fcel"><div class="tp-fbox">'
+        + '<div class="tp-fimg"><img src="'+ph.dataUrl+'"></div>'
+        + '<div class="tp-fcap">'+esc(leg)+'</div></div></div>');
+    });
+  });
+  if(cels.length){
+    sec('Registro fotográfico da entrega');
+    for(var c=0;c<cels.length;c+=2){
+      var par = cels[c] + (cels[c+1] || '<div class="tp-fcel"></div>');
+      flow.push({ html:'<div class="tp-fotos">'+par+'</div>', keep:false });
+    }
+  }
+
+  // ── 7. registro adicional do técnico ──
+  if(obss.length || forms.length){
+    sec('Registro adicional do técnico');
+    var linhas=[];
+    obss.forEach(function(b){ linhas.push('<tr><td class="k">Observação</td><td>'+esc(String(b.texto||'').trim())+'</td></tr>'); });
+    forms.forEach(function(b){
+      linhas.push('<tr><td class="k">Formulário aplicado</td><td><b>'+tpOu(b.formNome)+'</b>'
+        + (b.obs?('<br>'+esc(b.obs)):'')
+        + (b.aberto?('<br><span style="color:#777">Aberto em campo em '+esc(b.aberto)+' · conteúdo na Gestão de Documentos desta OS</span>'):'')
+        + '</td></tr>');
+    });
+    push(tpTabela('', linhas, 12));
+  }
+
+  // ── 8. termo de aceite + 9. assinaturas ──
+  // Marcados com o MESMO grupo: a assinatura tem de ficar embaixo do texto que
+  // ela aceita. Se o par não couber no que resta da folha, os dois descem juntos.
+  var G='aceite';
+  sec('Termo de aceite'); flow[flow.length-1].g=G;
+  flow.push({ html:'<div class="tp-termo">'+esc(te.texto||TERMO_TEXTO)+'</div>', keep:false, g:G });
+  if(String(te.ressalva||'').trim()){
+    flow.push({ html:'<div class="tp-ressalva"><b>Ressalvas do locatário:</b> '+esc(te.ressalva)+'</div>', keep:false, g:G });
+  }
+
+  // ── 9. assinaturas ──
+  if(sigs.length){
+    sec('Assinaturas'); flow[flow.length-1].g=G;
+    function cel(a){
+      if(!a) return '<div class="tp-sig"></div>';
+      var papel = a.papel==='Outro' ? (a.papelOutro||'Outro') : (a.papel||'');
+      var quando = a.ts ? new Date(a.ts).toLocaleString('pt-BR') : '';
+      return '<div class="tp-sig">'
+        + (a.dataUrl ? ('<div class="tp-sigimg"><img src="'+a.dataUrl+'"></div>')
+                     : '<span class="tp-sigline"></span>')
+        + '<div class="tp-signome">'+tpOu(a.nome)+'</div>'
+        + '<div class="tp-sigpapel">'+esc(papel)+(quando?(' — '+esc(quando)):'')+'</div>'
+        + '</div>';
+    }
+    for(var g=0; g<sigs.length; g+=2){
+      flow.push({ html:'<div class="tp-sigs">'+cel(sigs[g])+cel(sigs[g+1])+'</div>', keep:false, g:G });
+    }
+  }
+  return flow;
 }
+
+// Espera as imagens (data URL) decodificarem — html2canvas em imagem não
+// decodificada devolve espaço em branco sem avisar.
+function tpEsperarImagens(root){
+  var imgs=[].slice.call(root.querySelectorAll('img'));
+  return Promise.all(imgs.map(function(im){
+    if(im.complete && im.naturalWidth) return Promise.resolve();
+    return new Promise(function(res){
+      var pronto=false; function fim(){ if(pronto) return; pronto=true; res(); }
+      im.onload=fim; im.onerror=fim; setTimeout(fim, 4000);
+    });
+  }));
+}
+
+// Mede cada elemento e distribui em folhas. Nada é partido: o que não cabe desce
+// inteiro. `keep` (cabeçalho de seção) nunca fica órfão no rodapé da folha.
+async function tpRenderizarPaginas(photosByKey){
+  var host=document.getElementById('pdf-layout');
+  host.className='tp-host tp-capturing';
+  host.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:'+TP_W+'px;background:#fff;z-index:-1';
+  var flow=tpMontarFluxo(photosByKey);
+
+  // 1) medição — mesma largura útil da folha real
+  host.innerHTML='';
+  var medidor=document.createElement('div');
+  medidor.className='tp-page';
+  medidor.style.height='auto';
+  host.appendChild(medidor);
+  var els=flow.map(function(f){
+    var d=document.createElement('div'); d.className='tp-el'; d.innerHTML=f.html; medidor.appendChild(d); return d;
+  });
+  await tpEsperarImagens(medidor);
+  var alturas=els.map(function(d, ix){
+    var h=d.getBoundingClientRect().height, f=flow[ix];
+    if(f.tbl){
+      var t=d.querySelector('table'), th=t.querySelector('thead');
+      f.hHead = th ? th.getBoundingClientRect().height : 0;
+      f.hRows = [].slice.call(t.querySelectorAll('tbody > tr')).map(function(tr){ return tr.getBoundingClientRect().height; });
+      var soma=f.hHead + f.hRows.reduce(function(a,b){ return a+b; }, 0);
+      f.hPad = h - soma;   // padding do .tp-el + bordas
+    }
+    return h;
+  });
+
+  // 2) empacotamento — nada é cortado. Tabela longa parte por linha (com o
+  //    cabeçalho repetido) e nunca deixa menos de TP_MIN_LINHAS de cada lado.
+  var TP_MIN_LINHAS=3;
+  var fila=flow.map(function(f, ix){ return { f:f, h:alturas[ix] }; });
+  var paginas=[[]], usado=0;
+  function _pg(){ return paginas[paginas.length-1]; }
+  // Quanto do elemento SEGUINTE precisa caber para o cabeçalho de seção não ficar
+  // órfão. Se o seguinte é uma tabela partível, bastam TP_MIN_LINHAS linhas — sem
+  // isto o cabeçalho empurrava a tabela INTEIRA para a folha seguinte e sobrava
+  // um quarto de página em branco (visto na 1ª prova de layout).
+  function _minSeguinte(nx){
+    if(!nx) return 0;
+    var g=nx.f;
+    if(g.tbl && g.hRows && g.hRows.length >= TP_MIN_LINHAS*2){
+      return g.hPad + g.hHead + g.hRows.slice(0,TP_MIN_LINHAS).reduce(function(a,b){ return a+b; }, 0);
+    }
+    return Math.min(nx.h, 240);
+  }
+  for(var k=0;k<fila.length;k++){
+    var it=fila[k], f=it.f;
+    // grupo indivisível: no PRIMEIRO item do grupo, se o grupo inteiro não cabe no
+    // que resta mas cabe numa folha, abre folha nova e leva o grupo junto.
+    if(f.g && (k===0 || fila[k-1].f.g!==f.g)){
+      var somaG=0;
+      for(var gg=k; gg<fila.length && fila[gg].f.g===f.g; gg++) somaG+=fila[gg].h;
+      if(usado>0 && (usado+somaG)>TP_CAP && somaG<=TP_CAP){ paginas.push([]); usado=0; }
+    }
+    // cabeçalho de seção só entra se couber ele E um pedaço do que vem depois
+    var precisa = it.h + ((f.keep && k+1<fila.length) ? _minSeguinte(fila[k+1]) : 0);
+    if(usado + precisa <= TP_CAP){ _pg().push(it); usado+=it.h; continue; }
+
+    var partiu=false;
+    if(f.tbl && f.hRows && f.hRows.length >= TP_MIN_LINHAS*2){
+      var livre = TP_CAP - usado - f.hPad - f.hHead;
+      var acc=0, corte=0;
+      for(var rr=0; rr<f.hRows.length; rr++){
+        if(acc + f.hRows[rr] > livre) break;
+        acc += f.hRows[rr]; corte++;
+      }
+      if(corte >= TP_MIN_LINHAS && (f.hRows.length - corte) >= TP_MIN_LINHAS){
+        var tResto={ head:f.tbl.head, rows:f.tbl.rows.slice(corte) };
+        var hResto=f.hRows.slice(corte);
+        fila.splice(k+1, 0, { f:{ html:tpTblHtml(tResto), keep:false, tbl:tResto,
+                                  hHead:f.hHead, hPad:f.hPad, hRows:hResto },
+                              h: f.hHead + f.hPad + hResto.reduce(function(a,b){ return a+b; }, 0) });
+        f.tbl={ head:f.tbl.head, rows:f.tbl.rows.slice(0,corte) };
+        f.hRows=f.hRows.slice(0,corte);
+        f.html=tpTblHtml(f.tbl);
+        it.h=f.hHead + f.hPad + acc;
+        _pg().push(it);
+        paginas.push([]); usado=0;
+        partiu=true;
+      }
+    }
+    if(!partiu){
+      if(usado>0){ paginas.push([]); usado=0; }
+      _pg().push(it); usado+=it.h;   // elemento maior que a folha: entra sozinho
+    }
+  }
+
+  // 3) montagem das folhas
+  var i=state.identificacao||{}, at=state.atendimento||{}, lo=state.locacao||{};
+  var rodapeEsq='Termo de Entrega em Locação'
+    + ((lo.locatario||i.cliente) ? (' · '+(lo.locatario||i.cliente)) : '')
+    + (at.data ? (' · '+tpData(at.data)) : '');
+  host.innerHTML='';
+  var folhas=[];
+  paginas.forEach(function(itens, pi){
+    var pg=document.createElement('div'); pg.className='tp-page';
+    itens.forEach(function(it){
+      var d=document.createElement('div'); d.className='tp-el'; d.innerHTML=it.f.html; pg.appendChild(d);
+    });
+    var ft=document.createElement('div'); ft.className='tp-foot';
+    ft.innerHTML='<span class="l">'+esc(rodapeEsq)+'</span>'
+      + '<span class="r">Proper Compressores · Divinópolis/MG · Pág. '+(pi+1)+'/'+paginas.length+'</span>';
+    pg.appendChild(ft);
+    host.appendChild(pg); folhas.push(pg);
+  });
+  await tpEsperarImagens(host);
+  return folhas;
+}
+
 async function loadPhotosByKey(){
   var byKey={};
   try{
@@ -1454,47 +1714,43 @@ async function loadPhotosByKey(){
   }catch(e){}
   return byKey;
 }
-// 29/07 (F-30): o laudo/termo é capturado num ÚNICO canvas. Com muitas fotos o
-// canvas estoura o limite do navegador (iOS ~16 Mpx) e o toDataURL devolve uma
-// imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
-// para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
-// vira ERRO visível em vez de PDF branco.
-function _pdfScaleSeguro(el){
-  var MAXPX = 16000000;
-  var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
-  var h = (el && (el.scrollHeight || el.offsetHeight)) || 1123;
-  var s = Math.sqrt(MAXPX / (w * h));
-  if (!isFinite(s) || s <= 0) s = 1;
-  s = Math.min(2, s);
-  return Math.max(0.5, Math.round(s * 100) / 100);
-}
+// 29/07 (F-30) mantido: dataURL minúsculo = folha branca → erro visível, nunca
+// um PDF em branco subindo em silêncio.
 function _pdfChecarCanvas(canvas, imgData){
   if (!canvas || !canvas.width || !canvas.height) throw new Error('captura do documento saiu vazia neste aparelho');
-  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
+  if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho — reduza a quantidade de fotos e gere de novo');
 }
+// Orçamento de pixels agora é POR FOLHA (794×1123): scale 2 = 3,6 Mpx, bem
+// abaixo do teto de ~16 Mpx do iOS.
+function _tpScale(){
+  var s=Math.sqrt(16000000/(TP_W*TP_H));
+  return Math.max(1, Math.min(2, Math.round(s*100)/100));
+}
+// Compatibilidade: buildPdfLayout continua existindo (usada por teste/depuração).
+function buildPdfLayout(photosByKey){ return tpRenderizarPaginas(photosByKey); }
 
 async function buildPdfBase64(){
-
   if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
-  var el=document.getElementById('pdf-layout');
+  var host=document.getElementById('pdf-layout');
   var photosByKey=await loadPhotosByKey();
   captura();
-  buildPdfLayout(photosByKey);
-  el.classList.add('pdf-capturing');
-  el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  var folhas=await tpRenderizarPaginas(photosByKey);
   try{
-    var _scale=_pdfScaleSeguro(el);   // 29/07 (F-30)
-    var canvas=await html2canvas(el,{ scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     var jsPDF=window.jspdf.jsPDF;
     var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
-    var imgData=canvas.toDataURL('image/jpeg',0.92);
-    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
-    var heightLeft=imgH, position=0;
-    pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
-    while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
+    var escala=_tpScale();
+    for(var p=0;p<folhas.length;p++){
+      var canvas=await html2canvas(folhas[p], { scale:escala, backgroundColor:'#ffffff', useCORS:true,
+        logging:false, width:TP_W, height:TP_H, windowWidth:TP_W });
+      var imgData=canvas.toDataURL('image/jpeg',0.92);
+      _pdfChecarCanvas(canvas, imgData);
+      if(p>0) pdf.addPage();
+      pdf.addImage(imgData,'JPEG',0,0,210,297);
+    }
     return pdf.output('datauristring').split(',')[1];
-  } finally { el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
+  } finally {
+    host.className=''; host.style.cssText='display:none'; host.innerHTML='';
+  }
 }
 async function enfileirarPdf(){
   if(!_osId) return;
