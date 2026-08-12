@@ -267,6 +267,51 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
     }
     .conditional-item.skipped .skipped-badge { display: block; }
 
+    /* ── ⚡ DERIVADO DO data-cond (12/08/2026) ─────────────────────────── */
+    /* Chamado do Fernando: "algumas perguntas do form 02 são identificadas com
+       um pequeno raio, pois precisam da máquina ligada; segue imagem da seção
+       B-Inspeção em que as perguntas NÃO estão marcadas com raio e
+       necessariamente precisam da máquina ligada".
+       A causa não foi esquecer um raio: era o raio ser TEXTO digitado no
+       rótulo, uma segunda verdade paralela ao `data-cond` que manda no
+       comportamento. Duas verdades para o mesmo fato divergem sempre — e
+       tinham divergido em B3 (3 itens `run` sem raio), B6 (2) e no bloco de
+       vazão. Agora o marcador é DERIVADO da condição: marcar um e esquecer o
+       outro passou a ser impossível.
+       ⚠ Seletor de FILHO DIRETO (>): o #bloco-vazao é um contêiner
+         `data-cond="run"` cujos rótulos são netos — sem o `>`, cada campo de
+         dentro ganharia o seu próprio raio e a tela viraria um festival. */
+    [data-cond="run"] > .item-label::before,
+    [data-cond="run"] > label::before { content: '⚡ '; }
+
+    /* ── LINHA DE MEDIÇÃO (12/08/2026) ─────────────────────────────────── */
+    /* Chamado do Fernando: "perguntas que precisam de entrada de valores
+       aparecem com o campo de entrada de valor, sem especificação de unidade,
+       e aparecem os botões de sim, não, n/a e n/t que não se adequam à
+       resposta".
+       Pergunta que pede NÚMERO não se responde com Sim/Não. A linha de medição
+       tem: campo numérico de verdade (`type=number`, teclado numérico no
+       celular), a UNIDADE FIXA visível ao lado do campo — não no placeholder,
+       que some assim que se digita — e um único chip N/T, para o caso de não
+       dar para medir. É a diferença entre "8" e "8 bar": o placeholder
+       "bar / PSI" gravava um número que ninguém consegue interpretar depois. */
+    .med-row { display: flex; gap: 8px; align-items: stretch; }
+    .med-row input {
+      flex: 1; min-width: 0; background: var(--bg-section);
+      border: 1.5px solid #4B5563; border-radius: 8px;
+      color: var(--text-primary); font-family: inherit;
+      font-size: 18px; padding: 12px 14px;
+      min-height: var(--touch-min); appearance: none;
+    }
+    .med-row input:focus { outline: none; border-color: var(--accent); }
+    .med-unit {
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 10px; min-width: 52px; border-radius: 8px;
+      background: var(--btn-idle); color: var(--text-primary);
+      font-size: 15px; font-weight: 700; white-space: nowrap;
+    }
+    .med-row .btn-toggle { flex: 0 0 auto; min-width: 68px; }
+
     /* ── ITEM TRAVADO PELO GATEWAY (29/07) ─────────────────────────────── */
     /* Quando o gateway diz NÃO LIGA, "Liga ao acionar chave" não pode ser
        respondido "S" — a contradição ia inteira para o laudo e para o PDF. */
@@ -755,7 +800,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Partida sem ruído excessivo ou tranco?</div>
+            <div class="item-label">Partida sem ruído excessivo ou tranco?</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b1-partidaSemRuido" data-val="N" onclick="selectToggle(this)">N</button>
@@ -765,23 +810,25 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Tempo até pressão máxima de carga (alívio)</div>
-            <input type="text" id="b1-tempoMaxima" inputmode="decimal" placeholder="s / min"
-              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
-              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
-            <div class="btn-group">
-              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="S" onclick="selectToggle(this)">S</button>
-              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="N" onclick="selectToggle(this)">N</button>
-              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NA" onclick="selectToggle(this)">N/A</button>
-              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            <div class="item-label">Tempo até pressão máxima de carga (alívio)</div>
+            <!-- 12/08: era um campo "s / min" (duas unidades no mesmo campo) com
+                 S/N/N-A/N-T. "Quanto tempo levou?" não tem resposta Sim. Virou
+                 medição em SEGUNDOS, com o N/T para quando não deu para medir. -->
+            <div class="med-row">
+              <input type="number" id="b1-tempoMaxima" inputmode="decimal" step="any" min="0" placeholder="0" oninput="medPreenchida(this,'b1-tempoPressaoMaxima')">
+              <span class="med-unit">s</span>
+              <button class="btn-toggle" data-field="b1-tempoPressaoMaxima" data-val="NT" onclick="selectToggle(this)" title="Não testado / não deu para medir">N/T</button>
             </div>
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Pressuriza até pressão máxima de carga configurada</div>
-            <input type="text" id="b1-pressurizaValor" inputmode="decimal" placeholder="bar / PSI"
-              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
-              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <div class="item-label">Pressuriza até pressão máxima de carga configurada</div>
+            <!-- 12/08: "bar / PSI" no placeholder gravava número sem escala
+                 (8 bar ≈ 116 PSI). Unidade fixada em bar, padrão da casa. -->
+            <div class="med-row" style="margin-bottom:8px">
+              <input type="number" id="b1-pressurizaValor" inputmode="decimal" step="any" min="0" placeholder="Pressão atingida">
+              <span class="med-unit">bar</span>
+            </div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b1-pressurizaMaxima" data-val="N" onclick="selectToggle(this)">N</button>
@@ -791,7 +838,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Desliga ou alivia automaticamente ao atingir pressão de alívio?</div>
+            <div class="item-label">Desliga ou alivia automaticamente ao atingir pressão de alívio?</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b1-desligaAlivia" data-val="N" onclick="selectToggle(this)">N</button>
@@ -801,7 +848,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Rearma corretamente ao cair para pressão mínima?</div>
+            <div class="item-label">Rearma corretamente ao cair para pressão mínima?</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b1-rearma" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b1-rearma" data-val="N" onclick="selectToggle(this)">N</button>
@@ -820,7 +867,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
         <div class="accordion-body">
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Pressão de trabalho dentro do esperado</div>
+            <div class="item-label">Pressão de trabalho dentro do esperado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b2-pressaoTrabalho" data-val="N" onclick="selectToggle(this)">N</button>
@@ -829,7 +876,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Regulagem de pressão funciona</div>
+            <div class="item-label">Regulagem de pressão funciona</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="N" onclick="selectToggle(this)">N</button>
@@ -848,27 +895,29 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Pressão de alívio configurada no controlador (bar / PSI)</div>
-            <div class="btn-group">
-              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="S" onclick="selectToggle(this)">S</button>
-              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="N" onclick="selectToggle(this)">N</button>
-              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NA" onclick="selectToggle(this)">N/A</button>
-              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            <div class="item-label">Pressão de alívio configurada no controlador</div>
+            <!-- 12/08: a pergunta pede um VALOR ("qual é a pressão configurada?")
+                 e só existiam S/N/N-A/N-T — não havia onde escrever o número, e a
+                 unidade morava entre parênteses no rótulo, como "bar / PSI". -->
+            <div class="med-row">
+              <input type="number" id="b2-pressaoAlivioValor" inputmode="decimal" step="any" min="0" placeholder="0" oninput="medPreenchida(this,'b2-pressaoAlivio')">
+              <span class="med-unit">bar</span>
+              <button class="btn-toggle" data-field="b2-pressaoAlivio" data-val="NT" onclick="selectToggle(this)" title="Não testado / controlador não acessível">N/T</button>
             </div>
           </div>
           <div class="field-group conditional-item" data-cond="run" style="margin-top:10px;">
             <span class="skipped-badge">⚡ PULADO</span>
             <label>Pressão lida</label>
-            <input type="number" id="b2-pressaoLida" inputmode="decimal" placeholder="bar / psi">
+            <div class="med-row"><input type="number" id="b2-pressaoLida" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">bar</span></div>
           </div>
           <div class="field-group">
             <label>Pressão esperada / referência</label>
-            <input type="number" id="b2-pressaoEsperada" inputmode="decimal" placeholder="bar / psi">
+            <div class="med-row"><input type="number" id="b2-pressaoEsperada" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">bar</span></div>
           </div>
           <div class="field-group conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <label>Vazão estimada (m³/min)</label>
-            <input type="number" id="b2-vazaoEstimada" inputmode="decimal" placeholder="m³/min">
+            <label>Vazão estimada</label>
+            <div class="med-row"><input type="number" id="b2-vazaoEstimada" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">m³/min</span></div>
           </div>
           <div class="field-group conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
@@ -881,20 +930,25 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <div id="bloco-vazao" class="conditional-item" data-cond="run" style="display:none">
             <span class="skipped-badge">⚡ PULADO</span>
             <div class="field-group">
-              <label>Tempo de Enchimento (min)</label>
-              <input type="number" id="b2-tempoEnchimento" inputmode="decimal" placeholder="min">
+              <label>Tempo de enchimento</label>
+              <div class="med-row"><input type="number" id="b2-tempoEnchimento" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">min</span></div>
             </div>
             <div class="field-group">
-              <label>Volume Padrão (litros)</label>
-              <input type="number" id="b2-volumePadrao" inputmode="decimal" placeholder="litros">
+              <label>Volume do reservatório</label>
+              <div class="med-row"><input type="number" id="b2-volumePadrao" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">L</span></div>
             </div>
             <div class="field-group">
-              <label>Pressão Final (bar)</label>
-              <input type="number" id="b2-pressaoFinal" inputmode="decimal" placeholder="bar">
+              <label>Pressão final</label>
+              <div class="med-row"><input type="number" id="b2-pressaoFinal" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">bar</span></div>
             </div>
+            <!-- 12/08: este campo era "Valor m³/h" e ficava LOGO ABAIXO de
+                 "Vazão estimada (m³/min)". Medida e estimativa em escalas
+                 diferentes (fator 60) na mesma tela, para serem comparadas.
+                 Padronizado em m³/min, a unidade da estimativa e a usual em
+                 catálogo de compressor. -->
             <div class="field-group">
-              <label>Valor m³/h</label>
-              <input type="number" id="b2-vazaoMedida" inputmode="decimal" placeholder="m³/h">
+              <label>Vazão medida</label>
+              <div class="med-row"><input type="number" id="b2-vazaoMedida" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">m³/min</span></div>
             </div>
           </div>
         </div>
@@ -944,9 +998,14 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
               <button class="btn-toggle" data-field="b3-resfriamento" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="field-group" style="margin-top:10px;">
-            <label>Temperatura lida (°C)</label>
-            <input type="number" id="b3-tempLida" inputmode="decimal" placeholder="°C">
+          <!-- 12/08: o campo era LIVRE enquanto os três itens de temperatura do
+               bloco eram ⚡. Numa máquina que não liga, "temperatura lida" é a
+               temperatura ambiente — dado que já tem item próprio logo acima.
+               Passa a acompanhar a condição do bloco. -->
+          <div class="field-group conditional-item" data-cond="run" style="margin-top:10px;">
+            <span class="skipped-badge">⚡ PULADO</span>
+            <label>Temperatura lida (descarga / óleo)</label>
+            <div class="med-row"><input type="number" id="b3-tempLida" inputmode="decimal" step="any" placeholder="0"><span class="med-unit">°C</span></div>
           </div>
           <div class="photo-zone">
             <div class="photo-zone-label">📷 Leitura de temperatura e ventilação</div>
@@ -967,44 +1026,54 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           <span>B4 – Ruídos, Vibrações e Vazamentos</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body">
-          <div class="item-row">
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Ruído anormal identificado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b4-ruidoAnormal" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
-          <div class="item-row">
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Vibração excessiva</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b4-vibracao" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b4-vibracao" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b4-vibracao" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b4-vibracao" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
-          <div class="item-row">
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Vazamento de ar detectado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b4-vazamentoAr" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
-          <div class="item-row">
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Vazamento de óleo detectado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b4-vazamentoOleo" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
-          <div class="item-row">
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Folga mecânica perceptível</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b4-folgaMecanica" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
           <div class="photo-zone">
@@ -1061,7 +1130,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Dreno automático — funcionando?</div>
+            <div class="item-label">Dreno automático — funcionando?</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b5-dreno" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b5-dreno" data-val="N" onclick="selectToggle(this)">N</button>
@@ -1097,13 +1166,13 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
             </div>
           </div>
           <div class="field-group" style="margin-top:4px;">
-            <label>Tensão lida (V)</label>
-            <input type="number" id="b6-tensaoLida" inputmode="decimal" placeholder="V">
+            <label>Tensão lida</label>
+            <div class="med-row"><input type="number" id="b6-tensaoLida" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">V</span></div>
           </div>
           <div class="field-group conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <label>Corrente lida (A)</label>
-            <input type="number" id="b6-correnteLida" inputmode="decimal" placeholder="A">
+            <label>Corrente lida em operação</label>
+            <div class="med-row"><input type="number" id="b6-correnteLida" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">A</span></div>
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
@@ -1134,26 +1203,28 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
           </div>
           <div class="item-row conditional-item" data-cond="run">
             <span class="skipped-badge">⚡ PULADO</span>
-            <div class="item-label">⚡ Corrente em carga plena (alicate amperímetro)</div>
-            <input type="text" id="b6-correnteCargaValor" inputmode="decimal" placeholder="A"
-              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
-              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
-            <div class="btn-group">
-              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="S" onclick="selectToggle(this)">S</button>
-              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="N" onclick="selectToggle(this)">N</button>
-              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NA" onclick="selectToggle(this)">N/A</button>
-              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NT" onclick="selectToggle(this)">N/T</button>
+            <div class="item-label">Corrente em carga plena (alicate amperímetro)</div>
+            <!-- 12/08: medição pura servida com S/N/N-A/N-T. "Quantos ampères?"
+                 não tem resposta Sim. O julgamento "está dentro do nominal?" já
+                 é feito comparando com a corrente de plaqueta, logo abaixo. -->
+            <div class="med-row">
+              <input type="number" id="b6-correnteCargaValor" inputmode="decimal" step="any" min="0" placeholder="0" oninput="medPreenchida(this,'b6-correnteCarga')">
+              <span class="med-unit">A</span>
+              <button class="btn-toggle" data-field="b6-correnteCarga" data-val="NT" onclick="selectToggle(this)" title="Não testado / sem alicate">N/T</button>
             </div>
           </div>
           <div class="field-group">
-            <label>Corrente nominal de plaqueta (A)</label>
-            <input type="text" id="b6-correnteNominal" inputmode="decimal" placeholder="A">
+            <label>Corrente nominal de plaqueta</label>
+            <div class="med-row"><input type="number" id="b6-correnteNominal" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">A</span></div>
           </div>
           <div class="item-row">
             <div class="item-label">Desequilíbrio de tensão entre fases</div>
-            <input type="text" id="b6-desequilibrioValor" inputmode="decimal" placeholder="%"
-              style="background:var(--bg-section);border:1px solid #4B5563;border-radius:6px;
-              color:var(--text-primary);font-size:15px;padding:8px 10px;margin-bottom:6px;width:100%;">
+            <!-- valor + julgamento: aqui o par faz sentido (quanto deu × está
+                 dentro do limite). Só o campo virou numérico e ganhou unidade. -->
+            <div class="med-row" style="margin-bottom:8px">
+              <input type="number" id="b6-desequilibrioValor" inputmode="decimal" step="any" min="0" placeholder="0">
+              <span class="med-unit">%</span>
+            </div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b6-desequilibrio" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b6-desequilibrio" data-val="N" onclick="selectToggle(this)">N</button>
@@ -1470,7 +1541,7 @@ const state = {
   secaoA: { defeito:'', condicao:'', horimetro:'', anoFab:'', localizacao:'' },
   secaoB: {
     partida:     { ligaChave:'', partidaSemRuido:'', tempoPressaoMaxima:'', tempoMaximaValor:'', pressurizaMaxima:'', pressurizaValor:'', desligaAlivia:'', rearma:'' },
-    pressao:     { pressaoTrabalho:'', regulagemPressao:'', valvulaAlivio:'', pressaoAlivio:'', pressaoLida:'', pressaoEsperada:'', vazaoEstimada:'', vazaoRealizada:'', tempoEnchimento:'', volumePadrao:'', pressaoFinal:'', vazaoMedida:'' },
+    pressao:     { pressaoTrabalho:'', regulagemPressao:'', valvulaAlivio:'', pressaoAlivio:'', pressaoAlivioValor:'', pressaoLida:'', pressaoEsperada:'', vazaoEstimada:'', vazaoRealizada:'', tempoEnchimento:'', volumePadrao:'', pressaoFinal:'', vazaoMedida:'' },
     temperatura: { tempDescarga:'', tempOleo:'', tempAmbiente:'', resfriamento:'', tempLida:'' },
     ruidos:      { ruidoAnormal:'', vibracao:'', vazamentoAr:'', vazamentoOleo:'', folgaMecanica:'' },
     fluidos:     { nivelOleo:'', condicaoOleo:'', filtroAr:'', filtroOleo:'', dreno:'' },
@@ -1609,14 +1680,36 @@ function captureIdFields() {
 function selectToggle(btn) {
   const field = btn.dataset.field;
   const val   = btn.dataset.val;
-  const group = btn.closest('.btn-group');
+  // 12/08 — a LINHA DE MEDIÇÃO tem um chip N/T solto, fora de qualquer
+  // .btn-group. Sem este fallback `closest('.btn-group')` devolvia null e o
+  // primeiro toque no N/T estourava com TypeError, em silêncio, no celular.
+  const emMedicao = !!btn.closest('.med-row');
+  const group = btn.closest('.btn-group') || btn.closest('.med-row');
+  if (!group) return;
+  // Só na medição o segundo toque DESMARCA: lá o N/T é um interruptor
+  // ("não deu para medir"), e sem desmarcar o técnico que erra o toque fica
+  // com a leitura travada em N/T sem nenhuma forma de voltar atrás. Nos grupos
+  // S/N/N-A o comportamento segue idêntico ao de sempre (escolha exclusiva).
+  const desmarcar = emMedicao && btn.classList.contains('active-' + val);
   group.querySelectorAll('.btn-toggle').forEach(b => {
     b.classList.remove('active-S','active-N','active-NA','active-NT');
   });
-  btn.classList.add('active-' + val);
-  writeStateByField(field, val);
+  if (!desmarcar) btn.classList.add('active-' + val);
+  writeStateByField(field, desmarcar ? '' : val);
   // 29/07: a resposta do B1 também comanda o bloqueio (não só o gateway).
   if (field === 'b1-ligaChave') applyGatewayConditions();
+  scheduleSave();
+}
+
+// 12/08 — coerência da linha de medição: se o técnico DIGITOU a leitura, ela
+// não é "não testada". Marcar N/T e ainda assim gravar um número deixaria o
+// laudo dizendo as duas coisas — a mesma classe de contradição que o gateway
+// do form02 nasceu para matar em 29/07.
+function medPreenchida(input, field) {
+  if (!input || !String(input.value || '').trim()) { scheduleSave(); return; }
+  const chip = document.querySelector('.med-row .btn-toggle[data-field="' + field + '"]');
+  if (chip) chip.classList.remove('active-S','active-N','active-NA','active-NT');
+  writeStateByField(field, '');
   scheduleSave();
 }
 
@@ -1748,6 +1841,7 @@ function captureAllInputs() {
   state.secaoA.localizacao = get('sA-localizacao');
   state.secaoB.partida.tempoMaximaValor  = get('b1-tempoMaxima');
   state.secaoB.partida.pressurizaValor   = get('b1-pressurizaValor');
+  state.secaoB.pressao.pressaoAlivioValor = get('b2-pressaoAlivioValor');   // 12/08
   state.secaoB.pressao.pressaoLida       = get('b2-pressaoLida');
   state.secaoB.pressao.pressaoEsperada   = get('b2-pressaoEsperada');
   state.secaoB.pressao.vazaoEstimada     = get('b2-vazaoEstimada');
@@ -1788,6 +1882,7 @@ function hydrateUI(saved) {
   const sB = state.secaoB;
   set('b1-tempoMaxima', sB.partida.tempoMaximaValor);
   set('b1-pressurizaValor', sB.partida.pressurizaValor);
+  set('b2-pressaoAlivioValor', sB.pressao.pressaoAlivioValor);   // 12/08
   set('b2-pressaoLida', sB.pressao.pressaoLida);
   set('b2-pressaoEsperada', sB.pressao.pressaoEsperada);
   set('b2-vazaoEstimada', sB.pressao.vazaoEstimada);
@@ -2174,16 +2269,37 @@ async function goToFinal() {
 var PCF_PIPELINE_URL = 'https://grupotap.github.io/ProperTech/index.html';
 var _pdfAguardando = null;
 var _autoVoltaTimer = null;
+// 12/08 — o PCM V116 abre o MESMO formulário em ABA NOVA, pela caixa "Tarefas
+// do Adm". Voltar para o PCF jogaria o adm no app de campo. O destino vem
+// declarado em ?ret= por quem abriu — nunca adivinhado por referrer.
+// ⚠ `ret` é dado de URL: só é aceito destino sob https://grupotap.github.io/.
+//   Sem o prefixo isto seria um redirecionamento aberto.
+var _retornoUrl = '';
+function lerRetornoDaUrl() {
+  var raw = '';
+  try { raw = new URLSearchParams(location.search).get('ret') || ''; } catch (e) { raw = ''; }
+  _retornoUrl = /^https:\/\/grupotap\.github\.io\//.test(raw) ? raw : '';
+}
+function destinoDeVolta() {
+  if (_retornoUrl) return _retornoUrl;
+  if (_osId) return PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+  return '';
+}
 
 function prepararTelaFinal(falhou) {
+  lerRetornoDaUrl();                                   // 12/08
   var btnV  = document.getElementById('btn-voltar-pipeline');
   var btnR  = document.getElementById('btn-rascunho-final');
   var aviso = document.getElementById('auto-volta-aviso');
   if (aviso) aviso.style.display = 'none';
-  // Sem OS vinculada não existe pipeline para voltar — mantém o rascunho.
-  if (btnV) btnV.style.display = _osId ? '' : 'none';
-  if (btnR) btnR.style.display = _osId ? 'none' : '';
-  if (!_osId || falhou) return;   // com envio pendente NÃO sai sozinho da tela
+  // Sem OS vinculada E sem destino de retorno não existe pipeline para voltar.
+  var destino = destinoDeVolta();
+  if (btnV) {
+    btnV.style.display = destino ? '' : 'none';
+    btnV.textContent = _retornoUrl ? '✅ Concluir e voltar ao ProperAdmin' : '✅ Concluir e voltar ao pipeline';
+  }
+  if (btnR) btnR.style.display = destino ? 'none' : '';
+  if (!destino || falhou) return;   // com envio pendente NÃO sai sozinho da tela
   Promise.resolve(_pdfAguardando).catch(function(){}).then(function() {
     if (_currentScreenId !== 'screen-final') return;
     var sw = document.getElementById('sync-warning');
@@ -2219,12 +2335,13 @@ function voltarAoPipeline() {
   // O diagnóstico já está no sistema — o rascunho local só atrapalharia a
   // próxima OS que abrisse este form (era a classe do bug do rascunho global).
   try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
-  if (!_osId) {
+  var destino = destinoDeVolta();                      // 12/08
+  if (!destino) {
     if (history.length > 1) history.back();
     else location.href = 'https://grupotap.github.io/ProperHub/';
     return;
   }
-  location.href = PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+  location.href = destino;
 }
 
 // Reenvio a partir da própria tela final (antes o aviso mandava "tocar em
@@ -2380,6 +2497,26 @@ function pdfCheckRow(label, field, valorId, skipped) {
     <td class="col-check">${pdfCb(val,'N')}</td>
     <td class="col-check">${pdfCb(val,'NA')}</td>
     <td class="col-check">${pdfCb(val,'NT')}</td>
+  </tr>`;
+}
+
+// 12/08 — linha de MEDIÇÃO no laudo. Os itens que deixaram de ser sim/não na
+// tela sairiam aqui com as 4 colunas de checkbox em branco — no papel isso é
+// indistinguível de "o técnico não respondeu". Agora a leitura ocupa as
+// colunas de resposta, com a unidade junto, e "não medido" é explícito.
+function pdfMedRow(label, valorId, unidade, ntField, skipped) {
+  const valor = valorId ? String(document.getElementById(valorId)?.value || '').trim() : '';
+  const nt    = ntField ? getPdfToggleValue(ntField) : '';
+  const rowCls = skipped ? ' class="pdf-cond-skip"' : '';
+  let celula;
+  if (skipped)      celula = '<em>(pulado — máquina não opera)</em>';
+  else if (valor)   celula = '<strong>' + valor + '</strong> ' + unidade;
+  else if (nt === 'NT') celula = '<em>não medido (N/T)</em>';
+  else              celula = '—';
+  return `<tr${rowCls}>
+    <td>${label}${skipped ? ' <em>(pulado)</em>' : ''}</td>
+    <td class="col-valor"></td>
+    <td class="col-check" colspan="4" style="text-align:left;padding-left:4px">${celula}</td>
   </tr>`;
 }
 
@@ -2576,8 +2713,8 @@ function buildPdfLayout() {
         ${pdfCheckHead()}
         ${pdfCheckRow('Liga ao acionar chave / botão?',                   'b1-ligaChave',         null,                  false)}
         ${pdfCheckRow('⚡ Partida sem ruído excessivo ou tranco?',        'b1-partidaSemRuido',   null,                  skip)}
-        ${pdfCheckRow('⚡ Tempo até pressão máxima (alívio)',             'b1-tempoPressaoMaxima','b1-tempoMaxima',      skip)}
-        ${pdfCheckRow('⚡ Pressuriza até pressão máxima config.',         'b1-pressurizaMaxima',  'b1-pressurizaValor',  skip)}
+        ${pdfMedRow('⚡ Tempo até pressão máxima (alívio)',              'b1-tempoMaxima', 's',  'b1-tempoPressaoMaxima', skip)}
+        ${pdfCheckRow('⚡ Pressuriza até pressão máxima config. (bar)',   'b1-pressurizaMaxima',  'b1-pressurizaValor',  skip)}
         ${pdfCheckRow('⚡ Desliga/alivia automaticamente na pressão?',    'b1-desligaAlivia',     null,                  skip)}
         ${pdfCheckRow('⚡ Rearma corretamente na pressão mínima?',        'b1-rearma',            null,                  skip)}
       </table>
@@ -2585,19 +2722,19 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-orange">PRESSÃO E VAZÃO</div>
       <table class="pdf-check-table">
         ${pdfCheckHead('OK','Ñ OK','N/A','N/T')}
-        ${pdfCheckRow('⚡ Pressão de trabalho dentro do esperado',        'b2-pressaoTrabalho',  'b2-pressaoLida',      skip)}
-        ${pdfCheckRow('⚡ Regulagem de pressão funciona',                 'b2-regulagemPressao', 'b2-pressaoEsperada',  skip)}
+        ${pdfCheckRow('⚡ Pressão de trabalho dentro do esperado (bar)',  'b2-pressaoTrabalho',  'b2-pressaoLida',      skip)}
+        ${pdfCheckRow('⚡ Regulagem de pressão funciona (bar ref.)',      'b2-regulagemPressao', 'b2-pressaoEsperada',  skip)}
         ${pdfCheckRow('Válvula de alívio em boas condições',              'b2-valvulaAlivio',    null,                  false)}
-        ${pdfCheckRow('⚡ Pressão de alívio conf. no controlador',        'b2-pressaoAlivio',    null,                  skip)}
+        ${pdfMedRow('⚡ Pressão de alívio conf. no controlador',          'b2-pressaoAlivioValor', 'bar', 'b2-pressaoAlivio', skip)}
         <tr${skip ? ' class="pdf-cond-skip"' : ''}><td colspan="2" style="font-size:6pt;color:#666">⚡ Vazão estimada (m³/min):</td>
-            <td colspan="4">${skip ? '<em>(pulado)</em>' : (sB.pressao.vazaoEstimada||'')}</td></tr>
+            <td colspan="4">${skip ? '<em>(pulado)</em>' : ((sB.pressao.vazaoEstimada||'') && (sB.pressao.vazaoEstimada + ' m³/min'))}</td></tr>
         ${(!skip && sB.pressao.vazaoRealizada === 'S') ? `<tr>
           <td colspan="6" style="font-size:6pt;padding:1px 2px;">
             <strong>Medição de Vazão:</strong>
             Tempo: ${sB.pressao.tempoEnchimento||'___'} min &nbsp;|&nbsp;
             Volume: ${sB.pressao.volumePadrao||'___'} L &nbsp;|&nbsp;
             P. Final: ${sB.pressao.pressaoFinal||'___'} bar &nbsp;|&nbsp;
-            Valor: ${sB.pressao.vazaoMedida||'___'} m³/h
+            Valor: ${sB.pressao.vazaoMedida||'___'} m³/min
           </td>
         </tr>` : ''}
       </table>
@@ -2605,7 +2742,7 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-orange">TEMPERATURA</div>
       <table class="pdf-check-table">
         ${pdfCheckHead()}
-        ${pdfCheckRow('⚡ Temp. descarga dentro do limite', 'b3-tempDescarga', 'b3-tempLida', skip)}
+        ${pdfCheckRow('⚡ Temp. descarga dentro do limite (°C)', 'b3-tempDescarga', 'b3-tempLida', skip)}
         ${pdfCheckRow('⚡ Temp. de óleo dentro do limite',  'b3-tempOleo',     null,          skip)}
         ${pdfCheckRow('Temp. ambiente aceitável',           'b3-tempAmbiente', null,          false)}
         ${pdfCheckRow('⚡ Resfriamento / ventilação OK',    'b3-resfriamento', null,          skip)}
@@ -2618,11 +2755,11 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-blue">RUÍDOS, VIBRAÇÃO E VAZAMENTOS</div>
       <table class="pdf-check-table">
         ${pdfCheckHead()}
-        ${pdfCheckRow('Ruído anormal identificado',    'b4-ruidoAnormal',   null, false)}
-        ${pdfCheckRow('Vibração excessiva',            'b4-vibracao',       null, false)}
-        ${pdfCheckRow('Vazamento de ar detectado',     'b4-vazamentoAr',    null, false)}
-        ${pdfCheckRow('Vazamento de óleo detectado',   'b4-vazamentoOleo',  null, false)}
-        ${pdfCheckRow('Folga mecânica perceptível',    'b4-folgaMecanica',  null, false)}
+        ${pdfCheckRow('⚡ Ruído anormal identificado',    'b4-ruidoAnormal',   null, skip)}
+        ${pdfCheckRow('⚡ Vibração excessiva',            'b4-vibracao',       null, skip)}
+        ${pdfCheckRow('⚡ Vazamento de ar detectado',     'b4-vazamentoAr',    null, skip)}
+        ${pdfCheckRow('⚡ Vazamento de óleo detectado',   'b4-vazamentoOleo',  null, skip)}
+        ${pdfCheckRow('⚡ Folga mecânica perceptível',    'b4-folgaMecanica',  null, skip)}
       </table>
       ${pdfFotoBlock('secaoB_ruidos')}
 
@@ -2640,16 +2777,16 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-blue">ELÉTRICO — SEM ABERTURA DE PAINEL</div>
       <table class="pdf-check-table">
         ${pdfCheckHead()}
-        ${pdfCheckRow('Tensão de alimentação dentro do esperado',    'b6-tensaoAlimentacao', 'b6-tensaoLida',         false)}
-        ${pdfCheckRow('⚡ Corrente lida em operação (A)',             'b6-correnteLidaPdf',   'b6-correnteLida',       skip)}
-        ${pdfCheckRow('⚡ Corrente em carga plena (amperímetro)',    'b6-correnteCarga',     'b6-correnteCargaValor', skip)}
+        ${pdfCheckRow('Tensão de alimentação dentro do esperado (V)', 'b6-tensaoAlimentacao', 'b6-tensaoLida',         false)}
+        ${pdfMedRow('⚡ Corrente lida em operação',                   'b6-correnteLida', 'A', null,                 skip)}
+        ${pdfMedRow('⚡ Corrente em carga plena (amperímetro)',       'b6-correnteCargaValor', 'A', 'b6-correnteCarga', skip)}
         <tr>
           <td>Corrente nominal de plaqueta</td>
           <td class="col-valor">${sB.eletrico.correnteNominal||''} A</td>
           <td class="col-check"></td><td class="col-check"></td>
           <td class="col-check"></td><td class="col-check"></td>
         </tr>
-        ${pdfCheckRow('Desequilíbrio de tensão entre fases',         'b6-desequilibrio',     'b6-desequilibrioValor', false)}
+        ${pdfCheckRow('Desequilíbrio de tensão entre fases (%)',      'b6-desequilibrio',     'b6-desequilibrioValor', false)}
         ${pdfCheckRow('Display IHM sem código de falha ativo',       'b6-displayIHM',        'b6-displayCodigoValor', false)}
         ${pdfCheckRow('⚡ Temperatura do painel aceitável',          'b6-tempPainel',        null,                    skip)}
         ${pdfCheckRow('Aterramento visível e íntegro',               'b6-aterramento',        null,                  false)}

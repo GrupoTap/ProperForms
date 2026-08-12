@@ -129,7 +129,11 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
   <div class="sub" id="okSub"></div>
   <div class="sub" id="okPdfStatus" style="margin-top:10px"></div>
   <button class="btn no-print" id="btnReenviarPdf" style="display:none;margin-top:8px" onclick="reenviarPdf()">↻ Reenviar laudo</button>
-  <button class="btn" onclick="window.print()">🖨️ Gerar PDF</button></div>
+  <button class="btn no-print" onclick="imprimirLaudo()">🖨️ Gerar PDF</button>
+  <!-- ══ SAÍDA PARA O PIPELINE (12/08/2026) — ver bloco JS homônimo ══════ -->
+  <button id="btn-voltar-pipeline" style="display:none;width:100%;max-width:420px;margin:16px auto 0;padding:14px 16px;border:none;border-radius:10px;background:#16a34a;color:#fff;font-size:16px;font-weight:700;cursor:pointer">✅ Concluir e voltar ao pipeline</button>
+  <div id="auto-volta-aviso" style="display:none;margin:8px auto 0;font-size:13px;opacity:.8;text-align:center">Voltando em <span id="auto-volta-seg">8</span>s… <a href="#" id="auto-volta-cancelar" style="text-decoration:underline;cursor:pointer">cancelar</a></div>
+</div>
 </div>
 <div id="pdf-layout"></div>
 <div id="toast"></div>
@@ -382,11 +386,130 @@ async function enviar(){
   }
   // Gera o PDF da peritagem (estilo Form 02) e sobe ao Drive → Gestão de Documentos
   // na hora, sem depender de finalizar a OS. Não bloqueia a tela de conclusão.
-  if(_osId){ enviarPdfParaDrive(); }
+  if(_osId){ _pdfAguardando = enviarPdfParaDrive(); }
   document.getElementById('app').style.display='none';
   const ok=document.getElementById('okScreen'); ok.style.display='';
   document.getElementById('okSub').textContent=_osId?'A tarefa foi concluída no pipeline. Gere o PDF para anexar ao laudo.':'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
+  prepararTelaFinal(false);
 }
+
+// 12/08 — o "🖨️ Gerar PDF" da tela final imprimia UMA PÁGINA EM BRANCO: `enviar()`
+// esconde #app com style inline e a regra @media print só devolve `.card-b`, de
+// modo que o que ia para a impressora era o ✅ e duas frases de status — e o
+// próprio okSub mandava "Gere o PDF para anexar ao laudo". Agora o #app volta
+// durante a impressão e é reescondido depois (o `onafterprint` não é garantido
+// em todo navegador, daí o setTimeout de rede).
+function imprimirLaudo(){
+  var app = document.getElementById('app');
+  var ok  = document.getElementById('okScreen');
+  if (!app) { window.print(); return; }
+  app.style.display = '';
+  if (ok) ok.style.display = 'none';
+  var restaurar = function(){
+    app.style.display = 'none';
+    if (ok) ok.style.display = '';
+    window.onafterprint = null;
+  };
+  window.onafterprint = restaurar;
+  setTimeout(function(){ window.print(); setTimeout(restaurar, 800); }, 60);
+}
+
+// ══ SAÍDA PARA O PIPELINE (12/08/2026) ══════════════════════════════════════
+// Chamado do Fernando (12/08): "ao concluir o formulário de recebimento fica
+// nessa tela de recebimento registrado e não volta para o pipeline; isso está
+// acontecendo em outros forms também". Valia para TODOS os formulários menos o
+// form02, que ganhou esta correção sozinho em 29/07 — aqui ela vira padrão.
+//
+// COMO SE "FECHA" UM FORM: o PCF abre os forms de oficina por
+// `window.location.href` (MESMA aba, ver `pfAbrirForm`), então fechar NÃO é
+// `window.close()` — é navegar de volta para
+// `ProperTech/index.html?modo=pipeline&os_id=<id>`, que o PCF lê no boot e usa
+// para reabrir o pipeline direto na OS.
+//
+// ⚠ O PCM V116 abre o MESMO formulário em ABA NOVA, pela caixa "Tarefas do
+//   Adm". Mandar o adm para o app de campo seria pior que não voltar. Por isso
+//   o destino vem no parâmetro `?ret=` — declarado por quem abriu, não
+//   adivinhado por referrer (que sniffing de referrer erra em PWA e em
+//   navegação por link salvo).
+// ⚠ `ret` é dado vindo da URL: só é aceito destino sob https://grupotap.github.io/.
+//   Sem esse prefixo isto seria um redirecionamento aberto — qualquer link de
+//   WhatsApp levaria o técnico logado para fora do sistema.
+// ⚠ O auto-retorno só COMEÇA depois que o envio termina (`_pdfAguardando`).
+//   Navegar antes mata o upload pela metade — foi exatamente a armadilha
+//   documentada no form02 em 29/07.
+// ⚠ Uma vez cancelado pelo usuário, o auto-retorno não volta a contar: esta
+//   tela é reavaliada a cada atualização da fila de envio, e reiniciar a
+//   contagem por baixo do dedo de quem acabou de cancelar é hostil.
+var PCF_PIPELINE_URL = 'https://grupotap.github.io/ProperTech/index.html';
+var _retornoUrl = '';
+var _autoVoltaTimer = null;
+var _autoVoltaCancelado = false;
+var _pdfAguardando = null;
+
+function lerRetornoDaUrl() {
+  var raw = '';
+  try { raw = new URLSearchParams(location.search).get('ret') || ''; } catch (e) { raw = ''; }
+  _retornoUrl = /^https:\/\/grupotap\.github\.io\//.test(raw) ? raw : '';
+}
+
+function destinoDeVolta() {
+  if (_retornoUrl) return _retornoUrl;                       // veio do PCM (aba nova)
+  if (_osId) return PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+  return '';                                                 // avulso: não há pipeline
+}
+
+// falhou=true ⇒ mostra o botão mas NÃO sai sozinho (envio pendente ou travado).
+function prepararTelaFinal(falhou) {
+  lerRetornoDaUrl();
+  var btnV  = document.getElementById('btn-voltar-pipeline');
+  var aviso = document.getElementById('auto-volta-aviso');
+  var canc  = document.getElementById('auto-volta-cancelar');
+  if (btnV && !btnV._wired) { btnV._wired = true; btnV.onclick = voltarAoPipeline; }
+  if (canc && !canc._wired) { canc._wired = true; canc.onclick = function (ev) { ev.preventDefault(); cancelarAutoVolta(); }; }
+  if (!btnV) return;
+  var destino = destinoDeVolta();
+  if (!destino) { btnV.style.display = 'none'; if (aviso) aviso.style.display = 'none'; return; }
+  btnV.style.display = '';
+  btnV.textContent = _retornoUrl ? '✅ Concluir e voltar ao ProperAdmin' : '✅ Concluir e voltar ao pipeline';
+  if (falhou || _autoVoltaCancelado) { if (aviso) aviso.style.display = 'none'; return; }
+  Promise.resolve(_pdfAguardando).catch(function () {}).then(function () { iniciarAutoVolta(8); });
+}
+
+function iniciarAutoVolta(seg) {
+  if (_autoVoltaTimer || _autoVoltaCancelado) return;        // já contando / já recusado
+  var aviso = document.getElementById('auto-volta-aviso');
+  var span  = document.getElementById('auto-volta-seg');
+  if (!aviso || !span) return;
+  aviso.style.display = '';
+  span.textContent = seg;
+  _autoVoltaTimer = setInterval(function () {
+    seg--;
+    span.textContent = seg;
+    if (seg <= 0) { clearInterval(_autoVoltaTimer); _autoVoltaTimer = null; voltarAoPipeline(); }
+  }, 1000);
+}
+
+function cancelarAutoVolta() {
+  clearInterval(_autoVoltaTimer);
+  _autoVoltaTimer = null;
+  _autoVoltaCancelado = true;
+  var aviso = document.getElementById('auto-volta-aviso');
+  if (aviso) aviso.style.display = 'none';
+}
+
+function voltarAoPipeline() {
+  clearInterval(_autoVoltaTimer);
+  _autoVoltaTimer = null;
+  try { limparRascunho(); } catch (e) {}   // o laudo já está no sistema; rascunho órfão foi a classe do bug de 28/07
+  var destino = destinoDeVolta();
+  if (!destino) {
+    if (history.length > 1) history.back();
+    else location.href = 'https://grupotap.github.io/ProperHub/';
+    return;
+  }
+  location.href = destino;
+}
+
 
 // ══ PDF (estilo Form 02) → DRIVE (Gestão de Documentos) ══════════════════════
 // Monta um #pdf-layout com o cabeçalho Proper + seções do schema + parecer,
