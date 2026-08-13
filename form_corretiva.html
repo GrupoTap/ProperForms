@@ -74,7 +74,7 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
 <style>
   :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--orange:#f97316;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:640px;margin:0 auto}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:640px;margin:0 auto}
   h1{font-size:22px;font-weight:700;margin-bottom:4px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
@@ -167,13 +167,13 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   .pgp-sign-overlay.open{ display:block }
   .pgp-sign-name{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     padding:24px calc(20px + env(safe-area-inset-right,0)) calc(24px + env(safe-area-inset-bottom,0)) calc(20px + env(safe-area-inset-left,0)); gap:14px; text-align:center }
-  .pgp-sign-name h3{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
+  .pgp-sign-name h3{ font-family:sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
   .pgp-sign-name p{ font-size:14px; color:#c3ccd6; margin:0; max-width:340px; line-height:1.4 }
   .pgp-sign-name input{ width:100%; max-width:360px; font-size:18px; padding:14px 14px; border-radius:12px; border:2px solid #30363d;
     background:#161b22; color:#fff; outline:none; text-align:center; font-family:inherit }
   .pgp-sign-name input:focus{ border-color:var(--orange) }
   .pgp-sign-name .pgp-sign-row{ display:flex; gap:10px; width:100%; max-width:360px; margin-top:6px }
-  .pgp-sign-btn{ flex:1; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
+  .pgp-sign-btn{ flex:1; font-family:sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
     border:2px solid #30363d; background:#161b22; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:.5px }
   .pgp-sign-btn.primary{ background:var(--orange); border-color:var(--orange); color:#fff }
   .pgp-sign-btn:disabled{ opacity:.45; pointer-events:none }
@@ -183,12 +183,12 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
     width:100vh; height:100vw }
   .pgp-sign-top{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
     padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; min-height:40px }
-  .pgp-sign-top .lbl{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pgp-sign-top .lbl{ font-family:sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .pgp-sign-top .hint{ font-size:12px; color:#8b949e; white-space:nowrap }
   .pgp-sign-canvas-wrap{ flex:1; position:relative; background:#fff; margin:10px; border-radius:10px; overflow:hidden;
     box-shadow:inset 0 0 0 2px #30363d }
   .pgp-sign-canvas-wrap::before{ content:'Assine aqui'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    color:#d0d4dc; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
+    color:#d0d4dc; font-family:sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
   .pgp-sign-canvas-wrap.inked::before{ display:none }
   .pgp-sign-canvas-wrap::after{ content:''; position:absolute; left:8%; right:8%; bottom:22%; border-bottom:2px dashed #c8ccd4; pointer-events:none }
   .pgp-sign-canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; display:block }
@@ -1608,6 +1608,233 @@ function buildPdfLayout(photosByKey){
 // imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
 // para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
 // vira ERRO visível em vez de PDF branco.
+/* ══ PAGINADOR REAL — 13/08/2026 ═══════════════════════════════════════════
+   ADITIVO. Nada existente foi renomeado ou removido: buildPdfLayout, o
+   #pdf-layout, as classes p1- / pdf- / pl- e o _pdfChecarCanvas continuam
+   valendo. O que muda é COMO o layout vira folhas.
+
+   O QUE ISTO SUBSTITUI — "a guilhotina":
+     var canvas = await html2canvas(el, ...);        // UMA imagem do doc inteiro
+     while (heightLeft > 0){ position = heightLeft - imgH; pdf.addPage(); ... }
+   O documento virava um bitmap único e era cortado a cada 297 mm por geometria
+   pura, cego ao conteúdo: meia foto no pé de uma página e meia no topo da outra,
+   linhas de texto partidas no meio dos glifos, cabeçalho de seção decapitado.
+   E `page-break-inside:avoid` no CSS era CÓDIGO MORTO — html2canvas rasteriza,
+   nunca avalia essas regras, o que dava uma falsa sensação de proteção.
+
+   COMO FUNCIONA AGORA (mesma ideia do motor tp-* do form_locacao/form_generica,
+   só que genérica: trabalha sobre o #pdf-layout que cada form já monta):
+     1. mede cada filho direto do #pdf-layout na largura real de folha (794 px)
+     2. o que for mais alto que a folha é QUEBRADO — tabela parte por <tr>
+        repetindo o <thead> (marcado como continuação), grade de fotos parte por
+        foto, container parte pelos filhos; a recursão desce até caber
+     3. empacota em folhas A4 sem cortar nada, com cabeçalho de seção nunca órfão
+     4. da 2ª folha em diante injeta uma FAIXA DE CONTINUAÇÃO (logo + OS +
+        cliente) — antes, da página 2 em diante o documento não tinha nenhuma
+        identificação
+     5. rodapé com "Página X de Y" em TODAS as folhas — antes o rodapé existia
+        uma vez só, no fim do bitmap, e 4 de 5 páginas saíam anônimas
+     6. captura UMA FOLHA POR VEZ. Além de resolver o corte, isso derruba o
+        orçamento de pixels por captura de ~16 Mpx para ~3,6 Mpx, que é a causa
+        raiz do "PDF sai em branco" no iOS.
+   ═════════════════════════════════════════════════════════════════════════ */
+(function(){
+  if (window.pgpPaginarPdf) return;
+  var W = 794, H = 1123, FOOT_H = 34, CONT_H = 32;
+
+  function _css(){
+    if (document.getElementById('pgpPagCss')) return;
+    var s = document.createElement('style'); s.id = 'pgpPagCss';
+    s.textContent =
+      '.pgp-page{width:794px;height:1123px;position:relative;background:#fff;overflow:hidden}'
+    + '.pgp-page.pgp-meas{height:auto;overflow:visible}'
+    + '.pgp-cont{display:table;width:100%;border-bottom:2px solid #f58220;background:#fff}'
+    + '.pgp-cont>div{display:table-cell;vertical-align:middle;padding:6px 10px;'
+      + 'font-family:Arial,Helvetica,sans-serif}'
+    + '.pgp-cont .t{font-size:8.5pt;font-weight:700;color:#1a1a1a}'
+    + '.pgp-cont .r{text-align:right;font-size:7pt;color:#666;white-space:nowrap}'
+    + '.pgp-foot{position:absolute;left:10px;right:10px;bottom:10px;height:20px;'
+      + 'border-top:1px solid #ddd;padding-top:5px;font-family:Arial,Helvetica,sans-serif;'
+      + 'font-size:6.5pt;color:#777}'
+    + '.pgp-foot .l{float:left}.pgp-foot .r{float:right}'
+    + '.pgp-tcont{background:#eee !important;color:#555 !important;font-size:6.5pt !important;'
+      + 'font-weight:400 !important;text-align:left !important;font-style:italic;padding:2px 4px !important}';
+    document.head.appendChild(s);
+  }
+  /* Altura COM as margens. getBoundingClientRect ignora margin, e somar alturas
+     sem elas subestimava a folha — o ultimo bloco encostava (ou invadia) a faixa
+     do rodape. Conservador de proposito: melhor sobrar folha do que sobrepor. */
+  function _h(el){
+    var r = el.getBoundingClientRect().height, cs;
+    try{ cs = window.getComputedStyle(el); }catch(e){ return r; }
+    return r + (parseFloat(cs.marginTop)||0) + (parseFloat(cs.marginBottom)||0);
+  }
+  function _clonRaso(el){
+    var c = el.cloneNode(false);
+    if (c.removeAttribute) c.removeAttribute('id');   // não duplicar id no documento
+    return c;
+  }
+  function _tabelaDe(el){
+    if (el.tagName === 'TABLE') return el;
+    var t = el.querySelectorAll ? el.querySelectorAll('table') : [];
+    return (t.length === 1 && el.children.length === 1) ? t[0] : null;
+  }
+  /* Parte uma tabela por <tr>, repetindo o <thead> e marcando a continuação —
+     antes o cabeçalho voltava IDÊNTICO e o leitor concluía que a seção estava
+     duplicada (é uma das três causas do "repete títulos"). */
+  function _partirTabela(bloco, tbl, cap, med){
+    var thead = tbl.querySelector('thead');
+    var trs = [].slice.call(tbl.querySelectorAll('tbody > tr'));
+    if (trs.length < 4) return null;
+    var extra = _h(bloco) - _h(tbl);                 // padding/borda do wrapper
+    var hHead = thead ? _h(thead) : 0;
+    var partes = [], i = 0, guard = 0;
+    while (i < trs.length && guard++ < 400){
+      var casca = (bloco === tbl) ? _clonRaso(tbl) : _clonRaso(bloco);
+      var tb;
+      if (bloco === tbl){ tb = casca; }
+      else { tb = _clonRaso(tbl); casca.appendChild(tb); }
+      if (thead) tb.appendChild(thead.cloneNode(true));
+      if (partes.length && thead){
+        var mk = document.createElement('thead');
+        mk.innerHTML = '<tr><th class="pgp-tcont" colspan="12">continuação da tabela anterior</th></tr>';
+        tb.insertBefore(mk, tb.firstChild);
+      }
+      var body = document.createElement('tbody'); tb.appendChild(body);
+      med.appendChild(casca);
+      var posto = 0;
+      while (i < trs.length){
+        body.appendChild(trs[i].cloneNode(true)); posto++; i++;
+        if (_h(casca) + extra > cap){
+          if (posto > 1){ body.removeChild(body.lastChild); i--; posto--; }
+          break;
+        }
+      }
+      if (!posto) break;
+      partes.push(casca);
+    }
+    return partes.length > 1 ? partes : null;
+  }
+  /* Quebra recursiva: tabela por linha, container pelos filhos, e desce até caber. */
+  function _quebrar(el, cap, med, nivel){
+    med.appendChild(el);
+    if (_h(el) <= cap) return [el];
+    var tbl = _tabelaDe(el);
+    if (tbl){ var p = _partirTabela(el, tbl, cap, med); if (p) return p; }
+    var kids = [].slice.call(el.children);
+    if (!kids.length || nivel > 3) return [el];        // não dá para dividir: entra inteiro
+    var out = [], cur = _clonRaso(el);
+    med.appendChild(cur);
+    kids.forEach(function(k){
+      cur.appendChild(k);
+      if (_h(cur) > cap && cur.children.length > 1){
+        cur.removeChild(k);
+        out.push(cur);
+        cur = _clonRaso(el); med.appendChild(cur); cur.appendChild(k);
+      }
+    });
+    if (cur.children.length) out.push(cur);
+    var fim = [];
+    out.forEach(function(c){
+      if (_h(c) > cap && c.children.length === 1){
+        fim = fim.concat(_quebrar(c.children[0], cap, med, (nivel||0)+1));
+      } else fim.push(c);
+    });
+    return fim.length ? fim : [el];
+  }
+  function _ehCabecalhoSecao(el){
+    var c = ' ' + (el.className || '') + ' ';
+    return /sec-head|pl-sec-head|p1-sec-head|pl-gw|pdf-gateway|pgp-keep/.test(c);
+  }
+
+  window.pgpPaginarPdf = async function(host, opts){
+    opts = opts || {};
+    _css();
+    // Guarda: quem chama já carrega as libs sob demanda, mas o paginador é
+    // helper compartilhado — não pode depender da ordem de quem o usa.
+    if ((!window.jspdf || !window.html2canvas) && typeof pgpEnsureLibsPDF === 'function'){
+      try{ await pgpEnsureLibsPDF(); }catch(e){}
+    }
+    if (!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    var cap1 = H - FOOT_H, capN = H - FOOT_H - CONT_H;
+
+    /* rodapé: usa o texto do rodapé que o próprio form já monta, e retira o nó
+       do fluxo — senão ele apareceria como conteúdo no fim da última folha. */
+    var rodape = opts.rodape || '';
+    if (opts.footSel){
+      var fn = host.querySelector(opts.footSel);
+      if (fn){ rodape = rodape || (fn.textContent || '').trim(); fn.parentNode.removeChild(fn); }
+    }
+
+    var filhos = [].slice.call(host.children);
+    var med = document.createElement('div');
+    med.className = 'pgp-page pgp-meas';
+    host.innerHTML = ''; host.appendChild(med);
+
+    /* 1) medir e quebrar o que não cabe */
+    var blocos = [];
+    filhos.forEach(function(f){
+      _quebrar(f, cap1, med, 0).forEach(function(b){
+        blocos.push({ el:b, keep:_ehCabecalhoSecao(b) });
+      });
+    });
+    blocos.forEach(function(b){ b.h = _h(b.el); });
+
+    /* 2) empacotar sem cortar nada */
+    var paginas = [[]], usado = 0;
+    function cap(){ return paginas.length === 1 ? cap1 : capN; }
+    for (var k = 0; k < blocos.length; k++){
+      var b = blocos[k];
+      /* Cabeçalho de seção não pode ficar órfão no pé da folha. Se o bloco
+         seguinte CABE numa folha, exige-se ele INTEIRO — pedir só "um pedaço"
+         deixava a barra da seção sozinha com 650 px de papel branco embaixo
+         (visto na bancada do form01: "REGISTRO FOTOGRÁFICO" numa folha e as
+         fotos na seguinte). Se o seguinte é maior que a folha, ele vai ser
+         quebrado de qualquer jeito — aí basta caber um pedaço. */
+      var prox = 0;
+      if (b.keep && blocos[k+1]) prox = (blocos[k+1].h > cap()) ? 200 : blocos[k+1].h;
+      var precisa = b.h + prox;
+      if (usado > 0 && usado + precisa > cap()){ paginas.push([]); usado = 0; }
+      paginas[paginas.length-1].push(b); usado += b.h;
+    }
+
+    /* 3) montar as folhas de verdade */
+    host.innerHTML = '';
+    var folhas = [];
+    paginas.forEach(function(itens, pi){
+      var pg = document.createElement('div'); pg.className = 'pgp-page';
+      if (pi > 0){
+        var cb = document.createElement('div'); cb.className = 'pgp-cont';
+        cb.innerHTML = '<div class="t">' + (opts.titulo || 'ProperCare') + '</div>'
+          + '<div class="r">' + (opts.os ? ('OS ' + opts.os + ' · ') : '')
+          + (opts.cliente || '') + '</div>';
+        pg.appendChild(cb);
+      }
+      itens.forEach(function(it){ pg.appendChild(it.el); });
+      var ft = document.createElement('div'); ft.className = 'pgp-foot';
+      ft.innerHTML = '<span class="l">' + rodape + '</span>'
+        + '<span class="r">Página ' + (pi+1) + ' de ' + paginas.length + '</span>';
+      pg.appendChild(ft);
+      host.appendChild(pg); folhas.push(pg);
+    });
+
+    /* 4) capturar UMA FOLHA POR VEZ */
+    var escala = Math.max(1, Math.min(2, Math.sqrt(16000000 / (W * H))));
+    for (var p = 0; p < folhas.length; p++){
+      var canvas = await html2canvas(folhas[p], {
+        scale: escala, backgroundColor:'#ffffff', useCORS:true, logging:false,
+        width: W, height: H, windowWidth: W });
+      var img = canvas.toDataURL('image/jpeg', 0.92);
+      if (typeof _pdfChecarCanvas === 'function') _pdfChecarCanvas(canvas, img);
+      if (p > 0) pdf.addPage();
+      pdf.addImage(img, 'JPEG', 0, 0, 210, 297);
+    }
+    return pdf;
+  };
+})();
+
 function _pdfScaleSeguro(el){
   var MAXPX = 16000000;
   var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
@@ -1648,17 +1875,13 @@ async function _buildPdfDoc(){
   el.classList.add('pdf-capturing');
   el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
   try{
-    pgpEsperaLonga('📄 Capturando o laudo…');   // 13/08 (perf)
-    var _scale=_pdfScaleSeguro(el);   // 29/07 (F-30)
-    var canvas=await html2canvas(el,{ scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
-    var jsPDF=window.jspdf.jsPDF;
-    var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    var pageH=297, imgW=210, imgH=canvas.height*imgW/canvas.width;
-    var imgData=canvas.toDataURL('image/jpeg',0.92);
-    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe/baixa PDF branco
-    var heightLeft=imgH, position=0;
-    pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH;
-    while(heightLeft>0){ position=heightLeft-imgH; pdf.addPage(); pdf.addImage(imgData,'JPEG',0,position,imgW,imgH); heightLeft-=pageH; }
+    pgpEsperaLonga('📄 Paginando o laudo…');   // 13/08
+    // A guilhotina cortava fotos ao meio na virada de pagina — era o defeito da
+    // OS PGP-2026-0033. Agora cada .pdf-photo e' um bloco indivisivel.
+    var _idp = state.identificacao || {};
+    var pdf = await pgpPaginarPdf(el, {
+      titulo:'Laudo de Visita Corretiva',
+      os:_idp.os||'', cliente:_idp.cliente||'', footSel:'.pdf-footer' });
     return pdf;
   } finally { el.classList.remove('pdf-capturing'); el.style.cssText='display:none'; }
 }

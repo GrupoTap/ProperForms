@@ -67,7 +67,7 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
 <style>
   :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:680px;margin:0 auto}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px;max-width:680px;margin:0 auto}
   h1{font-size:22px;font-weight:700}.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
   .card-h{padding:12px 14px;font-size:16px;font-weight:700;color:#cbd5e1;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
@@ -110,6 +110,13 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
   #pdf-layout{display:none;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;width:100%;font-size:9pt;line-height:1.35}
   #pdf-layout.pdf-capturing{display:block}
   #pdf-layout *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  /* 13/08 (G10c): evidencia fotografica dentro do laudo */
+  #pdf-layout .pl-fwrap{padding:6px 4px}
+  #pdf-layout .pl-fotos{display:flex;flex-wrap:wrap;gap:8px}
+  #pdf-layout .pl-foto{width:48%;border:1px solid #ccc;padding:4px;background:#fff}
+  #pdf-layout .pl-foto img{width:100%;height:150px;object-fit:contain;display:block;background:#fafafa}
+  #pdf-layout .pl-fsem{height:150px;line-height:150px;text-align:center;color:#999;font-style:italic;font-size:8pt;background:#fafafa}
+  #pdf-layout .pl-fcap{font-size:7.5pt;text-align:center;margin-top:4px;font-weight:700;color:#222}
   .pl-header{display:table;width:100%;border:1px solid #ccc;margin-bottom:6px}
   .pl-logo,.pl-title,.pl-fields{display:table-cell;vertical-align:middle}
   .pl-logo{width:54px;border-right:1px solid #ccc;text-align:center;padding:6px 4px}
@@ -684,6 +691,233 @@ function voltarAoPipeline() {
 // imagem em BRANCO — o PDF subia vazio em silêncio. Agora o scale é reduzido
 // para caber no orçamento de pixels e o resultado suspeito (dataURL minúsculo)
 // vira ERRO visível em vez de PDF branco.
+/* ══ PAGINADOR REAL — 13/08/2026 ═══════════════════════════════════════════
+   ADITIVO. Nada existente foi renomeado ou removido: buildPdfLayout, o
+   #pdf-layout, as classes p1- / pdf- / pl- e o _pdfChecarCanvas continuam
+   valendo. O que muda é COMO o layout vira folhas.
+
+   O QUE ISTO SUBSTITUI — "a guilhotina":
+     var canvas = await html2canvas(el, ...);        // UMA imagem do doc inteiro
+     while (heightLeft > 0){ position = heightLeft - imgH; pdf.addPage(); ... }
+   O documento virava um bitmap único e era cortado a cada 297 mm por geometria
+   pura, cego ao conteúdo: meia foto no pé de uma página e meia no topo da outra,
+   linhas de texto partidas no meio dos glifos, cabeçalho de seção decapitado.
+   E `page-break-inside:avoid` no CSS era CÓDIGO MORTO — html2canvas rasteriza,
+   nunca avalia essas regras, o que dava uma falsa sensação de proteção.
+
+   COMO FUNCIONA AGORA (mesma ideia do motor tp-* do form_locacao/form_generica,
+   só que genérica: trabalha sobre o #pdf-layout que cada form já monta):
+     1. mede cada filho direto do #pdf-layout na largura real de folha (794 px)
+     2. o que for mais alto que a folha é QUEBRADO — tabela parte por <tr>
+        repetindo o <thead> (marcado como continuação), grade de fotos parte por
+        foto, container parte pelos filhos; a recursão desce até caber
+     3. empacota em folhas A4 sem cortar nada, com cabeçalho de seção nunca órfão
+     4. da 2ª folha em diante injeta uma FAIXA DE CONTINUAÇÃO (logo + OS +
+        cliente) — antes, da página 2 em diante o documento não tinha nenhuma
+        identificação
+     5. rodapé com "Página X de Y" em TODAS as folhas — antes o rodapé existia
+        uma vez só, no fim do bitmap, e 4 de 5 páginas saíam anônimas
+     6. captura UMA FOLHA POR VEZ. Além de resolver o corte, isso derruba o
+        orçamento de pixels por captura de ~16 Mpx para ~3,6 Mpx, que é a causa
+        raiz do "PDF sai em branco" no iOS.
+   ═════════════════════════════════════════════════════════════════════════ */
+(function(){
+  if (window.pgpPaginarPdf) return;
+  var W = 794, H = 1123, FOOT_H = 34, CONT_H = 32;
+
+  function _css(){
+    if (document.getElementById('pgpPagCss')) return;
+    var s = document.createElement('style'); s.id = 'pgpPagCss';
+    s.textContent =
+      '.pgp-page{width:794px;height:1123px;position:relative;background:#fff;overflow:hidden}'
+    + '.pgp-page.pgp-meas{height:auto;overflow:visible}'
+    + '.pgp-cont{display:table;width:100%;border-bottom:2px solid #f58220;background:#fff}'
+    + '.pgp-cont>div{display:table-cell;vertical-align:middle;padding:6px 10px;'
+      + 'font-family:Arial,Helvetica,sans-serif}'
+    + '.pgp-cont .t{font-size:8.5pt;font-weight:700;color:#1a1a1a}'
+    + '.pgp-cont .r{text-align:right;font-size:7pt;color:#666;white-space:nowrap}'
+    + '.pgp-foot{position:absolute;left:10px;right:10px;bottom:10px;height:20px;'
+      + 'border-top:1px solid #ddd;padding-top:5px;font-family:Arial,Helvetica,sans-serif;'
+      + 'font-size:6.5pt;color:#777}'
+    + '.pgp-foot .l{float:left}.pgp-foot .r{float:right}'
+    + '.pgp-tcont{background:#eee !important;color:#555 !important;font-size:6.5pt !important;'
+      + 'font-weight:400 !important;text-align:left !important;font-style:italic;padding:2px 4px !important}';
+    document.head.appendChild(s);
+  }
+  /* Altura COM as margens. getBoundingClientRect ignora margin, e somar alturas
+     sem elas subestimava a folha — o ultimo bloco encostava (ou invadia) a faixa
+     do rodape. Conservador de proposito: melhor sobrar folha do que sobrepor. */
+  function _h(el){
+    var r = el.getBoundingClientRect().height, cs;
+    try{ cs = window.getComputedStyle(el); }catch(e){ return r; }
+    return r + (parseFloat(cs.marginTop)||0) + (parseFloat(cs.marginBottom)||0);
+  }
+  function _clonRaso(el){
+    var c = el.cloneNode(false);
+    if (c.removeAttribute) c.removeAttribute('id');   // não duplicar id no documento
+    return c;
+  }
+  function _tabelaDe(el){
+    if (el.tagName === 'TABLE') return el;
+    var t = el.querySelectorAll ? el.querySelectorAll('table') : [];
+    return (t.length === 1 && el.children.length === 1) ? t[0] : null;
+  }
+  /* Parte uma tabela por <tr>, repetindo o <thead> e marcando a continuação —
+     antes o cabeçalho voltava IDÊNTICO e o leitor concluía que a seção estava
+     duplicada (é uma das três causas do "repete títulos"). */
+  function _partirTabela(bloco, tbl, cap, med){
+    var thead = tbl.querySelector('thead');
+    var trs = [].slice.call(tbl.querySelectorAll('tbody > tr'));
+    if (trs.length < 4) return null;
+    var extra = _h(bloco) - _h(tbl);                 // padding/borda do wrapper
+    var hHead = thead ? _h(thead) : 0;
+    var partes = [], i = 0, guard = 0;
+    while (i < trs.length && guard++ < 400){
+      var casca = (bloco === tbl) ? _clonRaso(tbl) : _clonRaso(bloco);
+      var tb;
+      if (bloco === tbl){ tb = casca; }
+      else { tb = _clonRaso(tbl); casca.appendChild(tb); }
+      if (thead) tb.appendChild(thead.cloneNode(true));
+      if (partes.length && thead){
+        var mk = document.createElement('thead');
+        mk.innerHTML = '<tr><th class="pgp-tcont" colspan="12">continuação da tabela anterior</th></tr>';
+        tb.insertBefore(mk, tb.firstChild);
+      }
+      var body = document.createElement('tbody'); tb.appendChild(body);
+      med.appendChild(casca);
+      var posto = 0;
+      while (i < trs.length){
+        body.appendChild(trs[i].cloneNode(true)); posto++; i++;
+        if (_h(casca) + extra > cap){
+          if (posto > 1){ body.removeChild(body.lastChild); i--; posto--; }
+          break;
+        }
+      }
+      if (!posto) break;
+      partes.push(casca);
+    }
+    return partes.length > 1 ? partes : null;
+  }
+  /* Quebra recursiva: tabela por linha, container pelos filhos, e desce até caber. */
+  function _quebrar(el, cap, med, nivel){
+    med.appendChild(el);
+    if (_h(el) <= cap) return [el];
+    var tbl = _tabelaDe(el);
+    if (tbl){ var p = _partirTabela(el, tbl, cap, med); if (p) return p; }
+    var kids = [].slice.call(el.children);
+    if (!kids.length || nivel > 3) return [el];        // não dá para dividir: entra inteiro
+    var out = [], cur = _clonRaso(el);
+    med.appendChild(cur);
+    kids.forEach(function(k){
+      cur.appendChild(k);
+      if (_h(cur) > cap && cur.children.length > 1){
+        cur.removeChild(k);
+        out.push(cur);
+        cur = _clonRaso(el); med.appendChild(cur); cur.appendChild(k);
+      }
+    });
+    if (cur.children.length) out.push(cur);
+    var fim = [];
+    out.forEach(function(c){
+      if (_h(c) > cap && c.children.length === 1){
+        fim = fim.concat(_quebrar(c.children[0], cap, med, (nivel||0)+1));
+      } else fim.push(c);
+    });
+    return fim.length ? fim : [el];
+  }
+  function _ehCabecalhoSecao(el){
+    var c = ' ' + (el.className || '') + ' ';
+    return /sec-head|pl-sec-head|p1-sec-head|pl-gw|pdf-gateway|pgp-keep/.test(c);
+  }
+
+  window.pgpPaginarPdf = async function(host, opts){
+    opts = opts || {};
+    _css();
+    // Guarda: quem chama já carrega as libs sob demanda, mas o paginador é
+    // helper compartilhado — não pode depender da ordem de quem o usa.
+    if ((!window.jspdf || !window.html2canvas) && typeof pgpEnsureLibsPDF === 'function'){
+      try{ await pgpEnsureLibsPDF(); }catch(e){}
+    }
+    if (!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    var cap1 = H - FOOT_H, capN = H - FOOT_H - CONT_H;
+
+    /* rodapé: usa o texto do rodapé que o próprio form já monta, e retira o nó
+       do fluxo — senão ele apareceria como conteúdo no fim da última folha. */
+    var rodape = opts.rodape || '';
+    if (opts.footSel){
+      var fn = host.querySelector(opts.footSel);
+      if (fn){ rodape = rodape || (fn.textContent || '').trim(); fn.parentNode.removeChild(fn); }
+    }
+
+    var filhos = [].slice.call(host.children);
+    var med = document.createElement('div');
+    med.className = 'pgp-page pgp-meas';
+    host.innerHTML = ''; host.appendChild(med);
+
+    /* 1) medir e quebrar o que não cabe */
+    var blocos = [];
+    filhos.forEach(function(f){
+      _quebrar(f, cap1, med, 0).forEach(function(b){
+        blocos.push({ el:b, keep:_ehCabecalhoSecao(b) });
+      });
+    });
+    blocos.forEach(function(b){ b.h = _h(b.el); });
+
+    /* 2) empacotar sem cortar nada */
+    var paginas = [[]], usado = 0;
+    function cap(){ return paginas.length === 1 ? cap1 : capN; }
+    for (var k = 0; k < blocos.length; k++){
+      var b = blocos[k];
+      /* Cabeçalho de seção não pode ficar órfão no pé da folha. Se o bloco
+         seguinte CABE numa folha, exige-se ele INTEIRO — pedir só "um pedaço"
+         deixava a barra da seção sozinha com 650 px de papel branco embaixo
+         (visto na bancada do form01: "REGISTRO FOTOGRÁFICO" numa folha e as
+         fotos na seguinte). Se o seguinte é maior que a folha, ele vai ser
+         quebrado de qualquer jeito — aí basta caber um pedaço. */
+      var prox = 0;
+      if (b.keep && blocos[k+1]) prox = (blocos[k+1].h > cap()) ? 200 : blocos[k+1].h;
+      var precisa = b.h + prox;
+      if (usado > 0 && usado + precisa > cap()){ paginas.push([]); usado = 0; }
+      paginas[paginas.length-1].push(b); usado += b.h;
+    }
+
+    /* 3) montar as folhas de verdade */
+    host.innerHTML = '';
+    var folhas = [];
+    paginas.forEach(function(itens, pi){
+      var pg = document.createElement('div'); pg.className = 'pgp-page';
+      if (pi > 0){
+        var cb = document.createElement('div'); cb.className = 'pgp-cont';
+        cb.innerHTML = '<div class="t">' + (opts.titulo || 'ProperCare') + '</div>'
+          + '<div class="r">' + (opts.os ? ('OS ' + opts.os + ' · ') : '')
+          + (opts.cliente || '') + '</div>';
+        pg.appendChild(cb);
+      }
+      itens.forEach(function(it){ pg.appendChild(it.el); });
+      var ft = document.createElement('div'); ft.className = 'pgp-foot';
+      ft.innerHTML = '<span class="l">' + rodape + '</span>'
+        + '<span class="r">Página ' + (pi+1) + ' de ' + paginas.length + '</span>';
+      pg.appendChild(ft);
+      host.appendChild(pg); folhas.push(pg);
+    });
+
+    /* 4) capturar UMA FOLHA POR VEZ */
+    var escala = Math.max(1, Math.min(2, Math.sqrt(16000000 / (W * H))));
+    for (var p = 0; p < folhas.length; p++){
+      var canvas = await html2canvas(folhas[p], {
+        scale: escala, backgroundColor:'#ffffff', useCORS:true, logging:false,
+        width: W, height: H, windowWidth: W });
+      var img = canvas.toDataURL('image/jpeg', 0.92);
+      if (typeof _pdfChecarCanvas === 'function') _pdfChecarCanvas(canvas, img);
+      if (p > 0) pdf.addPage();
+      pdf.addImage(img, 'JPEG', 0, 0, 210, 297);
+    }
+    return pdf;
+  };
+})();
+
 function _pdfScaleSeguro(el){
   var MAXPX = 16000000;
   var w = (el && (el.offsetWidth || el.scrollWidth)) || 794;
@@ -698,6 +932,55 @@ function _pdfChecarCanvas(canvas, imgData){
   if (!imgData || imgData.length < 5000) throw new Error('PDF sairia em BRANCO neste aparelho (imagem grande demais) — reduza a quantidade de fotos e gere de novo');
 }
 
+/* ══ 13/08 (G10c) — AS FOTOS ENTRAM NO LAUDO ═══════════════════════════════
+   Antes, `_pdfResHtml` escrevia literalmente "3 foto(s)" na celula onde deveria
+   estar a evidencia: as fotos subiam para o Drive e o documento entregue ao
+   cliente nao mostrava nenhuma. Numa PERITAGEM esse era o defeito funcional
+   mais grave do conjunto.
+   Os bytes vem de duas fontes, nessa ordem:
+     1. as miniaturas na tela (fotos desta sessao) — custo zero, funciona offline
+     2. o Drive, via getFotoBase64 (GAS v78), em lotes de 4 — para rascunho
+        restaurado, onde os bytes nao existem mais no aparelho
+   O mecanismo do lote e' o mesmo que o form02 ja usava em pdfHidratarFotosDrive. */
+var _plFotoB64 = {};
+async function _plHidratarFotos(){
+  try{
+    Object.keys(state.fotos||{}).forEach(function(k){
+      var cont = document.getElementById('thumbs-'+k); if(!cont) return;
+      var imgs = cont.querySelectorAll('img'), arr = state.fotos[k]||[];
+      for (var i=0; i<arr.length && i<imgs.length; i++){
+        var src = imgs[i].getAttribute('src')||'';
+        if (src.indexOf('data:')===0 && arr[i] && arr[i].url) _plFotoB64[arr[i].url] = src;
+      }
+    });
+  }catch(e){}
+  var faltam = [];
+  Object.keys(state.fotos||{}).forEach(function(k){
+    (state.fotos[k]||[]).forEach(function(f){
+      if (f && f.url && !_plFotoB64[f.url] && faltam.indexOf(f.url)<0) faltam.push(f.url);
+    });
+  });
+  for (var i=0; i<faltam.length; i+=4){
+    var lote = faltam.slice(i, i+4);
+    await Promise.all(lote.map(async function(u){
+      try{
+        var d = await gasPostJson({ action:'getFotoBase64', key:KEY, url:u });
+        if (d && d.status==='ok' && d.base64) _plFotoB64[u] = 'data:'+(d.mimeType||'image/jpeg')+';base64,'+d.base64;
+      }catch(e){}
+    }));
+  }
+}
+function _pdfFotosHtml(it){
+  var arr = state.fotos[it.k]||[];
+  var cels = arr.map(function(f, ix){
+    var src = (f && f.url) ? _plFotoB64[f.url] : '';
+    var cap = escHtml(it.label) + (arr.length>1 ? (' ('+(ix+1)+'/'+arr.length+')') : '');
+    return '<div class="pl-foto">'
+      + (src ? '<img src="'+src+'">' : '<div class="pl-fsem">foto no Drive — não embutida neste aparelho</div>')
+      + '<div class="pl-fcap">'+cap+'</div></div>';
+  }).join('');
+  return '<div class="pl-fotos">'+cels+'</div>';
+}
 function _pdfResHtml(it){
 
   var v = state.itens[it.k];
@@ -715,7 +998,20 @@ function _pdfResHtml(it){
 function buildPdfLayout(){
   var id = state.identificacao || {};
   var secHtml = SC.secoes.map(function(s){
-    var rows = s.itens.filter(function(it){ return !(it.gw && _gwVal && it.gw!==_gwVal); }).map(function(it){
+    var rows = s.itens.filter(function(it){
+      // 13/08 (G10a): o PDF divergia da TELA. Com o gateway nao escolhido
+      // (_gwVal===''), `it.gw && _gwVal && ...` era falso e o PDF imprimia os
+      // itens de TODOS os tipos juntos (Parafuso E Pistao), preenchidos com "—",
+      // enquanto applyGwVisibility escondia todos eles na tela. Mesmo criterio agora.
+      if (it.gw && it.gw !== _gwVal) return false;
+      // 13/08 (G10b): item nao respondido nao vira linha de travessao. Um laudo
+      // com 45 itens e 12 respondidos gerava 33 linhas de "—".
+      if (it.c === 'foto') return ((state.fotos[it.k]||[]).length > 0);
+      var _v = state.itens[it.k];
+      return !(_v == null || _v === '');
+    }).map(function(it){
+      // 13/08 (G10c): a foto entra como EVIDENCIA, nao como a contagem dela.
+      if (it.c === 'foto') return '<tr><td colspan="2" class="pl-fwrap">'+_pdfFotosHtml(it)+'</td></tr>';
       return '<tr><td>'+escHtml(it.label)+'</td><td class="pl-res">'+_pdfResHtml(it)+'</td></tr>';
     }).join('');
     if (!rows) return '';
@@ -784,22 +1080,16 @@ async function enviarPdfParaDrive(){
   pgpEsperaLonga('📄 Gerando o laudo em PDF…');   // 13/08 (perf)
   var el = document.getElementById('pdf-layout');
   try{
+    await _plHidratarFotos();   // 13/08 (G10c)
     buildPdfLayout();
     el.classList.add('pdf-capturing');
     el.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
-    var _scale = _pdfScaleSeguro(el);   // 29/07 (F-30)
-    var canvas = await html2canvas(el, { scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    // 13/08: a guilhotina virou paginacao real (cabecalho de continuacao + Pagina X de Y).
+    var _idp = state.identificacao || {};
+    var pdf = await pgpPaginarPdf(el, {
+      titulo:String(SC.titulo||'Peritagem'),
+      os:_idp.os||'', cliente:_idp.cliente||'', footSel:'.pl-footer' });
     el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none';
-
-    var jsPDF = window.jspdf.jsPDF;
-    var pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    var pageW = 210, pageH = 297, imgW = pageW;
-    var imgH = canvas.height * imgW / canvas.width;
-    var imgData = canvas.toDataURL('image/jpeg', 0.92);
-    _pdfChecarCanvas(canvas, imgData);   // 29/07 (F-30): não sobe PDF branco
-    var heightLeft = imgH, position = 0;
-    pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH;
-    while (heightLeft > 0){ position = heightLeft - imgH; pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH); heightLeft -= pageH; }
 
     var id = state.identificacao || {};
     var _sess = null; try { _sess = JSON.parse(localStorage.getItem('proper_session') || 'null'); } catch(e) {}

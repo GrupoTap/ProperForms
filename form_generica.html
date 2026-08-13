@@ -99,7 +99,7 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
     --text:#f1f5f9;--muted:#94a3b8;--accent:#3b82f6;--brand:#f58220;--brand2:#e85d1f;--orange:#f58220;
     --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--purple:#a78bfa;--radius:12px}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);
     font-size:16px;line-height:1.4;padding:16px 16px 132px;max-width:640px;margin:0 auto}
   h1{font-size:22px;font-weight:700;margin-bottom:4px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
@@ -212,13 +212,13 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   .pgp-sign-overlay.open{ display:block }
   .pgp-sign-name{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     padding:24px calc(20px + env(safe-area-inset-right,0)) calc(24px + env(safe-area-inset-bottom,0)) calc(20px + env(safe-area-inset-left,0)); gap:14px; text-align:center }
-  .pgp-sign-name h3{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
+  .pgp-sign-name h3{ font-family:sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
   .pgp-sign-name p{ font-size:14px; color:#c3ccd6; margin:0; max-width:340px; line-height:1.4 }
   .pgp-sign-name input{ width:100%; max-width:360px; font-size:18px; padding:14px 14px; border-radius:12px; border:2px solid #30363d;
     background:#161b22; color:#fff; outline:none; text-align:center; font-family:inherit }
   .pgp-sign-name input:focus{ border-color:var(--orange) }
   .pgp-sign-name .pgp-sign-row{ display:flex; gap:10px; width:100%; max-width:360px; margin-top:6px }
-  .pgp-sign-btn{ flex:1; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
+  .pgp-sign-btn{ flex:1; font-family:sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
     border:2px solid #30363d; background:#161b22; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:.5px }
   .pgp-sign-btn.primary{ background:var(--orange); border-color:var(--orange); color:#fff }
   .pgp-sign-btn:disabled{ opacity:.45; pointer-events:none }
@@ -228,12 +228,12 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
     width:100vh; height:100vw }
   .pgp-sign-top{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
     padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; min-height:40px }
-  .pgp-sign-top .lbl{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pgp-sign-top .lbl{ font-family:sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .pgp-sign-top .hint{ font-size:12px; color:#8b949e; white-space:nowrap }
   .pgp-sign-canvas-wrap{ flex:1; position:relative; background:#fff; margin:10px; border-radius:10px; overflow:hidden;
     box-shadow:inset 0 0 0 2px #30363d }
   .pgp-sign-canvas-wrap::before{ content:'Assine aqui'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    color:#d0d4dc; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
+    color:#d0d4dc; font-family:sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
   .pgp-sign-canvas-wrap.inked::before{ display:none }
   .pgp-sign-canvas-wrap::after{ content:''; position:absolute; left:8%; right:8%; bottom:22%; border-bottom:2px dashed #c8ccd4; pointer-events:none }
   .pgp-sign-canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; display:block }
@@ -315,6 +315,18 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
 
   /* rodape por pagina */
   .tp-foot{position:absolute;left:44px;right:44px;bottom:18px;height:24px;border-top:1px solid #ddd;padding-top:6px;font-size:6.5pt;color:#777}
+  /* 13/08 (G6): faixa de continuação das folhas 2+ */
+  .tp-cont{display:table;width:100%;border-bottom:2px solid #f58220;margin-bottom:12px}
+  .tp-cont>div{display:table-cell;vertical-align:middle;padding-bottom:6px}
+  .tp-cont .l img{width:18px;height:18px;vertical-align:-4px;margin-right:7px}
+  .tp-cont .l b{font-size:8pt;color:#1a1a1a}
+  .tp-cont .r{text-align:right;font-size:7pt;color:#777;white-space:nowrap}
+  /* 13/08 (G3): marca de continuação de tabela */
+  .tp-cont-th{background:#eee !important;color:#555 !important;font-weight:400 !important;font-style:italic;font-size:6.5pt !important;text-align:left !important;padding:2px 5px !important}
+  /* 13/08 (G4): foto ímpar ocupa a linha inteira em vez de deixar meia folha branca */
+  .tp-fotos-1 .tp-fcel{width:100%;display:block}
+  .tp-fotos-1 .tp-fimg{height:300px;line-height:300px}
+  .tp-fotos-1 .tp-fimg img{max-height:300px}
   .tp-foot .l{float:left}
   .tp-foot .r{float:right}
 </style>
@@ -1605,8 +1617,10 @@ async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa 
 // ZERO mudança de dado: state.blocos, campos_json, categoria 'pdf_generica' e o
 // nome do arquivo continuam idênticos — nada a mexer no GAS.
 const TP_W = 794, TP_H = 1123;   // A4 @ 96dpi
-const TP_PAD_T = 38, TP_PAD_B = 50;
+const TP_PAD_T = 38, TP_PAD_B = 62;   // 13/08 (G7): era 50 e o conteudo
+                                     // encostava na linha do rodape (1 px de folga)
 const TP_CAP = TP_H - TP_PAD_T - TP_PAD_B;   // altura útil de conteúdo por folha
+const TP_CONT_H = 34;   // 13/08 (G6): faixa de continuação das folhas 2+
 
 function unidLabel(b){ return b.unidade==='outra' ? (b.unidadeOutra||'') : (b.unidade||''); }
 function tpData(d){ d=String(d||'').trim(); var m=d.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[3]+'/'+m[2]+'/'+m[1]):d; }
@@ -1625,7 +1639,10 @@ function tpResposta(v){
 // LINHA e repete o <thead> no pedaço seguinte (nunca uma tabela decapitada, nunca
 // uma linha cortada ao meio). `tbl` é o que dá ao empacotador essa liberdade.
 function tpTblHtml(t){
-  return '<table class="tp-tbl">'+(t.head?('<thead>'+t.head+'</thead>'):'')
+  // 13/08 (G3): quando a tabela parte entre folhas, o <thead> voltava IDENTICO —
+  // tecnicamente correto, perceptivamente "repete titulos". Agora volta marcado.
+  var marca = t.cont ? '<tr><th class="tp-cont-th" colspan="12">continuação da tabela anterior</th></tr>' : '';
+  return '<table class="tp-tbl">'+(t.head?('<thead>'+marca+t.head+'</thead>'):'')
     + '<tbody>'+t.rows.join('')+'</tbody></table>';
 }
 function tpTabela(head, rows){
@@ -1646,7 +1663,14 @@ function tpPedacosTexto(txt){
   });
   if(buf) out.push(buf);
   var fim=[];
-  out.forEach(function(p){ while(p.length>1600){ fim.push(p.slice(0,1600)); p=p.slice(1600); } if(p) fim.push(p); });
+  out.forEach(function(p){
+    while(p.length>1600){
+      var corte=p.lastIndexOf(' ', 1600);          // 13/08: nao partir palavra ao meio
+      if(corte<1200) corte=1600;
+      fim.push(p.slice(0,corte).trim()); p=p.slice(corte).trim();
+    }
+    if(p) fim.push(p);
+  });
   return fim;
 }
 // Um bloco só entra no documento se tiver conteúdo (fotos sempre entram: a
@@ -1729,75 +1753,119 @@ function tpMontarFluxo(photosByKey){
   if(resumo) linhasId.push('<tr><td class="k">Conteúdo registrado</td><td colspan="3">'+esc(resumo)+'</td></tr>');
   push(tpTabela('', linhasId));
 
-  // ── 2. registro do serviço, NA ORDEM DE EXECUÇÃO ──
-  sec('Registro do serviço — na ordem de execução');
-  var grupos=tpAgrupar(blocos);
-  if(!grupos.length){
+  // ── 2. registro do serviço ──
+  // 13/08 (G1 + G2) — A CAUSA RAIZ DO "REPETE TÍTULOS".
+  // `tpAgrupar` só fundia blocos VIZINHOS do mesmo tipo, e cada grupo emitia o
+  // próprio subtítulo. Como o uso real é intercalado (foto·obs·foto·med·foto·obs),
+  // uma pilha de 6 blocos virava 6 grupos e o laudo saía com "Registro
+  // fotográfico" três vezes e "Observação do técnico" duas — e o prefixo
+  // "Etapa N" ainda numerava a troca de TIPO DE BLOCO como se fosse etapa do
+  // serviço (o cliente lia "14 etapas" numa troca de retentor).
+  // Pior: cada troca de tipo REINICIAVA a tabela. Seis medições intercaladas com
+  // fotos viravam SEIS tabelas de uma linha, cada uma com seu <thead> preto.
+  // Agora: a narrativa (fotos e observações) sai na ordem de execução, sem
+  // subtítulo repetido, e cada tipo tabular vira UMA tabela no documento inteiro.
+  // Cada subtítulo aparece no máximo UMA vez.
+  var _narr = blocos.filter(function(b){ return b.tipo==='foto' || b.tipo==='obs'; });
+  var _meds = blocos.filter(function(b){ return b.tipo==='med'; });
+  var _prs  = blocos.filter(function(b){ return b.tipo==='pr'; });
+  var _fms  = blocos.filter(function(b){ return b.tipo==='form'; });
+
+  // 13/08 (G4): a grade era fixa em 2 colunas e forçava uma célula VAZIA quando
+  // sobrava foto ímpar — meia folha branca. Sobrando uma, ela ocupa a linha toda.
+  function _grade(cels){
+    for(var c=0;c<cels.length;c+=2){
+      if(c+1<cels.length){
+        flow.push({ html:'<div class="tp-fotos">'+cels[c]+cels[c+1]+'</div>', keep:false });
+      }else{
+        flow.push({ html:'<div class="tp-fotos tp-fotos-1">'+cels[c]+'</div>', keep:false });
+      }
+    }
+  }
+
+  // 13/08 (G8): a barra preta da seção era emitida ANTES de saber se havia
+  // conteúdo. Agora cada seção só existe se tiver o que mostrar.
+  if(!blocos.length){
+    sec('Registro do serviço');
     flow.push({ html:'<div class="tp-vazio">— nenhum item registrado nesta OS —</div>', keep:false });
   }
-  grupos.forEach(function(g, gi){
-    var etapa = (grupos.length>1) ? ('Etapa '+(gi+1)+' · ') : '';
 
-    if(g.tipo==='foto'){
-      var cels=[];
-      g.itens.forEach(function(b){
+  if(_narr.length){
+    sec('Registro do serviço — na ordem de execução');
+    var _cels=[];
+    function _descarrega(){ if(_cels.length){ _grade(_cels); _cels=[]; } }
+    _narr.forEach(function(b){
+      if(b.tipo==='foto'){
         var leg = String(b.legenda||'').trim() || 'Foto do serviço';
         var shots = photosByKey[b.uid] || [];
         if(!shots.length){
-          cels.push('<div class="tp-fcel"><div class="tp-fbox">'
+          _cels.push('<div class="tp-fcel"><div class="tp-fbox">'
             + '<div class="tp-fimg"><span class="tp-fsem">foto não disponível neste aparelho</span></div>'
             + '<div class="tp-fcap">'+esc(leg)+'</div></div></div>');
           return;
         }
         shots.forEach(function(ph, ix){
           var cap = esc(leg) + (shots.length>1 ? (' <span style="color:#777;font-weight:400">('+(ix+1)+'/'+shots.length+')</span>') : '');
-          cels.push('<div class="tp-fcel"><div class="tp-fbox">'
+          _cels.push('<div class="tp-fcel"><div class="tp-fbox">'
             + '<div class="tp-fimg"><img src="'+ph.dataUrl+'"></div>'
             + '<div class="tp-fcap">'+cap+'</div></div></div>');
         });
-      });
-      sub(etapa+'Registro fotográfico');
-      for(var c=0;c<cels.length;c+=2){
-        flow.push({ html:'<div class="tp-fotos">'+cels[c]+(cels[c+1]||'<div class="tp-fcel"></div>')+'</div>', keep:false });
-      }
-
-    } else if(g.tipo==='pr'){
-      sub(etapa+(g.itens.length>1?'Perguntas e respostas':'Pergunta e resposta'));
-      push(tpTabela('<tr><th style="width:44%">Pergunta / verificação</th><th>Resposta</th></tr>',
-        g.itens.map(function(b){
-          return '<tr><td class="q">'+tpOu(b.pergunta)+'</td><td>'+tpResposta(b.resposta)+'</td></tr>';
-        })));
-
-    } else if(g.tipo==='med'){
-      sub(etapa+(g.itens.length>1?'Medições':'Medição'));
-      push(tpTabela('<tr><th>Parâmetro</th><th style="width:86px;text-align:right">Valor</th><th style="width:76px">Unidade</th></tr>',
-        g.itens.map(function(b){
-          var v=String(b.valor||'').trim();
-          return '<tr><td>'+tpOu(b.grandeza)+'</td>'
-               + '<td class="num">'+(v?esc(v):'<span class="tp-nd">não medido</span>')+'</td>'
-               + '<td class="un">'+(v?esc(unidLabel(b)):'')+'</td></tr>';
-        })));
-
-    } else if(g.tipo==='obs'){
-      sub(etapa+(g.itens.length>1?'Observações do técnico':'Observação do técnico'));
-      g.itens.forEach(function(b){
+      }else{
+        _descarrega();
         tpPedacosTexto(b.texto).forEach(function(pedaco){
           flow.push({ html:'<div class="tp-obs">'+esc(pedaco)+'</div>', keep:false });
         });
-      });
+      }
+    });
+    _descarrega();
+  }
 
-    } else if(g.tipo==='form'){
-      sub(etapa+(g.itens.length>1?'Formulários aplicados':'Formulário aplicado'));
-      push(tpTabela('', g.itens.map(function(b){
-        return '<tr><td class="kw">'+tpOu(b.formNome,'Formulário')+'</td><td>'
-          + (b.obs?('<span class="obsline">'+esc(b.obs)+'</span><br>'):'')
-          + '<span style="color:#777">'
-          + (b.aberto?('Aberto em campo em '+esc(b.aberto)+' · '):'')
-          + 'conteúdo salvo pelo próprio formulário — ver Gestão de Documentos desta OS</span>'
-          + '</td></tr>';
+  if(_prs.length){
+    sec('Perguntas e respostas');
+    // 13/08 (G5): resposta longa não cabia na célula e o elemento inteiro ficava
+    // mais alto que a folha — era CLIPADO por overflow:hidden e SUMIA do PDF sem
+    // erro nem aviso. Resposta longa agora sai como texto abaixo da tabela, onde
+    // tpPedacosTexto já sabe fatiar.
+    var _longas=[];
+    var _linhasPr=_prs.map(function(b){
+      var r=String(b.resposta||'').trim();
+      if(r.length>600){
+        _longas.push(b);
+        return '<tr><td class="q">'+tpOu(b.pergunta)+'</td><td><span style="color:#777">resposta completa logo abaixo</span></td></tr>';
+      }
+      return '<tr><td class="q">'+tpOu(b.pergunta)+'</td><td>'+tpResposta(b.resposta)+'</td></tr>';
+    });
+    push(tpTabela('<tr><th style="width:44%">Pergunta / verificação</th><th>Resposta</th></tr>', _linhasPr));
+    _longas.forEach(function(b){
+      flow.push({ html:'<div class="tp-sub">'+esc(String(b.pergunta||'Pergunta'))+'</div>', keep:true });
+      tpPedacosTexto(b.resposta).forEach(function(pedaco){
+        flow.push({ html:'<div class="tp-obs">'+esc(pedaco)+'</div>', keep:false });
+      });
+    });
+  }
+
+  if(_meds.length){
+    sec('Medições');
+    push(tpTabela('<tr><th>Parâmetro</th><th style="width:86px;text-align:right">Valor</th><th style="width:76px">Unidade</th></tr>',
+      _meds.map(function(b){
+        var v=String(b.valor||'').trim();
+        return '<tr><td>'+tpOu(b.grandeza)+'</td>'
+             + '<td class="num">'+(v?esc(v):'<span class="tp-nd">não medido</span>')+'</td>'
+             + '<td class="un">'+(v?esc(unidLabel(b)):'')+'</td></tr>';
       })));
-    }
-  });
+  }
+
+  if(_fms.length){
+    sec(_fms.length>1?'Formulários aplicados':'Formulário aplicado');
+    push(tpTabela('', _fms.map(function(b){
+      return '<tr><td class="kw">'+tpOu(b.formNome,'Formulário')+'</td><td>'
+        + (b.obs?('<span class="obsline">'+esc(b.obs)+'</span><br>'):'')
+        + '<span style="color:#777">'
+        + (b.aberto?('Aberto em campo em '+esc(b.aberto)+' · '):'')
+        + 'conteúdo salvo pelo próprio formulário — ver Gestão de Documentos desta OS</span>'
+        + '</td></tr>';
+    })));
+  }
 
   // ── 3. assinaturas ──
   // Cabeçalho e assinaturas no MESMO grupo: se o par não couber no que resta da
@@ -1872,6 +1940,11 @@ async function tpRenderizarPaginas(photosByKey){
   var fila=flow.map(function(f, ix){ return { f:f, h:alturas[ix] }; });
   var paginas=[[]], usado=0;
   function _pg(){ return paginas[paginas.length-1]; }
+  // 13/08 (G6): da 2a folha em diante entra a faixa de continuação (logo + OS +
+  // cliente) — antes, da página 2 em diante o laudo não tinha identificação
+  // nenhuma e lia-se como impressão de tela. A faixa custa altura: a capacidade
+  // dessas folhas cai na mesma medida, senão o conteúdo transbordaria.
+  function _cap(){ return paginas.length>1 ? (TP_CAP - TP_CONT_H) : TP_CAP; }
   // Quanto do elemento SEGUINTE precisa caber para o cabeçalho de seção não ficar
   // órfão. Se o seguinte é uma tabela partível, bastam TP_MIN_LINHAS linhas — sem
   // isto o cabeçalho empurrava a tabela INTEIRA para a folha seguinte e sobrava
@@ -1891,23 +1964,23 @@ async function tpRenderizarPaginas(photosByKey){
     if(f.g && (k===0 || fila[k-1].f.g!==f.g)){
       var somaG=0;
       for(var gg=k; gg<fila.length && fila[gg].f.g===f.g; gg++) somaG+=fila[gg].h;
-      if(usado>0 && (usado+somaG)>TP_CAP && somaG<=TP_CAP){ paginas.push([]); usado=0; }
+      if(usado>0 && (usado+somaG)>_cap() && somaG<=_cap()){ paginas.push([]); usado=0; }
     }
     // cabeçalho de seção (e o rótulo de etapa) só entra se couber ele E um pedaço
     // do que vem depois
     var precisa = it.h + ((f.keep && k+1<fila.length) ? _minSeguinte(fila[k+1]) : 0);
-    if(usado + precisa <= TP_CAP){ _pg().push(it); usado+=it.h; continue; }
+    if(usado + precisa <= _cap()){ _pg().push(it); usado+=it.h; continue; }
 
     var partiu=false;
     if(f.tbl && f.hRows && f.hRows.length >= TP_MIN_LINHAS*2){
-      var livre = TP_CAP - usado - f.hPad - f.hHead;
+      var livre = _cap() - usado - f.hPad - f.hHead;
       var acc=0, corte=0;
       for(var rr=0; rr<f.hRows.length; rr++){
         if(acc + f.hRows[rr] > livre) break;
         acc += f.hRows[rr]; corte++;
       }
       if(corte >= TP_MIN_LINHAS && (f.hRows.length - corte) >= TP_MIN_LINHAS){
-        var tResto={ head:f.tbl.head, rows:f.tbl.rows.slice(corte) };
+        var tResto={ head:f.tbl.head, rows:f.tbl.rows.slice(corte), cont:true };   // 13/08 (G3)
         var hResto=f.hRows.slice(corte);
         fila.splice(k+1, 0, { f:{ html:tpTblHtml(tResto), keep:false, tbl:tResto,
                                   hHead:f.hHead, hPad:f.hPad, hRows:hResto },
@@ -1937,6 +2010,12 @@ async function tpRenderizarPaginas(photosByKey){
   var folhas=[];
   paginas.forEach(function(itens, pi){
     var pg=document.createElement('div'); pg.className='tp-page';
+    if(pi>0){   // 13/08 (G6)
+      var cont=document.createElement('div'); cont.className='tp-cont';
+      cont.innerHTML='<div class="l"><img src="'+LOGO_DATAURL+'" alt="Proper"><b>Ordem de Serviço — Registro de Campo</b></div>'
+        + '<div class="r">'+esc(i.os||'')+(i.cliente?(' · '+esc(i.cliente)):'')+'</div>';
+      pg.appendChild(cont);
+    }
     itens.forEach(function(it){
       var d=document.createElement('div'); d.className='tp-el'; d.innerHTML=it.f.html; pg.appendChild(d);
     });
