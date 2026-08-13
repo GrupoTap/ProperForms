@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<!--
+  ══════════════════════════════════════════════════════════════════════════════
+  FORM_DIAGNOSTICO — Laudo de diagnóstico em campo · PROTÓTIPO v1 · 13/08/2026
+  ══════════════════════════════════════════════════════════════════════════════
+
+  O QUE ESTE FORM É
+  Motor de eliminação de hipóteses guiado por sintoma. O técnico escolhe o
+  sintoma numa LISTA FECHADA; o motor abre as hipóteses daquele sintoma e os
+  testes discriminantes que as separam; cada resposta soma ou subtrai pontos e
+  o placar mostra, ao vivo, Confirmada / Provável / Em aberto / Descartada.
+  Não é checklist (que produz laudo cheio de travessão) nem construtor livre
+  (que produz laudo sem estrutura). Não é árvore rígida: o técnico responde na
+  ordem que quiser e o que não der para medir fica registrado como PENDENTE.
+
+  A BASE DE CONHECIMENTO É DADO, NÃO CÓDIGO
+  TESTES / CAUSAS / SINTOMAS são tabelas. Modo de falha novo = linha nova.
+  Nenhuma função muda. Cada causa carrega a FONTE (manual + página), impressa
+  no laudo como critério técnico.
+
+  O QUE FOI HERDADO SEM ALTERAÇÃO DOS FORMS EXISTENTES (mudança ADITIVA)
+  · ProperSafe (IndexedDB + outbox durável + backoff + dead-letter) — verbatim
+  · Overlay de assinatura V63 (pgpSign*) — verbatim
+  · Helpers de espera/performance (pgpEnsureLibsPDF, _comLoadingBtn_,
+    pgpEsperaLonga, pgpBootAviso) — verbatim
+  · Paleta, tokens :root, card/pills/dock/toast/badge da fila
+  · Contrato com o GAS: getMaquinasByOS · salvarFotoForm · saveFormulario ·
+    salvarPdfDrive. ZERO mudança de GAS (roteamento genérico desde o v37/v79).
+  · Idempotência: form_uid · foto_uid + client_ts · pdf_uid · tecnico_id
+  · draftKey = diagnostico::<os_id>::<tarefa_id> (nunca rascunho global)
+  · Retorno ao pipeline por ?ret= validado por allowlist
+
+  O QUE MUDOU DE PROPÓSITO — MOTOR DE PDF Gen 4 (VETORIAL)
+  html2canvas NÃO é usado. O laudo é desenhado direto no jsPDF.
+  Resolve de uma vez: títulos repetidos (cabeçalho de tabela volta MARCADO como
+  "(continuação)"), texto borrado (JPEG 0,92 sobre 8 pt), cabeçalho só na
+  página 1, ausência de "Página X de Y", conteúdo clipado por overflow:hidden,
+  PDF branco no iOS por canvas grande demais, e arquivo pesado.
+  Só é viável porque o laudo de diagnóstico tem ESTRUTURA PREVISÍVEL — para o
+  form_generica (conteúdo arbitrário) o motor tp-* continua sendo o certo.
+  Efeito colateral bom: -198 KB de carregamento (html2canvas sai).
+
+  PENDÊNCIAS CONHECIDAS DESTE PROTÓTIPO
+  · Ramo de PISTÃO montado com fonte pública — não há manual de alternativo na
+    pasta do parque (18 PDFs varridos, nenhum de pistão). Regras marcadas [pub].
+  · Registrar em FORM_CATALOGO do form_generica (form_generica.html:748-755).
+  · Criar o template no PCM com a chave auto:diagnostico (sem acento, sem
+    espaço), Form_URL correta e Acao_Terminal preenchida.
+  · Rótulo de foto_diagnostico / pdf_diagnostico no DOCS_CAT_LABELS do PCM.
+  ══════════════════════════════════════════════════════════════════════════════
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<title>Diagnóstico em campo — ProperCare</title>
+<style>
+  :root{--bg:#0f172a;--surface:#111a2e;--card:#1e293b;--elev:#243349;--border:#334155;
+    --text:#f1f5f9;--muted:#94a3b8;--accent:#3b82f6;--brand:#f58220;--brand2:#e85d1f;--orange:#f58220;
+    --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--purple:#a78bfa;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow Condensed',system-ui,sans-serif;background:var(--bg);color:var(--text);
+    font-size:16px;line-height:1.4;padding:16px 16px 132px;max-width:640px;margin:0 auto}
+  h1{font-size:22px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card h2{font-size:16px;margin-bottom:10px;color:#cbd5e1}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=date],input[type=time],textarea,select{width:100%;background:var(--bg);
+    border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)}
+  textarea{resize:vertical;min-height:56px}
+  .row2{display:flex;gap:8px}.row2>div{flex:1}
+  .row3{display:flex;gap:8px}.row3>div{flex:1}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+  .field-hint{font-size:11px;color:var(--muted);margin-top:3px}
+  #toast{position:fixed;bottom:118px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99;max-width:88vw;text-align:center}
+  #toast.show{opacity:1}
+  .ok-msg{text-align:center;padding:32px 16px}
+  .ok-msg .big{font-size:44px}
+  .btn-sign{width:100%;background:var(--elev);border:1px solid var(--border);color:#fff;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+
+  /* ══ PILHA DE BLOCOS (construtor) ══ */
+  #stack{min-height:40px}
+  .blk{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;
+    display:flex;align-items:stretch;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .blk.dragging{opacity:.9;box-shadow:0 10px 26px rgba(0,0,0,.55);z-index:30}
+  .blk .grab{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#556577;cursor:grab;
+    font-size:18px;border-right:1px solid var(--border);border-radius:var(--radius) 0 0 var(--radius);touch-action:none;user-select:none}
+  .blk .grab:active{cursor:grabbing;color:var(--brand)}
+  .blk .cbody{flex:1;padding:10px 30px 12px 10px;min-width:0}
+  .blk .ctitle{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--muted);text-transform:uppercase;margin-bottom:7px}
+  .blk .xdel{position:absolute;top:8px;right:9px;width:24px;height:24px;border:none;background:transparent;color:#556577;font-size:15px;cursor:pointer;line-height:1;border-radius:50%}
+  .blk .xdel:active{color:var(--red)}
+  .blk label{margin:6px 0 3px;font-size:11px}
+  .med-row{display:flex;gap:7px}
+  .med-row .g{flex:2.2}.med-row .v{flex:1.2}.med-row .u{flex:1.1}
+  .b-unid-outra{margin-top:6px;display:none}
+  .b-unid-outra.show{display:block}
+  /* foto */
+  .btn-foto-mini{background:var(--bg);border:1px dashed var(--brand);color:var(--brand);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb.ok{border-color:var(--green)}
+  .thumb.pending{border-color:var(--amber);opacity:.75}
+  .thumb.erro{border-color:var(--red)}
+  /* bloco assinaturas */
+  .blk.sig .ctitle{color:var(--brand)}
+  .sig-slot{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 10px;margin-bottom:8px;position:relative}
+  .sig-slot .xslot{position:absolute;top:6px;right:7px;border:none;background:transparent;color:#556577;font-size:13px;cursor:pointer;border-radius:50%;width:22px;height:22px;line-height:1}
+  .sig-row{display:flex;gap:7px}
+  .sig-row .papel{flex:1.2}.sig-row .nome{flex:1.6}
+  .papel-outro{display:none;margin-top:6px}
+  .papel-outro.show{display:block}
+  .sig-collect{width:100%;margin-top:8px;border:1.5px dashed #7a5a2a;border-radius:9px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:var(--brand);font-family:inherit}
+  .sig-done{margin-top:8px;background:#fff;border-radius:9px;padding:4px 8px 2px}
+  .sig-done img{display:block;width:100%;height:52px;object-fit:contain}
+  .sig-done .meta{font-size:10.5px;color:#475569;border-top:1px solid #cbd5e1;margin-top:2px;padding:3px 2px 4px;display:flex;justify-content:space-between;gap:6px}
+  .sig-redo{margin-top:6px;width:100%;border:none;background:transparent;color:var(--muted);font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit}
+  .sig-add{width:100%;border:none;border-radius:10px;padding:11px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;
+    background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;margin-top:2px}
+  .signote{font-size:11px;color:#b08a55;margin-top:7px;line-height:1.45}
+  /* estado vazio */
+  #emptyHint{border:2px dashed #46586d;border-radius:12px;background:var(--surface);padding:22px 14px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.5;margin-bottom:10px}
+  #emptyHint b{color:var(--text)}
+
+  /* ══ DOCK (fixo na base) ══ */
+  .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:640px;z-index:60;
+    padding:10px 16px 12px;background:linear-gradient(180deg,rgba(15,23,42,0),var(--bg) 38%)}
+  .dock-row{display:flex;gap:8px}
+  .fab{flex:1.4;border:none;border-radius:13px;padding:14px;background:linear-gradient(135deg,var(--brand),var(--brand2));
+    color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(245,130,32,.30);letter-spacing:.3px}
+  .b-fin{flex:1;border:none;border-radius:13px;padding:14px;background:#17803d;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
+  .b-fin:disabled{opacity:.5}
+
+  /* ══ GAVETA "Adicionar item" ══ */
+  .add-overlay{position:fixed;inset:0;background:rgba(2,8,20,.65);z-index:100002;display:none;align-items:flex-end;justify-content:center}
+  .add-overlay.open{display:flex}
+  .add-sheet{background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:16px 16px 0 0;
+    width:100%;max-width:640px;max-height:80vh;overflow:auto;padding:10px 16px 20px}
+  .add-sheet .pull{width:44px;height:4px;border-radius:4px;background:var(--border);margin:4px auto 10px}
+  .add-sheet h3{font-size:16px;margin-bottom:2px}
+  .add-sheet .sub{margin-bottom:12px}
+  .opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .opt{border:1.5px solid var(--border);border-radius:13px;background:var(--card);padding:14px 8px;display:flex;flex-direction:column;
+    align-items:center;gap:6px;cursor:pointer;font-size:13.5px;font-weight:700;color:var(--text)}
+  .opt .i{font-size:24px}
+  .opt:active{border-color:var(--brand);background:var(--elev)}
+  .opt.opt-sig{background:#2a2314;border-color:var(--brand2);color:var(--brand)}
+
+  #psBadge{position:fixed;bottom:16px;left:16px;background:#111;border:1px solid var(--border);color:#fff;border-radius:20px;padding:8px 12px;font-size:12px;z-index:98;cursor:pointer;display:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #psBadge.warn{border-color:var(--red);color:#fecaca}
+  #psBadge.ok{border-color:var(--green)}
+  .ps-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100001;display:none;align-items:flex-end;justify-content:center}
+  .ps-overlay.open{display:flex}
+  .ps-sheet{background:var(--card);border:1px solid var(--border);border-radius:14px 14px 0 0;width:100%;max-width:640px;max-height:82vh;overflow:auto;padding:16px}
+  .ps-sheet h3{font-size:16px;margin-bottom:4px}
+  .ps-sheet .sub{margin-bottom:10px}
+  .ps-job{border-top:1px solid var(--border);padding:9px 0;font-size:13px}
+  .ps-job:first-child{border-top:0}
+  .ps-job .who{color:#cbd5e1;font-weight:600}
+  .ps-job .meta{color:var(--muted);font-size:11px;margin-top:2px}
+  .ps-job .err{color:#fca5a5;font-size:11px;margin-top:2px}
+  .ps-job .act{margin-top:6px;display:flex;gap:6px}
+  .ps-job .act button{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .ps-banner{background:#243349;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;color:#cbd5e1;margin-bottom:12px;line-height:1.35}
+  .ps-banner b{color:#fff}
+  #psBadge{bottom:96px}
+
+  .pgp-sign-overlay{ position:fixed; inset:0; z-index:100000; background:#0d1117; display:none;
+    color:#fff; -webkit-user-select:none; user-select:none; touch-action:none; overflow:hidden }
+  .pgp-sign-overlay.open{ display:block }
+  .pgp-sign-name{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px calc(20px + env(safe-area-inset-right,0)) calc(24px + env(safe-area-inset-bottom,0)) calc(20px + env(safe-area-inset-left,0)); gap:14px; text-align:center }
+  .pgp-sign-name h3{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
+  .pgp-sign-name p{ font-size:14px; color:#c3ccd6; margin:0; max-width:340px; line-height:1.4 }
+  .pgp-sign-name input{ width:100%; max-width:360px; font-size:18px; padding:14px 14px; border-radius:12px; border:2px solid #30363d;
+    background:#161b22; color:#fff; outline:none; text-align:center; font-family:inherit }
+  .pgp-sign-name input:focus{ border-color:var(--orange) }
+  .pgp-sign-name .pgp-sign-row{ display:flex; gap:10px; width:100%; max-width:360px; margin-top:6px }
+  .pgp-sign-btn{ flex:1; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
+    border:2px solid #30363d; background:#161b22; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:.5px }
+  .pgp-sign-btn.primary{ background:var(--orange); border-color:var(--orange); color:#fff }
+  .pgp-sign-btn:disabled{ opacity:.45; pointer-events:none }
+  .pgp-sign-stage{ position:absolute; inset:0; display:none; flex-direction:column; background:#0d1117 }
+  .pgp-sign-stage.show{ display:flex }
+  .pgp-sign-stage.is-rotated{ transform-origin:top left; transform:rotate(90deg) translate(0,-100%);
+    width:100vh; height:100vw }
+  .pgp-sign-top{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; min-height:40px }
+  .pgp-sign-top .lbl{ font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pgp-sign-top .hint{ font-size:12px; color:#8b949e; white-space:nowrap }
+  .pgp-sign-canvas-wrap{ flex:1; position:relative; background:#fff; margin:10px; border-radius:10px; overflow:hidden;
+    box-shadow:inset 0 0 0 2px #30363d }
+  .pgp-sign-canvas-wrap::before{ content:'Assine aqui'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:#d0d4dc; font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
+  .pgp-sign-canvas-wrap.inked::before{ display:none }
+  .pgp-sign-canvas-wrap::after{ content:''; position:absolute; left:8%; right:8%; bottom:22%; border-bottom:2px dashed #c8ccd4; pointer-events:none }
+  .pgp-sign-canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; display:block }
+  .pgp-sign-bottom{ flex:none; display:flex; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0)); background:#161b22; border-top:1px solid #30363d }
+  .pgp-sign-bottom .pgp-sign-btn{ padding:12px 8px; font-size:15px }
+
+  /* ══ MOTOR DE PDF PAGINADO (tp-*) — 05/08/2026 ══════════════════════════════
+</style>
+<style>
+     CDN em campo (causa da OS-0016). CDN só como fallback se o arquivo local faltar.
+     Os dois .js JÁ estão publicados no repo ProperForms (corretiva V2). -->
+<!-- 13/08 (perf): jsPDF/html2canvas SAIRAM daqui. Eram parser-blocking (~562 KB) em
+     toda abertura e so servem na conclusao. Agora entram por pgpEnsureLibsPDF(). -->
+<!-- 13/08 (perf): spinner + barra de espera padrao da casa (aditivo; nada existente foi alterado) -->
+<style>
+@keyframes pgpspin{to{transform:rotate(360deg)}}
+.is-busy{position:relative;color:transparent !important;pointer-events:none}
+.is-busy::after{content:'';position:absolute;width:16px;height:16px;top:calc(50% - 8px);left:calc(50% - 8px);border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpEsperaBar{position:fixed;left:0;right:0;bottom:0;z-index:100050;display:none;background:#111827;border-top:1px solid #374151;color:#e5e7eb;font-size:13px;line-height:1.35;padding:11px 14px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+#pgpEsperaBar.show{display:block}
+#pgpEsperaBar .pgp-dot{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpBootAviso{position:fixed;left:0;right:0;top:0;z-index:100049;display:none;background:rgba(30,58,138,.97);color:#dbeafe;font-size:13px;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#pgpBootAviso.show{display:block}
+#pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+</style>
+<style>
+  /* ── específico deste form (aditivo) ─────────────────────────────────── */
+  #steps{display:flex;gap:4px;margin:0 0 12px}
+  .stp{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 4px;
+       font-size:10.5px;color:var(--muted);text-align:center;cursor:pointer;line-height:1.25}
+  .stp .n{display:block;font-weight:800;font-size:12px;margin-bottom:1px}
+  .stp.on{background:var(--elev);border-color:var(--brand);color:var(--text)}
+  .stp.on .n{color:var(--brand)}
+  .stp.done{color:#86efac;border-color:#2f6b46}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:4px}
+  .opt{font-size:10px;color:var(--muted);font-weight:400;border:1px solid var(--border);border-radius:6px;padding:1px 5px;margin-left:6px}
+  .fam-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fam{background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);
+       padding:12px 8px;font-family:inherit;font-size:12.5px;cursor:pointer;line-height:1.3}
+  .fam b{display:block;font-size:22px;margin-bottom:3px}
+  .fam.on{border-color:var(--brand);background:var(--elev);box-shadow:inset 0 0 0 1px var(--brand)}
+  .sym{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--border);
+       border-radius:10px;color:var(--text);padding:11px 12px;margin-bottom:7px;font-family:inherit;cursor:pointer}
+  .sym b{display:block;font-size:13.5px;margin-bottom:3px;line-height:1.3}
+  .sym span{font-size:11px;color:var(--muted);line-height:1.4}
+  .sym.on{border-color:var(--brand);background:var(--elev)}
+  .sym-head{margin-bottom:12px}
+  .sym-head h1{font-size:19px;line-height:1.25;margin-top:4px}
+  .sym-head .tag{font-size:10px;color:var(--brand);border:1px solid var(--brand);border-radius:6px;padding:2px 7px}
+  .hyp{border-left:3px solid var(--border);background:var(--bg);border-radius:0 9px 9px 0;padding:9px 11px;margin-bottom:7px}
+  .hyp.confirmada{border-left-color:var(--green)}
+  .hyp.provavel{border-left-color:var(--amber)}
+  .hyp.descartada{opacity:.42;border-left-color:var(--muted)}
+  .hyp-t{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .hyp-t b{font-size:13px;line-height:1.3}
+  .hyp-c{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .hyp-p{font-size:11px;color:#a7d8b4;margin-top:5px;line-height:1.45}
+  .hyp-f{font-size:10.5px;color:var(--amber);margin-top:4px}
+  .bar{height:4px;background:#0b1220;border-radius:3px;margin-top:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand2))}
+  .st{font-size:9.5px;font-weight:800;border-radius:5px;padding:2px 6px;white-space:nowrap;letter-spacing:.3px}
+  .st-confirmada,.st-ok{background:#0e3d24;color:#6ee7a0}
+  .st-provavel,.st-atencao{background:#3d2f0e;color:#fcd34d}
+  .st-descartada{background:#242c38;color:var(--muted)}
+  .st-aberta{background:#1e293b;color:#93b4e8}
+  .st-critico{background:#3d1414;color:#fca5a5}
+  .tst{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 11px;margin-bottom:8px}
+  .tst-h{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .tst-h b{font-size:12.5px;line-height:1.3}
+  .tst .ref{font-size:10.5px;color:#93b4e8;margin-top:3px;line-height:1.4}
+  .tst .met{font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+  .tst .fonte{font-size:10px;color:#6b7a8f;margin-top:3px}
+  .tst-a{margin-top:7px}
+  .med{display:flex;gap:8px;align-items:center;margin-top:7px}
+  .med input{flex:1}
+  .med .u{font-size:12px;color:var(--muted);min-width:34px}
+  .mini{background:var(--elev);border:1px solid var(--border);color:var(--text);border-radius:8px;
+        padding:7px 10px;font-size:11.5px;font-family:inherit;cursor:pointer}
+  .rec{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px}
+  .rec-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .cl{font-size:10px;font-weight:800;border-radius:5px;padding:2px 7px}
+  .cl-Segurança{background:#3d1414;color:#fca5a5}
+  .cl-Meioambiente{background:#0e3d33;color:#6ee7d0}
+  .cl-Operacional{background:#1e293b;color:#93b4e8}
+  .cl-Econômica{background:#3d2f0e;color:#fcd34d}
+  .risco{font-size:10.5px;color:#fca5a5;margin-top:6px;line-height:1.4}
+  .pecas{font-size:10.5px;color:var(--muted);margin-top:4px}
+  .fot{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .fot input{flex:1}
+  .fot .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border);flex:none}
+  .sig{display:flex;gap:10px;align-items:center;background:var(--bg);border:1px solid var(--border);
+       border-radius:9px;padding:8px;margin-bottom:7px}
+  .sig img{height:34px;background:#fff;border-radius:4px;padding:2px}
+  .sig div{flex:1}.sig b{display:block;font-size:12.5px}.sig span{font-size:10.5px;color:var(--muted)}
+  .nr-res{background:var(--elev);border:1px solid var(--border);border-radius:9px;padding:10px;
+          font-size:11.5px;line-height:1.5;margin-top:8px}
+  .nr-res .warn{color:#fca5a5;display:block;margin-top:4px}
+  .xdel{background:none;border:none;color:var(--red);font-size:15px;cursor:pointer;padding:2px 6px}
+  #okScreen{display:none}
+  #dock{display:flex;gap:8px}
+  .btn-sec{flex:1;background:var(--elev);border:1px solid var(--border);color:var(--text);border-radius:13px;
+           padding:14px;font-size:14px;font-family:inherit;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="steps"></div>
+<div id="app"></div>
+
+<div id="okScreen">
+  <div class="card" style="text-align:center">
+    <h2 style="font-size:19px">✓ Laudo concluído</h2>
+    <p class="hint" style="font-size:13px">O laudo foi registrado e está na fila de envio. Ele fica salvo no aparelho até o servidor confirmar — pode fechar sem medo.</p>
+    <div class="row2" style="margin-top:14px">
+      <button class="btn-sec" id="btnVerPdf" onclick="verPdf()">📄 Ver o PDF</button>
+      <button class="fab" onclick="voltarAgora()">‹ Voltar ao pipeline</button>
+    </div>
+  </div>
+</div>
+
+<div class="dock" id="dock"></div>
+
+<input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="fileInputGal" accept="image/*" multiple style="display:none">
+
+<div class="pgp-sign-overlay" id="pgpSignOverlay" aria-hidden="true">
+  <div class="pgp-sign-name" id="pgpSignNameStep">
+    <h3 id="pgpSignTitle">Assinatura</h3>
+    <p id="pgpSignSub">Digite o nome de quem vai assinar e toque em Avançar.</p>
+    <input id="pgpSignNameInput" type="text" placeholder="Nome completo" autocomplete="off"
+           autocapitalize="words" data-lpignore="true" data-1p-ignore>
+    <div class="pgp-sign-row">
+      <button type="button" class="pgp-sign-btn" id="pgpSignCancelBtn">Cancelar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignNextBtn">Avançar ✍️</button>
+    </div>
+  </div>
+  <div class="pgp-sign-stage" id="pgpSignStage">
+    <div class="pgp-sign-top">
+      <span class="lbl" id="pgpSignStageLbl">Assinatura</span>
+      <span class="hint">👆 Assine com o dedo ou caneta</span>
+    </div>
+    <div class="pgp-sign-canvas-wrap" id="pgpSignCanvasWrap">
+      <canvas class="pgp-sign-canvas" id="pgpSignCanvas"></canvas>
+    </div>
+    <div class="pgp-sign-bottom">
+      <button type="button" class="pgp-sign-btn" id="pgpSignBackBtn">← Voltar</button>
+      <button type="button" class="pgp-sign-btn" id="pgpSignClearBtn">↺ Limpar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignConfirmBtn">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- BADGE + PAINEL da fila de envio durável (ProperSafe) -->
+<div id="psBadge" onclick="psAbrirPainel()"></div>
+<div class="ps-overlay" id="psOverlay">
+  <div class="ps-sheet">
+    <h3>📤 Fila de envio</h3>
+    <div class="sub">Lançamentos aguardando confirmação do servidor. Ficam salvos no aparelho até enviar — reenviam sozinhos quando houver internet.</div>
+    <div id="psJobs"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <!-- 13/08 (perf): nao tinha feedback nenhum — o painel so mudava quando a fila
+           emitia, e o toque duplo era comum. _comLoadingBtn_ trava e mostra spinner. -->
+      <button class="btn-sign" style="flex:1" onclick="_comLoadingBtn_(this, function(){ return PS.pump(); }, '↻ Enviando…')">↻ Tentar enviar agora</button>
+      <button class="btn-sign" style="flex:1" onclick="psFecharPainel()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="pdf-layout"></div>
+<div id="toast"></div>
+
+
+<div id="pgpBootAviso" role="status" aria-live="polite"><span class="pgp-dot"></span><span id="pgpBootAvisoTxt"></span></div>
+<div id="pgpEsperaBar" role="status" aria-live="polite"><span class="pgp-dot"></span><span id="pgpEsperaTxt"></span></div>
+
+<script>
+
+/* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
+   ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
+   pdfStatus(), psRefreshBadge() e os "btn.disabled=true" continuam valendo.
+   Estes helpers cobrem o que NAO tinha sinal nenhum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Carrega as libs de PDF SOB DEMANDA. Antes desta rodada elas eram dois
+   <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
+   quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
+   se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+function pgpEnsureLibsPDF(){
+  if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
+  function carregar(local, cdn, jaExiste){
+    if (jaExiste()) return Promise.resolve();
+    return new Promise(function(ok, falha){
+      var s=document.createElement('script'); s.src=local;
+      s.onload=function(){ ok(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=cdn;
+        c.onload=function(){ ok(); };
+        c.onerror=function(){ falha(new Error('lib')); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  window._pgpLibsPdfPromise = Promise.all([
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; })
+    /* 13/08 Gen 4: html2canvas NAO e mais necessario — o laudo e desenhado
+       vetorialmente no jsPDF. Sao 198 KB a menos por abertura. */
+  ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
+  return window._pgpLibsPdfPromise;
+}
+
+/* Botao com spinner + trava de duplo-toque. Mesmo nome e semantica do
+   PCF L13052 / PCM L11790 — e' o padrao da casa, nao um terceiro dialeto. */
+async function _comLoadingBtn_(btnEl, asyncFn, texto){
+  if(!btnEl) return asyncFn();
+  if(btnEl.dataset.pgpBusy==='1') return;      // trava de duplo-toque
+  btnEl.dataset.pgpBusy='1';
+  var txt=btnEl.textContent, dis=btnEl.disabled;
+  btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent=texto||'⏳ Processando…';
+  try{ return await asyncFn(); }
+  finally{ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; delete btnEl.dataset.pgpBusy; }
+}
+
+/* Espera LONGA (gerar PDF, subir ao Drive, baixar fotos): barra fixa no rodape
+   que NAO some sozinha e diz o que esta acontecendo. Chamar com null/'' esconde.
+   Existe porque o toast da casa dura 2,5 s e o upload dura ate 40 s. */
+function pgpEsperaLonga(msg){
+  var b=document.getElementById('pgpEsperaBar');
+  if(!b){
+    if(!msg) return;
+    b=document.createElement('div'); b.id='pgpEsperaBar';
+    b.setAttribute('role','status'); b.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(!msg){ b.classList.remove('show'); b.textContent=''; return; }
+  b.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  b.classList.add('show');
+}
+
+/* Aviso discreto de boot ("buscando a maquina da OS"). Some sozinho ao terminar,
+   e some TAMBEM quando falha — o catch silencioso do carregarMaquinasOS e'
+   intencional: sem rede o tecnico preenche a maquina a mao e segue. */
+function pgpBootAviso(msg){
+  var e=document.getElementById('pgpBootAviso');
+  if(!e){
+    if(!msg) return;
+    e=document.createElement('div'); e.id='pgpBootAviso';
+    e.setAttribute('role','status'); e.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(e);
+  }
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  e.classList.add('show');
+}
+
+</script>
+<script>
+/* ══ ProperSafe — VERBATIM da corretiva V2 (rascunho blindado + fila durável) ══ */
+window.PS = (function(){
+  var DB='properSafe', VER=1, db=null, ready=false, pumping=false, sender=null, listeners=[];
+  var MAX_TRIES=6, mem={ drafts:{}, photos:{}, outbox:{} }, seq=1;
+
+  /* ── 13/08 (perf): ESPELHO DE STATUS EM MEMORIA ────────────────────────────
+     counts() lia o outbox INTEIRO — all('outbox') e' um getAll() que desserializa
+     o body de cada job, e esses bodies carregam o base64 das fotos e do PDF
+     (megabytes). Isso rodava a CADA emit(), ou seja, uma vez por job processado
+     dentro do pump: num envio de 12 fotos eram 12 leituras completas do outbox so
+     para escrever "Enviando 12" num badge.
+     Agora um mapa jobId -> status e' semeado UMA vez por sessao e mantido em
+     put()/del(), que sao os UNICOS caminhos de escrita deste modulo. O outbox so
+     e' lido de verdade quando ha trabalho para enviar.
+     NADA da persistencia mudou: o IndexedDB continua sendo a fonte da verdade e
+     o espelho e' descartavel (some no reload e e' re-semeado). ───────────────── */
+  var _st = {};        // jobId -> status (espelho leve do outbox)
+  var _stOk = false;   // espelho ja semeado nesta sessao?
+  function _seedSt(){
+    if(_stOk) return Promise.resolve();
+    return all('outbox').then(function(a){
+      _st={}; a.forEach(function(j){ _st[j.jobId]=j.status; }); _stOk=true;
+    }).catch(function(){ _stOk=true; });   // se falhar, segue com o que tiver
+  }
+  function _contarSt(){
+    var c={pending:0,dead:0,done:0,total:0};
+    Object.keys(_st).forEach(function(k){
+      var s=_st[k]; c.total++;
+      if(s==='pending') c.pending++; else if(s==='dead') c.dead++; else if(s==='done') c.done++;
+    });
+    return c;
+  }
+
+  function open(){ return new Promise(function(res){
+    try{
+      if(!('indexedDB' in window) || !window.indexedDB){ ready=false; return res(false); }
+      var rq=indexedDB.open(DB,VER);
+      rq.onupgradeneeded=function(e){ var d=e.target.result;
+        if(!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts',{keyPath:'draftId'});
+        if(!d.objectStoreNames.contains('photos')) d.createObjectStore('photos',{keyPath:'photoId',autoIncrement:true});
+        if(!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox',{keyPath:'jobId',autoIncrement:true});
+      };
+      rq.onsuccess=function(e){ db=e.target.result; ready=true; res(true); };
+      rq.onerror=function(){ ready=false; res(false); };
+      rq.onblocked=function(){ ready=false; res(false); };
+    }catch(e){ ready=false; res(false); }
+  }); }
+
+  function store(name,mode){ return db.transaction(name,mode).objectStore(name); }
+  function rq(r){ return new Promise(function(res,rej){ r.onsuccess=function(){res(r.result);}; r.onerror=function(){rej(r.error);}; }); }
+  function keyOf(name){ return name==='drafts'?'draftId':(name==='photos'?'photoId':'jobId'); }
+
+  function put(name,val){
+    if(ready) return rq(store(name,'readwrite').put(val)).then(function(k){
+      if(val[keyOf(name)]==null) val[keyOf(name)]=k;
+      if(name==='outbox') _st[val.jobId!=null?val.jobId:k]=val.status;   // 13/08 (perf)
+      return k; });
+    var kp=keyOf(name); if(val[kp]==null) val[kp]=(name==='drafts'?val.draftId:(seq++));
+    mem[name][val[kp]]=JSON.parse(JSON.stringify(val));
+    if(name==='outbox') _st[val[kp]]=val.status;                          // 13/08 (perf)
+    return Promise.resolve(val[kp]);
+  }
+  function get(name,key){ if(ready) return rq(store(name,'readonly').get(key)); return Promise.resolve(mem[name][key]?JSON.parse(JSON.stringify(mem[name][key])):null); }
+  function all(name){ if(ready) return rq(store(name,'readonly').getAll()); return Promise.resolve(Object.keys(mem[name]).map(function(k){ return JSON.parse(JSON.stringify(mem[name][k])); })); }
+  function del(name,key){
+    if(name==='outbox') delete _st[key];                                  // 13/08 (perf)
+    if(ready) return rq(store(name,'readwrite')['delete'](key)); delete mem[name][key]; return Promise.resolve(); }
+
+  function emit(){ listeners.forEach(function(fn){ try{ fn(); }catch(e){} }); }
+  function onChange(fn){ listeners.push(fn); }
+
+  // ─ Rascunhos ─
+  function saveDraft(d){ d.updatedAt=Date.now(); return put('drafts',d); }
+  function loadDraft(id){ return get('drafts',id); }
+  function dropDraft(id){ return del('drafts',id); }
+  function listDrafts(){ return all('drafts'); }
+
+  // ─ Fotos (bytes p/ o PDF + restauração da tela) ─
+  function savePhoto(p){ return put('photos',p); }
+  function photosOf(draftId){ return all('photos').then(function(a){ return a.filter(function(p){return p.draftId===draftId;}); }); }
+  function updatePhoto(id,patch){ return get('photos',id).then(function(p){ if(!p) return; Object.assign(p,patch); return put('photos',p); }); }
+  function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
+
+  // ─ Outbox ─
+  function enqueue(job){ job.tries=0; job.status='pending'; job.nextRetryAt=0; job.createdAt=Date.now(); job.updatedAt=Date.now(); return put('outbox',job).then(function(id){ emit(); pump(); return id; }); }
+  function listJobs(){ return all('outbox'); }
+  function jobsOf(draftId){ return all('outbox').then(function(a){ return a.filter(function(j){return j.draftId===draftId;}); }); }
+  function dropJobsOf(draftId){ return all('outbox').then(function(a){ return Promise.all(a.filter(function(j){return j.draftId===draftId;}).map(function(j){ return del('outbox',j.jobId); })); }); }
+  function retryJob(id){ return get('outbox',id).then(function(j){ if(!j) return; j.status='pending'; j.tries=0; j.lastError=''; j.nextRetryAt=0; return put('outbox',j).then(function(){ emit(); pump(); }); }); }
+  function dropJob(id){ return del('outbox',id).then(function(){ emit(); }); }
+
+  function setSender(fn){ sender=fn; }
+
+  // 29/07 (F-25b): backoff REAL. Antes as 6 tentativas queimavam em milissegundos
+  // (o pump roda os jobs em sequência) e o job caía em dead-letter ANTES de a rede
+  // voltar. Agora cada falha marca nextRetryAt = 2^tentativas * 5s (teto 10 min) e
+  // o pump PULA jobs cuja janela ainda não chegou.
+  function _backoffMs(tries){ return Math.min(Math.pow(2, tries) * 5000, 600000); }
+
+  async function pump(){
+    if(pumping || !sender) return;
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return;
+    pumping=true;
+    try{
+      // 13/08 (perf): sem nada pendente nao ha por que desserializar o outbox
+      // inteiro. Isto e' o caso comum do setInterval de rede de seguranca.
+      await _seedSt();
+      if(_contarSt().pending===0) return;
+      var jobs=await listJobs();
+      var pend=jobs.filter(function(j){ return j.status==='pending'; }).sort(function(a,b){ return a.createdAt-b.createdAt; });
+      for(var i=0;i<pend.length;i++){
+        var j=pend[i], r;
+        if(j.nextRetryAt && j.nextRetryAt > Date.now()) continue;   // 29/07 (F-25b)
+        try{ r=await sender(j); }catch(e){ r={ status:'retry', error:(e&&e.message)||'erro' }; }
+        j.tries=(j.tries||0)+1; j.updatedAt=Date.now();
+        if(r && r.status==='ok'){ j.status='done'; j.lastError=''; j.result=r.result||null; j.nextRetryAt=0; }
+        else if(r && r.status==='dead'){ j.status='dead'; j.lastError=(r.error||'rejeitado pelo servidor'); j.nextRetryAt=0; }
+        else { j.lastError=(r&&r.error)||'falha de envio'; j.status=(j.tries>=MAX_TRIES)?'dead':'pending';
+               j.nextRetryAt=(j.status==='pending')?(Date.now()+_backoffMs(j.tries)):0; }
+        // 29/07 (F-25c): o técnico pode ter tocado em "Descartar" com este envio EM
+        // VOO — relê o job e só regrava se ele ainda existir (antes ressuscitava).
+        var aindaExiste=await get('outbox', j.jobId);
+        if(!aindaExiste){ emit(); continue; }
+        await put('outbox',j);
+        emit();
+      }
+    } finally { pumping=false; }
+    emit();
+    // 29/07 (F-25a): job enfileirado DURANTE um pump ativo ficava órfão — o enqueue
+    // chama pump(), que sai no guard 'pumping', e ninguém mais o pegava até um
+    // reload/evento 'online'. Se sobrou pendente (novo ou em backoff), reagenda.
+    try{
+      var resto=await listJobs();
+      var sobrou=false;
+      for(var q=0;q<resto.length;q++){ if(resto[q].status==='pending'){ sobrou=true; break; } }
+      if(sobrou) setTimeout(function(){ pump(); }, 5000);
+    }catch(e){}
+  }
+
+  // 13/08 (perf): mesma assinatura (Promise de {pending,dead,done,total}) — so nao
+  // toca mais no IndexedDB depois da primeira semeadura.
+  function counts(){ return _seedSt().then(_contarSt); }
+
+  return { open:open, ready:function(){return ready;}, onChange:onChange, MAX_TRIES:MAX_TRIES,
+    saveDraft:saveDraft, loadDraft:loadDraft, dropDraft:dropDraft, listDrafts:listDrafts,
+    savePhoto:savePhoto, photosOf:photosOf, updatePhoto:updatePhoto, dropPhotos:dropPhotos,
+    enqueue:enqueue, listJobs:listJobs, jobsOf:jobsOf, dropJobsOf:dropJobsOf, retryJob:retryJob, dropJob:dropJob,
+    setSender:setSender, pump:pump, counts:counts };
+})();
+</script>
+<script>
+const LOGO_DATAURL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAKN0lEQVR42u2da4xdVRXHf+vcc+69c2dO25lCWx6F0g6DkccQNPhFEzE8JBI1AYwkCoiRBKgmtB9BUKgxseUReRg/GBP8YqwPEp9Bg1+1FZTQFoUBEkqhoMzMnbnv89h+OPfQ2859zb23M+e26//hTpPpdJ8567f2WmvvtXclf8tWg+q0laWvQAFQKQAqBUClAKgUAJUCoFIAVAqASgFQKQAqBUClAKgUAJUCoFIAVAqASgFQKQAqBUClAKgUAJUCoFIAVAqASgFQKQAqBUClAKgUAJUCoFIAVAqASgFQKQAqBUClAKgUAFXCZA/LgwYGBnGfnQApObljWYAlCsBAFBtiPC0g0p9lBExoWPAN0ma8tY5gWT2OJeAHhkXfdARNAejC+AJkU8JP3yzzTjnEsXqziwVUQ9gymuLGc7PUwqUQhEDWEvYervBqwSdjybLGsoBKYLhyfZrrNqaZ9Qy2KAA9Gz/2xvtfLvC9Q4sgvf9jKUsIqiE7L3X5yvlZKsHxoSA0MJIS/r3oc8f+PCU/7G08Aznb4pkr13LjeSPMVsNEQ2An1vgG1qXrxn+lwETG6tn+AngGzhx12DE1Ssk3S2K0ATIpeHqmRCU0bMhaBGb5z20JVAO4bV8eA9yUcAjsJBv/wQN146eFsI/EzBbIe4adF+U4e8Ritnb81BwaGLWFF+d89r5dZswWqmHvyaptgR8eg+DmBENgJdX43zlY4KFDBcb7NL4AlXrsv33LCKUmyZkBHAuemikyV+s/bod1CFICt+/Ls/etMhMZC98oAF0b/7sHI+ObPkuylEDRN9xxQY7NOYvKCaE99v4XZj1+/XaFtY4se+ofZgisU9n4ApQD2NqF9//o9RLz3mBLtxMh+MVbZSYykigIEpEDGAPrMsLDB7o3fjeGsgXmPcM3tubYnEsxWwubxv5uvF9aLO5IHaJWPxdDQAhf25cH4EvnZZmrJmOdYNUBCA24jrDrYJEHujC+1D/yniFsQ4glEASG812bW7eMUPTDtt6f9wzj6eYACFALDaXgWPgwDZ8pEdY40vJ5mkFw8+Ys87XVh2BVAQhMVOf/+PUS3355gfGM1dH4Bqj6hhvOznBGunWpZgmUfMPnz8myIWuxeML0Hnv/P2Y9fvV2hTVOa+NXQ8O2MZtPn5mmVs8hbCsaIy3CG0Wf375Txe0Sgtv35XFt4eqNGYpNStLTagawBF7KeyBRQuK3Mb4IzNcMD18yxv0XjxGGDbNCi5rcC6MksKn3CzzxWomFdt4v4Bv4/qUuN5yXxa97rcixJzPGsOOlRR5/tchEWtqGg2wK/lsJ2T/ncf1ZWULMqiZiicgBRurWaTvtA3M1w65Lxrjvo2PMVbvLpJrF7tDAmC38fdbj2Xdae3+qHmqu3pjhmo0ZZkvhEtgMERCPTLsAPP5qkXFHCNuEPJFoeVuTwIaX0smKRf+Y8edr0bTZx8owtkSrfoU23m/qEGyfzOFYIEHz5NMAi77hkWkXAZ54rdg2HMRVj5aBXdbxC57hzq057rvYZa5mkD6MvxzvX/AMV23IcM2mzJIcotkMtegbHrnc5QvnZFnwhmM3cCgaQkIDF7kOxkQ7dv2819irY+9vZaT4731zMoctEHaepAhM9HXbWIrAGIahJWBoOoKq9e1b6ROkMVvY16X3X7sxw7UdvL9ZlVILGRoNTUfQILwpqvsl2vELDONO68zfFth+4SjL7QuRAT3raQXASrywwMAaR/jT0So/e7MEFrzfpJKwBELP8LnNI3xmQ7pr7x9WrToAxkA5MMhJxqAxRt8zNcqo3TxLF4FqYPjq+SOdqxMFYDBaiZhpSQTaVRvSXHdWpl6HtYauEhgqoRma5s6hBUAk6sNbCWcTouXhwodNoaZlrjBMnb1DPwOs5ExriR6GGMoyUKUAqBQA1SmZAzhWnAmcnKwr7GIJ2QApGrd5FYAVTcxOZoKZTUnn7VeBWmDqaxIKwCmh+LTPywsevzxcIWM136e3gFJg+OymDJ86M9304IgCMKxJjsADBwr88XAZq80ePSFcszGDJStblioAJ0nx2v9zR2s8/16VM0ZTTZswUgJznuHLW0a4dlOGuVp4Sq/9Dy0Ay/VKqYeAJ2eK+Cb6c7OdP99EOcLd23J4oRnYrqOWgYOuFLpoymj0ftcR/ny0yl/eq3bc9//i2Vk+MeFQ6DP2xyeaHVEABioB3q+GWFZ3vXRW3bN/OFOKmjDbgDLmCHdP5vBN/51Gcefyu5UQS2QoZoLEAxDH8idmijzzRon1HY5Wxd7/3NEqf30/6tXv6P3r+/P+uMlzPC3sOlhg7+Fyy1lHc4AWHt7p+8bAnS8sAHDrlhE+qC5tDo0N4Rl4qgvvdx3hnskcre6CiO8Kki48fzwtPHyowAMHCqxzOpcSogAcU61D8hUf4bLCCAID3LY1V08KzHF1v+VY/O6tMs938P65WtT0ceV6p+kRrQ/vChLpkNZFFD50cJEHD3R5tK3+OysA9Ve7bczGdLiRJTSQssAJ4Vv/XGDfrMcaW46L3QZIW8Lv362QauOEcVjZfmEOr8m4xkAmJfzkzTIH8z7ZVPOzCzGYR0ohPz9cZp3T2fgRkMLkmJ2IzuFVBSCOw9snRzlSDnmsi6NVdt2wT8+UmnumgZwtUZNJC++frRnuuGCEj08s9f74zOC/5j22v5inFpiOMcCyhLXtFpkaPD/vG3ZPu9y8OZuIfsNEhIBqaNgz7WKg4/m6OOZOpKVlH2FA62ohMLDOEe6abOH9RJA9OVPCN7Aha3WsENodD280/oJv+MFlLjsvGiXvJWO5efVbwlh6tOqxLiDoJcO2BT6oGb5+wQgfG2/u/WO2sH/O49kjFdw+7gpqZ/y5WnI6jRNRBjYerdoz7XLv1CizJ+El+R96/2hL708JPPlaaSDTc9KNn6h1gBMh2DFgCOKbwm48N8sV4/aSc/mx9//tA4/fHKn0Xcc3Gn93Qo2fuIWgRgh2T7vsHBAEUvf+8bRwdwfvf2qm2PQ+gZ6NP+2yI6HGT0wS2Con2D3tYgQe/U+R9ene3p4hupnjfxXDndtyXDFuLzFGYMC1hf2zHn94t8pEfaxerosTie4IXGgIZ0k1fiIBaIRgwTfsuczFAva8Uuh9vjIw6ljctS1HtUnHjxCtKT10qMB8KcBKS++ngkxEwaOXr+HeqVyijZ9YAE6cCXZd4vIR1+ZoZfmXRcd3/Ey5NlOuTbnJaZ+UQME3XL8pwyfPSLddROo8Fky5KW46NxmXQHV85vwtWxO9ZRE/3Fqnj+viBcIwusJd2hjPdQZzJX0YGha84WgrS3xDSOP9QKYPy3T6jyLMAMbodiwFoAetxAtNnWYt4YkrA1UKgEoBUCkAKgVApQCoFACVAqBSAFQKgEoBUCkAKgVApQCoFACVAqBSAFQKgEoBUCkAKgVApQCoFACVAqBSAFQKgEoBUCkAKgVApQCoFACVAqBSAFQKgEoBUCkAKgVApQCogP8D41+73gBBA9oAAAAASUVORK5CYII=';
+function pgpSignToLocal(clientX, clientY){
+  var canvas = document.getElementById('pgpSignCanvas');
+  var r = canvas.getBoundingClientRect();
+  if (_pgpSignRotated) return { x: clientY - r.top, y: r.right - clientX };
+  return { x: clientX - r.left, y: clientY - r.top };
+}
+function pgpSignMarkInk(){ _pgpSignHasInk = true; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.add('inked'); }
+function pgpSignResetInk(){ _pgpSignHasInk = false; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.remove('inked'); }
+function pgpSignSetupStage(){
+  var stage=document.getElementById('pgpSignStage'), wrap=document.getElementById('pgpSignCanvasWrap'), canvas=document.getElementById('pgpSignCanvas');
+  if(!stage||!wrap||!canvas) return;
+  var portrait = window.innerHeight > window.innerWidth;
+  stage.classList.toggle('is-rotated', portrait);
+  _pgpSignRotated = portrait;
+  void wrap.offsetWidth;
+  var cw = Math.max(40, wrap.clientWidth), ch = Math.max(40, wrap.clientHeight);
+  var dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  canvas.width = Math.round(cw*dpr); canvas.height = Math.round(ch*dpr);
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cw,ch);
+  ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#111111';
+  _pgpSignCtx = ctx;
+}
+function pgpSignBindCanvasOnce(){
+  if(_pgpSignBound) return;
+  var canvas = document.getElementById('pgpSignCanvas'); if(!canvas) return;
+  _pgpSignBound = true;
+  var drawing=false, lastP=null;
+  canvas.addEventListener('pointerdown', function(ev){
+    if(!_pgpSignCtx) return; ev.preventDefault(); drawing=true;
+    try{ canvas.setPointerCapture(ev.pointerId); }catch(e){}
+    var p=pgpSignToLocal(ev.clientX,ev.clientY); lastP=p;
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(p.x,p.y); _pgpSignCtx.lineTo(p.x+0.1,p.y+0.1); _pgpSignCtx.stroke();
+    pgpSignMarkInk();
+  });
+  canvas.addEventListener('pointermove', function(ev){
+    if(!drawing||!_pgpSignCtx) return; ev.preventDefault();
+    var p=pgpSignToLocal(ev.clientX,ev.clientY);
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(lastP.x,lastP.y); _pgpSignCtx.lineTo(p.x,p.y); _pgpSignCtx.stroke(); lastP=p;
+  });
+  function end(ev){ if(!drawing) return; drawing=false; lastP=null; try{ canvas.releasePointerCapture(ev.pointerId); }catch(e){} }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+}
+function pgpSignTrim(canvas){
+  var ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height, data;
+  try{ data=ctx.getImageData(0,0,W,H).data; }catch(e){ return null; }
+  var minX=W,minY=H,maxX=0,maxY=0,found=false;
+  for(var y=0;y<H;y++){ for(var x=0;x<W;x++){ var i=(y*W+x)*4;
+    if(data[i]<230||data[i+1]<230||data[i+2]<230){ found=true; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } } }
+  if(!found) return null;
+  var pad=Math.round(10*(window.devicePixelRatio||1));
+  minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(W-1,maxX+pad); maxY=Math.min(H-1,maxY+pad);
+  var tw=maxX-minX+1, th=maxY-minY+1;
+  var out=document.createElement('canvas'); out.width=tw; out.height=th;
+  var octx=out.getContext('2d'); octx.fillStyle='#ffffff'; octx.fillRect(0,0,tw,th);
+  octx.drawImage(canvas,minX,minY,tw,th,0,0,tw,th);
+  return { dataUrl: out.toDataURL('image/png'), w:tw, h:th };
+}
+function pgpColetarAssinatura(cfg){
+  cfg = cfg || {};
+  return new Promise(function(resolve){
+    pgpSignBindCanvasOnce();
+    var ov=document.getElementById('pgpSignOverlay'), nameStep=document.getElementById('pgpSignNameStep'), stage=document.getElementById('pgpSignStage');
+    var nameInput=document.getElementById('pgpSignNameInput'), nextBtn=document.getElementById('pgpSignNextBtn'), cancelBtn=document.getElementById('pgpSignCancelBtn');
+    var backBtn=document.getElementById('pgpSignBackBtn'), clearBtn=document.getElementById('pgpSignClearBtn'), confirmBtn=document.getElementById('pgpSignConfirmBtn');
+    if(!ov){ resolve(null); return; }
+    document.getElementById('pgpSignTitle').textContent = cfg.titulo || 'Assinatura';
+    document.getElementById('pgpSignSub').textContent = cfg.sub || 'Digite o nome e toque em Avançar.';
+    document.getElementById('pgpSignStageLbl').textContent = cfg.stageLbl || cfg.titulo || 'Assinatura';
+    nameInput.value = cfg.nomePrefill || ''; nameInput.style.borderColor='';
+    ov.classList.add('open'); ov.setAttribute('aria-hidden','false');
+    stage.classList.remove('show','is-rotated'); nameStep.style.display='flex';
+    setTimeout(function(){ try{ nameInput.focus(); }catch(e){} }, 60);
+    var done=false;
+    function cleanup(){
+      nextBtn.removeEventListener('click',onNext); cancelBtn.removeEventListener('click',onCancel); backBtn.removeEventListener('click',onBack);
+      clearBtn.removeEventListener('click',onClear); confirmBtn.removeEventListener('click',onConfirm); nameInput.removeEventListener('keydown',onKey);
+      window.removeEventListener('resize',onResize);
+      ov.classList.remove('open'); ov.setAttribute('aria-hidden','true'); stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; _pgpSignCtx=null;
+    }
+    function finish(v){ if(done) return; done=true; cleanup(); resolve(v); }
+    function goStage(){
+      var nome=(nameInput.value||'').trim();
+      if(!nome){ nameInput.style.borderColor='#e5534b'; try{ nameInput.focus(); }catch(e){} return; }
+      _pgpSignNome=nome; nameStep.style.display='none'; stage.classList.add('show');
+      requestAnimationFrame(function(){ pgpSignSetupStage(); pgpSignResetInk(); });
+    }
+    function onNext(){ goStage(); }
+    function onKey(e){ if(e.key==='Enter'){ e.preventDefault(); goStage(); } }
+    function onBack(){ stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; setTimeout(function(){ try{ nameInput.focus(); }catch(e){} },50); }
+    function onClear(){ pgpSignSetupStage(); pgpSignResetInk(); }
+    function onCancel(){ finish(null); }
+    function onConfirm(){
+      if(!_pgpSignHasInk){ toast('Faça a assinatura antes de confirmar.'); return; }
+      var canvas=document.getElementById('pgpSignCanvas');
+      var t=pgpSignTrim(canvas);
+      if(!t) t={ dataUrl:canvas.toDataURL('image/png'), w:canvas.width, h:canvas.height };
+      finish({ nome:_pgpSignNome, dataUrl:t.dataUrl, w:t.w, h:t.h, ts:Date.now() });
+    }
+    function onResize(){ if(stage.classList.contains('show') && !_pgpSignHasInk) pgpSignSetupStage(); }
+    nextBtn.addEventListener('click',onNext); cancelBtn.addEventListener('click',onCancel); backBtn.addEventListener('click',onBack);
+    clearBtn.addEventListener('click',onClear); confirmBtn.addEventListener('click',onConfirm); nameInput.addEventListener('keydown',onKey);
+    window.addEventListener('resize',onResize);
+  });
+}
+
+// ══ RASCUNHO BLINDADO (ProperSafe; por instância; só some quando o servidor
+//    confirma TODOS os envios desta OS) ═════════════════════════════════════
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE DE CONHECIMENTO — DADO, NÃO CÓDIGO.
+   Acrescentar um modo de falha = acrescentar linhas em TESTES/CAUSAS/SINTOMAS.
+   Nenhuma função do motor muda. Cada causa carrega a FONTE (manual + página),
+   que é impressa no laudo como critério.
+
+   Legenda de fontes (pasta "01- Manuais compressores Revisado"):
+     AC-VSD  Atlas Copco GA37/45 VSD 2013      AC-110 Atlas Copco GA110/132/160
+     SZ-3040 Schulz SRP 3040/3040E             SZ-5000 Schulz SRP 5000 Flex
+     TEC     Techto Compressores Parafuso      KAE    Kaeser CSD 60/75/100S
+     SUL     Sullair 3000-4500                 MAM    Controlador MAM6080
+     [pub]   fonte técnica pública (NÃO de manual do parque — ver §2.1 do estudo)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const KB_VERSAO = 'KB-2026-08-13';
+
+/* ── TESTES ────────────────────────────────────────────────────────────────
+   tipo: 'med' (número + unidade) | 'sn' (sim/não/n.a.) | 'esc' (escolha)
+   lim:  {at:<atenção>, cr:<crítico>, dir:'acima'|'abaixo'} → status automático
+   Todo teste tem METODO (como medir) e FONTE (de onde vem o limite).           */
+const TESTES = {
+  /* ---- parafuso: térmico ---- */
+  t_desc:      {lab:'Temperatura de saída do elemento', tipo:'med', un:'°C',
+                ref:'normal 80–95 °C · ≈ ambiente + 60 °C', lim:{at:100, cr:110, dir:'acima'},
+                met:'Leitura da IHM/controlador, ou termômetro IV no bloco de descarga',
+                fonte:'SZ-3040 p.40 · AC-VSD p.106 · TEC p.20 (desarme 110 °C)'},
+  t_amb:       {lab:'Temperatura ambiente da sala de máquinas', tipo:'med', un:'°C',
+                ref:'≤ 40 °C', lim:{at:38, cr:45, dir:'acima'},
+                met:'Termômetro a 1,5 m do piso, próximo à admissão da máquina',
+                fonte:'TEC p.5 · SZ-3040 p.5 · SZ-5000 p.12'},
+  dt_cooler:   {lab:'ΔT do resfriador de óleo (entrada − saída)', tipo:'med', un:'°C',
+                ref:'≥ 5–8 °C com a máquina quente e em carga', lim:{at:5, cr:3, dir:'abaixo'},
+                met:'Termômetro IV nas duas conexões do resfriador, máquina em carga',
+                fonte:'[pub] guia de alta temperatura de parafuso'},
+  termostatica:{lab:'Válvula termostática — tubo de bypass vs. tubo do resfriador', tipo:'esc',
+                opts:['Bypass frio e resfriador quente (normal)','Ambos igualmente quentes','Ambos frios','Não verificado'],
+                ref:'com a máquina quente, o bypass deve estar frio',
+                met:'Toque/termômetro IV nos dois tubos após 15 min em carga',
+                fonte:'AC-VSD p.92 · SZ-3040 p.47 · SUL p.72'},
+  radiador:    {lab:'Estado da colméia do radiador / resfriador', tipo:'esc',
+                opts:['Limpa','Suja — passagem parcial','Obstruída','Não verificado'],
+                ref:'passagem de ar livre; limpar de fora para dentro, escova não-metálica',
+                met:'Inspeção visual com lanterna, pelos dois lados',
+                fonte:'SZ-3040 p.47 · SZ-5000 p.19 · TEC p.21'},
+  recirc:      {lab:'Recirculação de ar quente na sala', tipo:'sn',
+                ref:'não é permitida — eleva a temperatura e desliga por proteção',
+                met:'Verificar se a saída do resfriador realimenta a admissão / falta de duto',
+                fonte:'TEC p.5'},
+  carenagem:   {lab:'Painéis da carenagem montados', tipo:'sn',
+                ref:'todos montados — a carenagem faz parte do circuito de refrigeração',
+                met:'Inspeção visual', fonte:'TEC p.21'},
+
+  /* ---- parafuso: óleo ---- */
+  nivel_oleo:  {lab:'Nível de óleo no visor', tipo:'esc',
+                opts:['Entre mínimo e máximo','Abaixo do mínimo','Acima do máximo','Não visível / espuma'],
+                ref:'verificar com a máquina DESLIGADA e o óleo decantado (espuma mascara o nível)',
+                met:'Visor do reservatório, máquina parada e despressurizada',
+                fonte:'SZ-3040 p.40 · SZ-5000 p.14 · AC-VSD p.80'},
+  cor_oleo:    {lab:'Aspecto do óleo', tipo:'esc',
+                opts:['Âmbar claro (normal)','Escuro / com verniz','Leitoso (água)','Com partículas metálicas'],
+                ref:'âmbar claro. Escuro = oxidação por operar > 90 °C. Leitoso = água no óleo',
+                met:'Amostra no visor ou no dreno',
+                fonte:'SZ-5000 p.22 · [pub] critério de campo'},
+  dp_sep:      {lab:'ΔP do elemento separador ar/óleo', tipo:'med', un:'bar',
+                ref:'trocar em 1,0 bar (Atlas/Schulz) ou 0,7 bar (Sullair)', lim:{at:0.7, cr:1.0, dir:'acima'},
+                met:'Manômetro de restrição do painel, com o compressor em CARGA',
+                fonte:'AC-VSD p.62 · SZ-3040 p.40 · SUL p.26'},
+  linha_ret:   {lab:'Linha de retorno de óleo do separador (pescador/orifício)', tipo:'esc',
+                opts:['Desobstruída','Obstruída / crivo sujo','Não verificado'],
+                ref:'obstrução é a causa nº 1 de arraste de óleo com ΔP normal',
+                met:'Remover a tubulação e verificar passagem; limpar crivo e orifício',
+                fonte:'SZ-3040 p.49 · SUL p.73 · KAE p.79 · TEC p.21'},
+  dp_filtro_ol:{lab:'ΔP do filtro de óleo', tipo:'med', un:'bar',
+                ref:'trocar acima de 1,3 bar', lim:{at:1.0, cr:1.3, dir:'acima'},
+                met:'Manômetro diferencial ou indicador de restrição',
+                fonte:'SUL p.26'},
+
+  /* ---- parafuso: pressão e ar ---- */
+  p_trab:      {lab:'Pressão de trabalho (descarga)', tipo:'med', un:'bar',
+                ref:'conforme placa da máquina; diferencial carga/alívio mínimo 0,6 bar',
+                met:'Manômetro do painel / IHM', fonte:'AC-VSD p.62 · SZ-3040 p.5'},
+  p_rede:      {lab:'Pressão no ponto de uso mais crítico', tipo:'med', un:'bar',
+                ref:'queda máxima recomendada de 3 % ao longo da distribuição',
+                met:'Manômetro no ponto de uso, com a planta em produção',
+                fonte:'[pub] DOE / Compressed Air Best Practices'},
+  dp_filtro_ar:{lab:'Indicador de restrição do filtro de admissão', tipo:'esc',
+                opts:['Verde / livre','Parcialmente vermelho','Totalmente vermelho','Sem indicador'],
+                ref:'trocar com indicador vermelho, mesmo antes das horas',
+                met:'Indicador do painel; verificar semanalmente',
+                fonte:'SZ-3040 p.40 · SZ-5000 p.16-17'},
+  teste_corrente:{lab:'Teste discriminante Schulz — corrente com registro fechando', tipo:'esc',
+                opts:['Corrente próxima da nominal em plena carga (máquina OK)','Corrente bem abaixo da nominal','Corrente acima da nominal','Não executado'],
+                ref:'"Se o compressor está aspirando em plena carga e a corrente está próxima da nominal, é provável que o problema NÃO seja no compressor"',
+                met:'Fechar o registro de saída LENTAMENTE até perto da pressão máxima e medir a corrente com alicate',
+                fonte:'SZ-3040 p.49 · SZ-5000 p.25'},
+  valv_adm:    {lab:'Válvula de admissão', tipo:'esc',
+                opts:['Abre e fecha normalmente','Não abre / abre parcialmente','Travada aberta','Não verificado'],
+                ref:'deve fechar quando o pressostato abre os contatos',
+                met:'Remover a mangueira de admissão e observar a operação em carga/alívio',
+                fonte:'SUL p.72-73 · KAE p.78 · TEC p.21'},
+  mang_aliv:   {lab:'Mangueira/tubo de comando da válvula de admissão', tipo:'esc',
+                opts:['Íntegra e conectada','Desconectada','Rompida','Não verificado'],
+                ref:'desconectada produz ruído típico de vazamento e a máquina não carrega',
+                met:'Inspeção visual e auditiva com a máquina em carga',
+                fonte:'SZ-3040 p.48 · SZ-5000 p.23'},
+  solenoide:   {lab:'Válvula solenóide de carga/alívio', tipo:'esc',
+                opts:['Atua corretamente','Bobina queimada','Orifício obstruído','Não verificado'],
+                ref:'deve comutar no ciclo carga/alívio', met:'Teste elétrico da bobina + escuta do acionamento',
+                fonte:'SZ-3040 p.48 · TEC p.21 · SUL p.73'},
+  v_min:       {lab:'Válvula de pressão mínima', tipo:'esc',
+                opts:['Opera normalmente','Não retém (reservatório despressuriza)','Travada','Não verificado'],
+                ref:'mantém mínimo de ~3,4 bar no reservatório — necessário para separação e circulação de óleo',
+                met:'Observar a pressão do reservatório na partida e em alívio',
+                fonte:'SUL p.17 · TEC p.21 · AC-VSD p.91'},
+  vazam_ar:    {lab:'Vazamentos audíveis na máquina e no barrilete', tipo:'esc',
+                opts:['Nenhum','Poucos / pequenos','Muitos / significativos','Não verificado'],
+                ref:'planta bem mantida < 10 % da vazão; típica mal mantida 20–30 %',
+                met:'Escuta com a planta parada, água com sabão ou detector ultrassônico',
+                fonte:'[pub] DOE / CAGI · AC-VSD p.91'},
+  ciclos_min:  {lab:'Ciclos carga/alívio por minuto', tipo:'med', un:'ciclos/min',
+                ref:'mais de 2 por minuto é anormal (reservatório pequeno ou diferencial curto)',
+                lim:{at:2, cr:4, dir:'acima'},
+                met:'Cronometrar 5 minutos e dividir', fonte:'KAE p.79'},
+  volume_res:  {lab:'Volume do reservatório de ar', tipo:'med', un:'L',
+                ref:'regra prática: ≥ 3 a 4 L por cfm de vazão do compressor',
+                met:'Placa do reservatório', fonte:'[pub] boas práticas de dimensionamento'},
+
+  /* ---- elétrico ---- */
+  corrente:    {lab:'Corrente do motor principal (em carga)', tipo:'med', un:'A',
+                ref:'comparar com a corrente nominal da plaqueta',
+                met:'Alicate amperímetro nas três fases, máquina em carga plena',
+                fonte:'TEC p.10 · SZ-3040 p.49'},
+  desbal:      {lab:'Desequilíbrio entre as três fases', tipo:'med', un:'%',
+                ref:'até ~5 %; acima disso aquece o motor', lim:{at:5, cr:10, dir:'acima'},
+                met:'Medir R, S, T e calcular o desvio da média',
+                fonte:'MAM p.13 (proteção de desbalanceamento)'},
+  tensao_part: {lab:'Queda de tensão na partida', tipo:'med', un:'%',
+                ref:'≤ 10 % na partida e ≤ 6 % em regime', lim:{at:6, cr:10, dir:'acima'},
+                met:'Multímetro no borne de entrada durante a partida',
+                fonte:'TEC p.6 e p.21 · SZ-5000 p.13'},
+  rele_sobre:  {lab:'Relé de sobrecarga', tipo:'esc',
+                opts:['Regulado corretamente e não atuado','Atuado','Regulagem fora da faixa','Não verificado'],
+                ref:'conferir a faixa de regulagem contra a corrente nominal',
+                met:'Inspeção do relé no painel', fonte:'SZ-3040 p.46 · SUL p.72'},
+  contatores:  {lab:'Contatores e conexões de força', tipo:'esc',
+                opts:['Bons','Contatos gastos / com marcas','Conexões frouxas ou aquecidas','Não verificado'],
+                ref:'reaperto anual; descoloração indica mau contato',
+                met:'Inspeção visual + termografia se disponível; reaperto com máquina desenergizada',
+                fonte:'SZ-3040 p.46 · TEC p.6'},
+  rotacao:     {lab:'Sentido de rotação', tipo:'esc',
+                opts:['Correto','Invertido','Não verificado'],
+                ref:'rotação invertida provoca corrente anormal e danifica o secador',
+                met:'Pulso curto e observação da seta / ventilador',
+                fonte:'SZ-3040 p.47 · AC-VSD p.80'},
+  alarme_ihm:  {lab:'Alarme/código apresentado pelo controlador', tipo:'esc',
+                opts:['Nenhum','Alta temperatura','Sobrecarga / corrente','Falta ou inversão de fase','Alta pressão','Falha do inversor','Outro'],
+                ref:'anotar o código literal no campo de observação',
+                met:'Leitura da IHM antes de rearmar', fonte:'MAM p.31-33 · SZ-3040 p.27'},
+
+  /* ---- horímetro ---- */
+  h_total:     {lab:'Horímetro total', tipo:'med', un:'h', ref:'—',
+                met:'IHM / horímetro do painel', fonte:'SZ-3040 p.28 · TEC p.10'},
+  h_carga:     {lab:'Horímetro em carga', tipo:'med', un:'h',
+                ref:'a razão carga/total revela superdimensionamento (abaixo de ~50 % é sinal)',
+                met:'IHM (Schulz: CAr · Techto: T TOTAL CARGA)',
+                fonte:'SZ-3040 p.28 · TEC p.10'},
+
+  /* ---- secador ---- */
+  pdp:         {lab:'Ponto de orvalho sob pressão (PDP)', tipo:'med', un:'°C',
+                ref:'secador por refrigeração: ~3 a 10 °C. Abaixo de −1 °C indica congelamento',
+                lim:{at:10, cr:15, dir:'acima'},
+                met:'Leitura do controlador do secador ou higrômetro de PDP na saída',
+                fonte:'AC-VSD p.106 · SZ-5000 p.25'},
+  t_ent_sec:   {lab:'Temperatura do ar na entrada do secador', tipo:'med', un:'°C',
+                ref:'nominal de placa 38 °C ("regra dos três 100"); acima disso a capacidade cai',
+                lim:{at:40, cr:45, dir:'acima'},
+                met:'Termômetro IV na tubulação de entrada',
+                fonte:'SZ-5000 p.25 · [pub] condição nominal 100 psig/100 °F/100 °F'},
+  cond_sec:    {lab:'Condensador do secador (aletas)', tipo:'esc',
+                opts:['Limpo','Sujo','Obstruído','Não verificado'],
+                ref:'escovar ou soprar as aletas mensalmente',
+                met:'Inspeção visual', fonte:'AC-VSD p.90 e p.93'},
+  vent_sec:    {lab:'Ventilador do condensador', tipo:'esc',
+                opts:['Liga normalmente','Não liga','Liga intermitente','Não verificado'],
+                ref:'pressostato de controle do ventilador pode estar avariado',
+                met:'Observar o acionamento com o secador em regime',
+                fonte:'AC-VSD p.92 · SZ-5000 p.25'},
+  dreno_sec:   {lab:'Dreno / purga do secador', tipo:'esc',
+                opts:['Purga normalmente','Não purga','Purga contínua (perde ar)','Registro agulha fechado','Não verificado'],
+                ref:'registro agulha deve estar aberto o suficiente; mangueira ≤ 4 m e Ø > 5/16"',
+                met:'Botão de teste do dreno + observação de 2 ciclos',
+                fonte:'SZ-5000 p.24-25 · AC-VSD p.93'},
+  dp_sec:      {lab:'Perda de carga através do secador e filtros de linha', tipo:'med', un:'bar',
+                ref:'trocar elementos acima de 0,6 bar', lim:{at:0.4, cr:0.6, dir:'acima'},
+                met:'Manômetros antes e depois do conjunto (precisão típica ±25 %)',
+                fonte:'SZ-5000 p.20 nota (3)'},
+  dim_sec:     {lab:'Capacidade do secador vs. vazão do compressor', tipo:'esc',
+                opts:['Secador igual ou maior','Secador menor que o compressor','Não verificado'],
+                ref:'comparar a placa do secador (m³/min ou cfm) com a do compressor',
+                met:'Leitura das duas plaquetas', fonte:'[pub] causa dominante de PDP alto'},
+
+  /* ---- pistão [pub] ---- */
+  pi_valvulas: {lab:'Temperatura dos bolsões de válvula (sucção × descarga)', tipo:'esc',
+                opts:['Uniformes','Um bolsão nitidamente mais quente','Não verificado'],
+                ref:'válvula com vazamento eleva a temperatura do bolsão — teste discriminante barato',
+                met:'Termômetro IV em cada bolsão após 10 min de operação',
+                fonte:'[pub] PROGNOST — válvulas são a causa nº 1 de parada em alternativos'},
+  pi_aneis:    {lab:'Teste de estanqueidade / recuperação de pressão', tipo:'esc',
+                opts:['Atinge a pressão no tempo esperado','Demora muito mais que o normal','Não atinge a pressão','Não verificado'],
+                ref:'comparar o tempo de enchimento do reservatório com o histórico da máquina',
+                met:'Cronometrar o enchimento de 0 até a pressão de corte, reservatório vazio',
+                fonte:'[pub] prática de campo'},
+  pi_carter:   {lab:'Nível e aspecto do óleo do cárter', tipo:'esc',
+                opts:['Normal','Baixo','Emulsionado / leitoso','Com limalha'],
+                ref:'emulsão indica condensação por ciclo de trabalho baixo ou ambiente frio',
+                met:'Vareta / visor com a máquina parada e fria', fonte:'[pub]'},
+  pi_ciclo:    {lab:'Ciclo de trabalho (tempo ligado / tempo total)', tipo:'med', un:'%',
+                ref:'alternativo industrial trabalha tipicamente com ciclo limitado (~60–75 %)',
+                lim:{at:75, cr:90, dir:'acima'},
+                met:'Cronometrar 15 min de operação normal da planta', fonte:'[pub]'},
+  pi_correia:  {lab:'Correias e polias', tipo:'esc',
+                opts:['Tensão e alinhamento OK','Frouxa / patinando','Gasta ou vitrificada','Polias desalinhadas','Não verificado'],
+                ref:'desalinhamento aumenta ruído, vibração e consumo de correia',
+                met:'Tensiômetro ou deflexão; régua/alinhador óptico nas polias',
+                fonte:'TEC p.8 · SZ-3040 p.48'},
+
+  /* ---- reservatório / NR-13 (triagem) ---- */
+  nr_pmta:     {lab:'PMTA do reservatório', tipo:'med', un:'MPa', ref:'placa de identificação do vaso',
+                met:'Leitura da placa', fonte:'NR-13'},
+  nr_vol:      {lab:'Volume do reservatório', tipo:'med', un:'m³', ref:'placa de identificação do vaso',
+                met:'Leitura da placa', fonte:'NR-13'},
+  nr_ext:      {lab:'Última inspeção externa (NR-13)', tipo:'esc',
+                opts:['Em dia','Vencida','Sem registro','Não verificado'],
+                ref:'exame externo anual para categorias I a IV',
+                met:'Prontuário / registro de segurança', fonte:'NR-13'},
+  nr_prontuario:{lab:'Prontuário e registro de segurança disponíveis', tipo:'sn',
+                ref:'obrigatórios e sob guarda do estabelecimento',
+                met:'Solicitar ao responsável da planta', fonte:'NR-13'},
+  nr_valv:     {lab:'Válvula de segurança e manômetro do reservatório', tipo:'esc',
+                opts:['Presentes e íntegros','Manômetro danificado/ilegível','Válvula sem lacre ou travada','Ausentes','Não verificado'],
+                ref:'dispositivos de segurança obrigatórios',
+                met:'Inspeção visual', fonte:'NR-13'}
+};
+
+/* ── CAUSAS ────────────────────────────────────────────────────────────────
+   classe: consequência mais severa (SAE JA1011) → ordena as recomendações   */
+const CAUSAS = {
+  c_oleo_baixo:{lab:'Nível de óleo abaixo do mínimo', comp:'Sistema de lubrificação',
+    acao:'Completar com o óleo especificado e investigar a origem da perda antes de liberar a máquina',
+    pecas:['Óleo do compressor conforme placa (ISO VG 68 típico)'],
+    risco:'Perda do filme lubrificante → desgaste acelerado e travamento do elemento compressor',
+    classe:'Operacional', fontes:['AC-VSD p.92','SZ-3040 p.47','TEC p.21','SUL p.72']},
+  c_radiador:{lab:'Radiador / resfriador de óleo obstruído', comp:'Sistema de refrigeração',
+    acao:'Limpar a colméia com ar comprimido de fora para dentro; escova não-metálica. Reavaliar a temperatura após 30 min em carga',
+    pecas:[], risco:'Desarme recorrente por alta temperatura e oxidação acelerada do óleo (verniz)',
+    classe:'Operacional', fontes:['SZ-3040 p.47','SZ-5000 p.19','TEC p.21','AC-VSD p.92']},
+  c_termostatica:{lab:'Válvula termostática inoperante', comp:'Sistema de refrigeração',
+    acao:'Substituir o termoelemento da válvula termostática',
+    pecas:['Termoelemento / kit da válvula termostática'],
+    risco:'Óleo não passa pelo resfriador → superaquecimento e degradação do óleo',
+    classe:'Operacional', fontes:['SZ-3040 p.47','AC-VSD p.92','SUL p.72']},
+  c_ambiente:{lab:'Ventilação insuficiente da sala de máquinas', comp:'Instalação',
+    acao:'Adequar a ventilação: área de entrada 25 % maior que a de saída, dutos a 300–500 mm do piso, eliminar recirculação do ar quente',
+    pecas:[], risco:'Perda de capacidade, desarme térmico e redução da vida do óleo (acima de 35 °C a vida do óleo cai)',
+    classe:'Operacional', fontes:['TEC p.5-6','AC-VSD p.92','SZ-5000 p.12']},
+  c_filtro_oleo:{lab:'Filtro de óleo obstruído', comp:'Sistema de lubrificação',
+    acao:'Substituir o elemento do filtro de óleo', pecas:['Filtro de óleo'],
+    risco:'Fluxo de óleo restrito → superaquecimento do elemento',
+    classe:'Operacional', fontes:['SZ-3040 p.47','SUL p.72','SZ-5000 p.24']},
+  c_press_alta:{lab:'Compressor operando acima da pressão nominal', comp:'Controle',
+    acao:'Ajustar a pressão de trabalho ao valor de placa; cada 1 bar a mais custa ~7 % de energia',
+    pecas:[], risco:'Corrente elevada, superaquecimento e consumo de energia desnecessário',
+    classe:'Econômica', fontes:['TEC p.21','[pub] Compressed Air Best Practices']},
+  c_carenagem:{lab:'Painéis da carenagem ausentes ou mal montados', comp:'Instalação',
+    acao:'Remontar todos os painéis — a carenagem faz parte do circuito de refrigeração',
+    pecas:[], risco:'Fluxo de ar de refrigeração desviado → superaquecimento', classe:'Operacional',
+    fontes:['TEC p.21']},
+
+  c_separador:{lab:'Elemento separador ar/óleo saturado', comp:'Separação ar/óleo',
+    acao:'Substituir o elemento separador e o óleo na mesma intervenção',
+    pecas:['Elemento separador ar/óleo','Óleo do compressor','Kit de vedações'],
+    risco:'ΔP alto = +5 % de potência a cada 0,7 bar; em último caso rompe e arrasta óleo para a rede',
+    classe:'Econômica', fontes:['AC-VSD p.62','SZ-3040 p.40','SUL p.26']},
+  c_sep_rompido:{lab:'Elemento separador rompido/danificado', comp:'Separação ar/óleo',
+    acao:'Substituir o elemento separador e trocar o óleo. Sinal característico: arraste de óleo COM ΔP praticamente nulo',
+    pecas:['Elemento separador ar/óleo','Óleo do compressor'],
+    risco:'Contaminação da rede e do produto final; perda contínua de óleo',
+    classe:'Operacional', fontes:['SZ-3040 p.49','TEC p.21','KAE p.79','SUL p.73']},
+  c_linha_ret:{lab:'Linha de retorno de óleo obstruída', comp:'Separação ar/óleo',
+    acao:'Remover a tubulação de retorno, limpar o crivo e o orifício calibrado, remontar',
+    pecas:['Crivo / kit de tela e O-ring'],
+    risco:'Óleo acumula no separador e é arrastado para a rede', classe:'Operacional',
+    fontes:['SZ-3040 p.49','SUL p.73','KAE p.79','TEC p.21']},
+  c_oleo_alto:{lab:'Nível de óleo acima do máximo', comp:'Sistema de lubrificação',
+    acao:'Drenar até o nível correto', pecas:[],
+    risco:'Arraste de óleo para a rede e espuma que mascara a leitura do nível',
+    classe:'Operacional', fontes:['SZ-3040 p.48','KAE p.79','SUL p.73']},
+  c_oleo_oxidado:{lab:'Óleo degradado (oxidação / verniz)', comp:'Sistema de lubrificação',
+    acao:'Trocar o óleo e o filtro; se a máquina opera continuamente acima de 90 °C, reduzir o intervalo de troca pela metade',
+    pecas:['Óleo do compressor','Filtro de óleo'],
+    risco:'Verniz reduz troca térmica e separação, realimentando o superaquecimento',
+    classe:'Operacional', fontes:['SZ-5000 p.22 e p.20']},
+  c_agua_oleo:{lab:'Água no óleo (óleo leitoso)', comp:'Sistema de lubrificação',
+    acao:'Trocar o óleo e ajustar a temperatura final de compressão às condições — operar frio demais condensa água no reservatório',
+    pecas:['Óleo do compressor'], risco:'Corrosão interna e perda de lubricidade',
+    classe:'Operacional', fontes:['KAE p.96','SUL p.73 (manter acima de 76,7 °C)']},
+  c_press_baixa:{lab:'Operação prolongada abaixo da pressão mínima', comp:'Controle',
+    acao:'Investigar a demanda excessiva da rede; abaixo de ~3,4 bar a separação ar/óleo não funciona',
+    pecas:[], risco:'Arraste contínuo de óleo para a rede', classe:'Operacional',
+    fontes:['SZ-3040 p.49','SUL p.17']},
+
+  c_filtro_ar:{lab:'Filtro de admissão obstruído', comp:'Admissão',
+    acao:'Substituir o elemento do filtro de ar e destravar o indicador de restrição',
+    pecas:['Elemento do filtro de ar'],
+    risco:'Perda de vazão e aumento do consumo de óleo; ponto econômico de troca em ~0,05 bar',
+    classe:'Econômica', fontes:['SZ-3040 p.40','SZ-5000 p.16','TEC p.21','SUL p.73']},
+  c_valv_adm:{lab:'Válvula de admissão não abre ou abre parcialmente', comp:'Controle de capacidade',
+    acao:'Instalar kit de serviço da válvula de admissão; verificar o orifício de sangria da linha de controle',
+    pecas:['Kit de serviço da válvula de admissão'],
+    risco:'Máquina roda sem entregar vazão — consumo de energia integral com produção parcial',
+    classe:'Econômica', fontes:['TEC p.21','SUL p.73','KAE p.78','AC-VSD p.91']},
+  c_adm_travada:{lab:'Válvula de admissão travada aberta / alívio travado', comp:'Controle de capacidade',
+    acao:'Assistência técnica — desmontagem da válvula de admissão',
+    pecas:['Kit de serviço da válvula de admissão'],
+    risco:'Não alivia, pressão sobe e a válvula de segurança passa a atuar', classe:'Segurança',
+    fontes:['SZ-3040 p.48-49','SUL p.73']},
+  c_mang_aliv:{lab:'Mangueira de comando desconectada ou rompida', comp:'Controle de capacidade',
+    acao:'Reconectar ou substituir a mangueira de despressurização',
+    pecas:['Mangueira de comando'],
+    risco:'Máquina não carrega; ruído típico de vazamento', classe:'Operacional',
+    fontes:['SZ-3040 p.48','SZ-5000 p.23']},
+  c_solenoide:{lab:'Válvula solenóide com defeito', comp:'Controle de capacidade',
+    acao:'Instalar kit de serviço da válvula solenóide ou substituir a bobina',
+    pecas:['Kit da válvula solenóide / bobina'],
+    risco:'Ciclo de carga e alívio errático', classe:'Operacional',
+    fontes:['TEC p.21','SZ-3040 p.48','SUL p.73','AC-VSD p.91']},
+  c_v_min:{lab:'Válvula de pressão mínima avariada', comp:'Controle',
+    acao:'Instalar kit de serviço da válvula de pressão mínima',
+    pecas:['Kit da válvula de pressão mínima'],
+    risco:'Separação ar/óleo comprometida e válvula de segurança atuando', classe:'Segurança',
+    fontes:['TEC p.21','AC-VSD p.91','SZ-3040 p.49']},
+  c_demanda:{lab:'Demanda da planta excede a capacidade do compressor', comp:'Sistema',
+    acao:'Quantificar o consumo real e avaliar máquina adicional ou redução de demanda; verificar usos inapropriados',
+    pecas:[], risco:'A máquina roda 100 % do tempo em carga e nunca recupera pressão',
+    classe:'Operacional', fontes:['TEC p.21','AC-VSD p.91','AC-110 p.52']},
+  c_vazamento:{lab:'Vazamentos na rede de distribuição', comp:'Rede',
+    acao:'Executar survey de vazamentos com etiquetamento e priorização por tamanho; reparar e verificar',
+    pecas:[], risco:'20–30 % da capacidade em planta mal mantida. Um furo de 1/8" custa ~US$ 2.000/ano',
+    classe:'Econômica', fontes:['[pub] DOE / CAGI','AC-VSD p.91','KAE p.78']},
+  c_reservatorio:{lab:'Reservatório subdimensionado ou diferencial de comutação curto', comp:'Sistema',
+    acao:'Ampliar o volume de reservatório ou alargar o diferencial carga/alívio (mínimo 0,6 bar)',
+    pecas:[], risco:'Mais de 2 ciclos por minuto reduz a vida de contatores, motor e válvulas',
+    classe:'Operacional', fontes:['KAE p.79','AC-VSD p.62','SZ-3040 p.48']},
+  c_perda_carga:{lab:'Perda de carga excessiva na rede / filtros de linha', comp:'Rede',
+    acao:'Substituir elementos de filtro de linha (acima de 0,6 bar) e revisar diâmetros da tubulação',
+    pecas:['Elementos de filtro de linha'],
+    risco:'Cada 2 psi de perda equivale a ~1 % da potência a plena carga', classe:'Econômica',
+    fontes:['SZ-5000 p.20','KAE p.79','[pub] Plant Engineering']},
+
+  c_rele:{lab:'Relé de sobrecarga atuado ou mal regulado', comp:'Painel elétrico',
+    acao:'Identificar e eliminar a causa do desarme; conferir a faixa de regulagem contra a corrente nominal',
+    pecas:[], risco:'Rearme repetido sem diagnóstico queima o motor', classe:'Segurança',
+    fontes:['SZ-3040 p.46','SUL p.72','TEC p.21']},
+  c_fase:{lab:'Falta de fase, inversão ou desequilíbrio', comp:'Alimentação elétrica',
+    acao:'Verificar fusíveis, contatores e a alimentação nas três fases; corrigir a sequência de fases',
+    pecas:[], risco:'Sobreaquecimento do motor e queima do enrolamento', classe:'Segurança',
+    fontes:['SZ-3040 p.46','MAM p.32-33','TEC p.21']},
+  c_queda_tensao:{lab:'Queda de tensão / instalação subdimensionada', comp:'Alimentação elétrica',
+    acao:'Redimensionar cabos considerando a distância ao transformador; conferir aterramento (≤ 10 Ω)',
+    pecas:[], risco:'Corrente elevada, chattering de contatores e desarmes intermitentes',
+    classe:'Segurança', fontes:['TEC p.6','SZ-3040 p.47','SZ-5000 p.13','NBR 5410']},
+  c_contatos:{lab:'Contatos gastos ou conexões frouxas', comp:'Painel elétrico',
+    acao:'Substituir contatores gastos e reapertar conexões com a máquina desenergizada',
+    pecas:['Contator(es)'], risco:'Aquecimento, desequilíbrio de corrente e incêndio no painel',
+    classe:'Segurança', fontes:['SZ-3040 p.46','SUL p.72','TEC p.6']},
+  c_rotacao:{lab:'Sentido de rotação invertido', comp:'Alimentação elétrica',
+    acao:'Inverter duas fases e reconferir', pecas:[],
+    risco:'Corrente anormal; em máquina com secador integrado, danifica o secador',
+    classe:'Segurança', fontes:['SZ-3040 p.47','MAM p.32','AC-VSD p.80']},
+  c_elemento:{lab:'Elemento compressor (unidade) avariado', comp:'Unidade compressora',
+    acao:'Encaminhar para peritagem de oficina (Form 03) — não liberar a máquina',
+    pecas:['Unidade compressora / kit de recuperação'],
+    risco:'Parada não programada e dano em cadeia ao motor e ao acionamento',
+    classe:'Operacional', fontes:['AC-VSD p.91-92','TEC p.21','SZ-3040 p.47']},
+  c_rolamento:{lab:'Rolamento do motor ou da unidade danificado', comp:'Acionamento',
+    acao:'Localizar a origem do ruído e programar substituição; medir vibração se houver instrumento',
+    pecas:['Rolamentos'], risco:'Travamento da unidade compressora com dano total',
+    classe:'Operacional', fontes:['SZ-3040 p.49','TEC p.21']},
+  c_correia:{lab:'Correias frouxas, gastas ou polias desalinhadas', comp:'Transmissão',
+    acao:'Retensionar ou substituir o jogo de correias e realinhar as polias',
+    pecas:['Jogo de correias'], risco:'Perda de vazão, ruído e desgaste do canal das polias',
+    classe:'Operacional', fontes:['SZ-3040 p.48-49','TEC p.8']},
+  c_ventilador:{lab:'Ventilador / hélice avariado', comp:'Sistema de refrigeração',
+    acao:'Substituir a hélice ou o motoventilador', pecas:['Hélice / motoventilador'],
+    risco:'Superaquecimento e desarme', classe:'Operacional', fontes:['SZ-3040 p.47 e p.49']},
+  c_dreno_res:{lab:'Dreno do reservatório inoperante ou mal ajustado', comp:'Drenagem',
+    acao:'Limpar o crivo da linha de dreno, testar a solenóide e ajustar intervalo e tempo de purga',
+    pecas:['Dreno automático / kit de reparo'],
+    risco:'Água acumulada no reservatório: corrosão interna e arraste para a rede',
+    classe:'Operacional', fontes:['SUL p.74','AC-VSD p.93','AC-110 p.52']},
+
+  /* ---- secador ---- */
+  c_sec_entrada:{lab:'Temperatura de entrada do ar muito alta', comp:'Secador',
+    acao:'Limpar o resfriador final do compressor e verificar a temperatura de descarga antes do secador',
+    pecas:[], risco:'PDP elevado e água na rede mesmo com o secador funcionando',
+    classe:'Operacional', fontes:['AC-VSD p.92','SZ-5000 p.25']},
+  c_sec_ambiente:{lab:'Ambiente quente demais para o secador', comp:'Secador',
+    acao:'Reduzir a temperatura da sala ou dutar o ar de refrigeração de local mais fresco',
+    pecas:[], risco:'Acima de 38 °C o pressostato de alta desarma o secador; acima de 45 °C a capacidade despenca',
+    classe:'Operacional', fontes:['SZ-5000 p.25','AC-VSD p.93']},
+  c_sec_condensador:{lab:'Condensador do secador sujo', comp:'Secador',
+    acao:'Escovar/soprar as aletas do condensador; incluir na rotina mensal',
+    pecas:[], risco:'Pressão de condensação alta → desarme e PDP elevado', classe:'Operacional',
+    fontes:['AC-VSD p.90 e p.93','SZ-5000 p.25']},
+  c_sec_gas:{lab:'Escassez de fluido refrigerante', comp:'Secador',
+    acao:'Pesquisar vazamento no circuito frigorífico e recarregar (serviço especializado)',
+    pecas:['Carga de refrigerante'], risco:'Secador ligado sem secar — água na rede sem alarme',
+    classe:'Operacional', fontes:['AC-VSD p.92-93']},
+  c_sec_dreno:{lab:'Sistema de purga do secador obstruído ou inoperante', comp:'Secador',
+    acao:'Abrir o registro agulha o necessário, desmontar e limpar a purga; conferir mangueira ≤ 4 m e Ø > 5/16", uma por secador',
+    pecas:['Kit de purga / solenóide'],
+    risco:'Condensado inunda o trocador e é arrastado para a rede', classe:'Operacional',
+    fontes:['SZ-5000 p.24-25']},
+  c_sec_gelo:{lab:'Congelamento do trocador do secador', comp:'Secador',
+    acao:'Desligar o secador imediatamente e chamar assistência — evaporação abaixo de −1 °C forma parede de gelo',
+    pecas:[], risco:'Obstrução total da passagem e dano ao trocador', classe:'Operacional',
+    fontes:['SZ-5000 p.25','AC-VSD p.92']},
+  c_sec_vent:{lab:'Ventilador do condensador ou pressostato de controle avariado', comp:'Secador',
+    acao:'Verificar circuito elétrico, rotor e motor do ventilador; substituir o pressostato se necessário',
+    pecas:['Motoventilador / pressostato'], risco:'Desarme por alta pressão e PDP elevado',
+    classe:'Operacional', fontes:['AC-VSD p.92','SZ-5000 p.25']},
+  c_sec_dim:{lab:'Secador subdimensionado para a vazão', comp:'Secador',
+    acao:'Comparar as plaquetas e dimensionar o secador para a vazão real e a temperatura de entrada',
+    pecas:[], risco:'PDP permanentemente acima do especificado — nenhuma manutenção resolve',
+    classe:'Operacional', fontes:['[pub] causa dominante de PDP alto','SZ-5000 p.25']},
+  c_filtro_linha:{lab:'Elementos coalescentes saturados', comp:'Tratamento',
+    acao:'Substituir os elementos coalescentes; trocar ao menos 1×/ano ou acima de 0,6 bar de perda',
+    pecas:['Elementos coalescentes'],
+    risco:'Perda de carga e contaminação do trocador do secador', classe:'Econômica',
+    fontes:['SZ-5000 p.20 e p.25']},
+
+  /* ---- pistão [pub] ---- */
+  c_pi_valvulas:{lab:'Válvulas de sucção/descarga com vazamento ou quebradas', comp:'Cabeçote',
+    acao:'Desmontar o cabeçote e substituir o jogo de válvulas/placa de válvulas',
+    pecas:['Jogo de válvulas / placa de válvulas','Juntas do cabeçote'],
+    risco:'Causa nº 1 de parada não programada em alternativo; evolui para superaquecimento do cilindro',
+    classe:'Operacional', fontes:['[pub] PROGNOST']},
+  c_pi_aneis:{lab:'Anéis de segmento desgastados', comp:'Cilindro',
+    acao:'Retificar/substituir cilindro e anéis conforme peritagem',
+    pecas:['Jogo de anéis','Juntas'],
+    risco:'Cadeia clássica: superaquecimento → agarramento do pistão → quebra de anéis → trinca do pistão',
+    classe:'Operacional', fontes:['[pub]']},
+  c_pi_ciclo:{lab:'Ciclo de trabalho excedido', comp:'Operação',
+    acao:'Reduzir a demanda, ampliar o reservatório ou migrar para máquina de regime contínuo',
+    pecas:[], risco:'Superaquecimento crônico, carbonização de válvulas e vida curta',
+    classe:'Operacional', fontes:['[pub]']},
+  c_pi_emulsao:{lab:'Óleo do cárter emulsionado', comp:'Lubrificação',
+    acao:'Trocar o óleo e corrigir o regime — operar quente o suficiente para não condensar',
+    pecas:['Óleo do cárter'], risco:'Perda de lubricidade e corrosão do virabrequim',
+    classe:'Operacional', fontes:['[pub]']},
+
+  /* ---- NR-13 ---- */
+  c_nr13:{lab:'Reservatório com pendência de NR-13', comp:'Vaso de pressão',
+    acao:'Encaminhar para inspeção por Profissional Habilitado (engenheiro com registro no CREA e ART)',
+    pecas:[], risco:'Não conformidade legal e risco de ruptura do vaso',
+    classe:'Segurança', fontes:['NR-13']}
+};
+
+/* ── SINTOMAS ──────────────────────────────────────────────────────────────
+   hip: hipóteses candidatas com as regras de evidência.
+        Regra 'med':  {t, op:'<'|'>'|'>=' , ref:<número>, p:<peso>}
+        Regra 'esc':  {t, v:'<opção exata>', p:<peso>}
+        Regra 'sn' :  {t, v:'sim'|'nao', p:<peso>}
+   Peso positivo confirma, negativo descarta. Placar: ≥3 confirmada,
+   1–2 provável, 0 em aberto, <0 descartada.                                   */
+const SINTOMAS = [
+ /* ══ PARAFUSO ══ */
+ {id:'pf_temp', fam:'parafuso', lab:'Superaquecimento / desarme por alta temperatura',
+  desc:'A máquina desarma por temperatura, ou opera acima da faixa normal.',
+  testes:['t_desc','t_amb','nivel_oleo','dt_cooler','termostatica','radiador','recirc','carenagem','dp_filtro_ol','p_trab','cor_oleo'],
+  hip:[
+   {c:'c_oleo_baixo', r:[{t:'nivel_oleo',v:'Abaixo do mínimo',p:4},{t:'nivel_oleo',v:'Entre mínimo e máximo',p:-3}]},
+   {c:'c_radiador', r:[{t:'radiador',v:'Obstruída',p:4},{t:'radiador',v:'Suja — passagem parcial',p:2},{t:'radiador',v:'Limpa',p:-3},{t:'dt_cooler',op:'<',ref:3,p:3}]},
+   {c:'c_termostatica', r:[{t:'termostatica',v:'Ambos igualmente quentes',p:4},{t:'termostatica',v:'Bypass frio e resfriador quente (normal)',p:-3},{t:'dt_cooler',op:'<',ref:3,p:1}]},
+   {c:'c_ambiente', r:[{t:'t_amb',op:'>',ref:40,p:4},{t:'t_amb',op:'<',ref:35,p:-2},{t:'recirc',v:'sim',p:3},{t:'carenagem',v:'nao',p:1}]},
+   {c:'c_carenagem', r:[{t:'carenagem',v:'nao',p:4},{t:'carenagem',v:'sim',p:-3}]},
+   {c:'c_filtro_oleo', r:[{t:'dp_filtro_ol',op:'>',ref:1.3,p:4},{t:'dp_filtro_ol',op:'<',ref:1.0,p:-2}]},
+   {c:'c_press_alta', r:[{t:'p_trab',op:'>',ref:9,p:2}]},
+   {c:'c_oleo_oxidado', r:[{t:'cor_oleo',v:'Escuro / com verniz',p:3},{t:'t_desc',op:'>',ref:95,p:1},{t:'cor_oleo',v:'Âmbar claro (normal)',p:-2}]},
+   {c:'c_ventilador', r:[{t:'t_desc',op:'>',ref:105,p:1}]},
+   {c:'c_elemento', r:[{t:'t_desc',op:'>',ref:110,p:1}]}
+  ]},
+
+ {id:'pf_semar', fam:'parafuso', lab:'Não produz ar / pressão abaixo do normal / perdeu rendimento',
+  desc:'A máquina roda mas não entrega vazão ou não sobe a pressão da rede.',
+  testes:['teste_corrente','dp_filtro_ar','p_trab','p_rede','valv_adm','mang_aliv','solenoide','v_min','vazam_ar','dp_sep','corrente','pi_correia'],
+  hip:[
+   {c:'c_vazamento', r:[{t:'teste_corrente',v:'Corrente próxima da nominal em plena carga (máquina OK)',p:4},{t:'vazam_ar',v:'Muitos / significativos',p:3},{t:'vazam_ar',v:'Nenhum',p:-2}]},
+   {c:'c_demanda', r:[{t:'teste_corrente',v:'Corrente próxima da nominal em plena carga (máquina OK)',p:3},{t:'p_rede',op:'<',ref:5,p:1}]},
+   {c:'c_filtro_ar', r:[{t:'dp_filtro_ar',v:'Totalmente vermelho',p:4},{t:'dp_filtro_ar',v:'Parcialmente vermelho',p:2},{t:'dp_filtro_ar',v:'Verde / livre',p:-3}]},
+   {c:'c_valv_adm', r:[{t:'valv_adm',v:'Não abre / abre parcialmente',p:4},{t:'valv_adm',v:'Abre e fecha normalmente',p:-3},{t:'teste_corrente',v:'Corrente bem abaixo da nominal',p:2}]},
+   {c:'c_mang_aliv', r:[{t:'mang_aliv',v:'Desconectada',p:4},{t:'mang_aliv',v:'Rompida',p:4},{t:'mang_aliv',v:'Íntegra e conectada',p:-3}]},
+   {c:'c_solenoide', r:[{t:'solenoide',v:'Bobina queimada',p:4},{t:'solenoide',v:'Orifício obstruído',p:3},{t:'solenoide',v:'Atua corretamente',p:-2}]},
+   {c:'c_v_min', r:[{t:'v_min',v:'Não retém (reservatório despressuriza)',p:4},{t:'v_min',v:'Opera normalmente',p:-2}]},
+   {c:'c_separador', r:[{t:'dp_sep',op:'>',ref:1.0,p:3},{t:'dp_sep',op:'<',ref:0.5,p:-2}]},
+   {c:'c_correia', r:[{t:'pi_correia',v:'Frouxa / patinando',p:4},{t:'pi_correia',v:'Gasta ou vitrificada',p:2},{t:'pi_correia',v:'Tensão e alinhamento OK',p:-2}]},
+   {c:'c_elemento', r:[{t:'teste_corrente',v:'Corrente bem abaixo da nominal',p:2},{t:'corrente',op:'<',ref:1,p:0}]}
+  ]},
+
+ {id:'pf_oleo_ar', fam:'parafuso', lab:'Consumo excessivo de óleo / óleo arrastado para a rede',
+  desc:'Reposição de óleo frequente, óleo na tubulação ou no produto do cliente.',
+  testes:['dp_sep','nivel_oleo','linha_ret','p_trab','cor_oleo','t_desc','ciclos_min'],
+  hip:[
+   {c:'c_sep_rompido', r:[{t:'dp_sep',op:'<',ref:0.3,p:4},{t:'dp_sep',op:'>',ref:0.8,p:-3}]},
+   {c:'c_linha_ret', r:[{t:'linha_ret',v:'Obstruída / crivo sujo',p:5},{t:'linha_ret',v:'Desobstruída',p:-3}]},
+   {c:'c_oleo_alto', r:[{t:'nivel_oleo',v:'Acima do máximo',p:5},{t:'nivel_oleo',v:'Entre mínimo e máximo',p:-2}]},
+   {c:'c_press_baixa', r:[{t:'p_trab',op:'<',ref:3.4,p:4}]},
+   {c:'c_separador', r:[{t:'dp_sep',op:'>',ref:1.0,p:3}]},
+   {c:'c_oleo_oxidado', r:[{t:'cor_oleo',v:'Escuro / com verniz',p:3},{t:'t_desc',op:'>',ref:95,p:2}]},
+   {c:'c_reservatorio', r:[{t:'ciclos_min',op:'>',ref:2,p:3}]}
+  ]},
+
+ {id:'pf_valv_seg', fam:'parafuso', lab:'Válvula de segurança abrindo / pressão alta / não alivia',
+  desc:'A válvula de segurança dispara, ou a máquina não alivia e a pressão sobe.',
+  testes:['dp_sep','v_min','valv_adm','solenoide','p_trab','alarme_ihm'],
+  hip:[
+   {c:'c_separador', r:[{t:'dp_sep',op:'>',ref:1.0,p:4},{t:'dp_sep',op:'<',ref:0.5,p:-2}]},
+   {c:'c_v_min', r:[{t:'v_min',v:'Travada',p:4},{t:'v_min',v:'Opera normalmente',p:-2}]},
+   {c:'c_adm_travada', r:[{t:'valv_adm',v:'Travada aberta',p:5},{t:'valv_adm',v:'Abre e fecha normalmente',p:-2}]},
+   {c:'c_solenoide', r:[{t:'solenoide',v:'Bobina queimada',p:3},{t:'solenoide',v:'Orifício obstruído',p:3}]},
+   {c:'c_press_alta', r:[{t:'p_trab',op:'>',ref:9,p:3}]}
+  ]},
+
+ {id:'pf_naopart', fam:'parafuso', lab:'Não parte / não liga',
+  desc:'A máquina não responde ao comando de partida.',
+  testes:['alarme_ihm','rele_sobre','contatores','tensao_part','desbal','rotacao','t_desc'],
+  hip:[
+   {c:'c_rele', r:[{t:'rele_sobre',v:'Atuado',p:5},{t:'rele_sobre',v:'Regulado corretamente e não atuado',p:-3},{t:'alarme_ihm',v:'Sobrecarga / corrente',p:3}]},
+   {c:'c_fase', r:[{t:'alarme_ihm',v:'Falta ou inversão de fase',p:5},{t:'desbal',op:'>',ref:10,p:3}]},
+   {c:'c_contatos', r:[{t:'contatores',v:'Contatos gastos / com marcas',p:3},{t:'contatores',v:'Conexões frouxas ou aquecidas',p:4},{t:'contatores',v:'Bons',p:-2}]},
+   {c:'c_queda_tensao', r:[{t:'tensao_part',op:'>',ref:10,p:4},{t:'tensao_part',op:'<',ref:6,p:-2}]},
+   {c:'c_radiador', r:[{t:'alarme_ihm',v:'Alta temperatura',p:2},{t:'t_desc',op:'>',ref:100,p:2}]}
+  ]},
+
+ {id:'pf_corrente', fam:'parafuso', lab:'Corrente alta / desarme do térmico / consumo de energia elevado',
+  desc:'Corrente acima da nominal, térmico desarmando ou conta de energia fora do padrão.',
+  testes:['corrente','desbal','tensao_part','p_trab','dp_sep','dp_filtro_ar','rotacao','contatores','h_total','h_carga'],
+  hip:[
+   {c:'c_press_alta', r:[{t:'p_trab',op:'>',ref:9,p:4}]},
+   {c:'c_separador', r:[{t:'dp_sep',op:'>',ref:1.0,p:4},{t:'dp_sep',op:'<',ref:0.5,p:-2}]},
+   {c:'c_queda_tensao', r:[{t:'tensao_part',op:'>',ref:10,p:4}]},
+   {c:'c_fase', r:[{t:'desbal',op:'>',ref:10,p:4},{t:'desbal',op:'<',ref:5,p:-2}]},
+   {c:'c_rotacao', r:[{t:'rotacao',v:'Invertido',p:5},{t:'rotacao',v:'Correto',p:-3}]},
+   {c:'c_contatos', r:[{t:'contatores',v:'Conexões frouxas ou aquecidas',p:3}]},
+   {c:'c_filtro_ar', r:[{t:'dp_filtro_ar',v:'Totalmente vermelho',p:2}]},
+   {c:'c_elemento', r:[{t:'corrente',op:'>',ref:1,p:0}]}
+  ]},
+
+ {id:'pf_ciclo', fam:'parafuso', lab:'Ciclos de carga/alívio muito rápidos',
+  desc:'A máquina carrega e alivia várias vezes por minuto.',
+  testes:['ciclos_min','volume_res','p_trab','p_rede','dp_sec','vazam_ar'],
+  hip:[
+   {c:'c_reservatorio', r:[{t:'ciclos_min',op:'>',ref:2,p:5},{t:'ciclos_min',op:'<',ref:2,p:-3}]},
+   {c:'c_perda_carga', r:[{t:'dp_sec',op:'>',ref:0.6,p:4}]},
+   {c:'c_demanda', r:[{t:'p_rede',op:'<',ref:5,p:2}]}
+  ]},
+
+ {id:'pf_ruido', fam:'parafuso', lab:'Ruído ou vibração anormal',
+  desc:'Ruído novo, vibração ou trepidação da máquina.',
+  testes:['pi_correia','vazam_ar','t_desc','corrente','nivel_oleo'],
+  hip:[
+   {c:'c_rolamento', r:[{t:'t_desc',op:'>',ref:100,p:1},{t:'corrente',op:'>',ref:1,p:0}]},
+   {c:'c_correia', r:[{t:'pi_correia',v:'Frouxa / patinando',p:5},{t:'pi_correia',v:'Polias desalinhadas',p:4},{t:'pi_correia',v:'Tensão e alinhamento OK',p:-3}]},
+   {c:'c_ventilador', r:[{t:'t_desc',op:'>',ref:100,p:1}]},
+   {c:'c_vazamento', r:[{t:'vazam_ar',v:'Muitos / significativos',p:3}]},
+   {c:'c_elemento', r:[{t:'nivel_oleo',v:'Abaixo do mínimo',p:1}]}
+  ]},
+
+ {id:'pf_agua', fam:'parafuso', lab:'Água / condensado no reservatório ou na rede',
+  desc:'Água saindo nos pontos de uso ou acumulada no reservatório.',
+  testes:['dreno_sec','pdp','t_ent_sec','cor_oleo','t_desc','dim_sec'],
+  hip:[
+   {c:'c_dreno_res', r:[{t:'dreno_sec',v:'Não purga',p:5},{t:'dreno_sec',v:'Registro agulha fechado',p:4},{t:'dreno_sec',v:'Purga normalmente',p:-2}]},
+   {c:'c_sec_entrada', r:[{t:'t_ent_sec',op:'>',ref:40,p:4},{t:'pdp',op:'>',ref:10,p:2}]},
+   {c:'c_sec_dim', r:[{t:'dim_sec',v:'Secador menor que o compressor',p:5},{t:'dim_sec',v:'Secador igual ou maior',p:-2}]},
+   {c:'c_agua_oleo', r:[{t:'cor_oleo',v:'Leitoso (água)',p:5},{t:'t_desc',op:'<',ref:70,p:2}]}
+  ]},
+
+ /* ══ PISTÃO ══ (sem manual no parque — regras marcadas [pub]) */
+ {id:'pi_pressao', fam:'pistao', lab:'Não atinge a pressão / demora demais para encher',
+  desc:'O compressor roda mas não alcança a pressão de corte, ou leva muito mais tempo que o normal.',
+  testes:['pi_aneis','pi_valvulas','dp_filtro_ar','vazam_ar','pi_correia','p_rede','corrente'],
+  hip:[
+   {c:'c_pi_valvulas', r:[{t:'pi_valvulas',v:'Um bolsão nitidamente mais quente',p:5},{t:'pi_aneis',v:'Demora muito mais que o normal',p:3},{t:'pi_valvulas',v:'Uniformes',p:-2}]},
+   {c:'c_pi_aneis', r:[{t:'pi_aneis',v:'Não atinge a pressão',p:4},{t:'pi_aneis',v:'Atinge a pressão no tempo esperado',p:-3}]},
+   {c:'c_filtro_ar', r:[{t:'dp_filtro_ar',v:'Totalmente vermelho',p:4},{t:'dp_filtro_ar',v:'Verde / livre',p:-2}]},
+   {c:'c_vazamento', r:[{t:'vazam_ar',v:'Muitos / significativos',p:4},{t:'vazam_ar',v:'Nenhum',p:-2}]},
+   {c:'c_correia', r:[{t:'pi_correia',v:'Frouxa / patinando',p:4},{t:'pi_correia',v:'Tensão e alinhamento OK',p:-2}]}
+  ]},
+
+ {id:'pi_temp', fam:'pistao', lab:'Superaquecimento do cabeçote / cilindro',
+  desc:'Cabeçote muito quente, cheiro de óleo queimado, parada por proteção térmica.',
+  testes:['pi_valvulas','pi_ciclo','t_amb','pi_carter','pi_correia','recirc'],
+  hip:[
+   {c:'c_pi_valvulas', r:[{t:'pi_valvulas',v:'Um bolsão nitidamente mais quente',p:5},{t:'pi_valvulas',v:'Uniformes',p:-2}]},
+   {c:'c_pi_ciclo', r:[{t:'pi_ciclo',op:'>',ref:75,p:4},{t:'pi_ciclo',op:'<',ref:60,p:-2}]},
+   {c:'c_ambiente', r:[{t:'t_amb',op:'>',ref:40,p:4},{t:'recirc',v:'sim',p:3}]},
+   {c:'c_pi_aneis', r:[{t:'pi_carter',v:'Com limalha',p:3}]}
+  ]},
+
+ {id:'pi_oleo', fam:'pistao', lab:'Consumo de óleo / óleo na rede',
+  desc:'Reposição frequente de óleo no cárter ou óleo aparecendo nos pontos de uso.',
+  testes:['pi_carter','pi_aneis','pi_ciclo','dp_filtro_ar'],
+  hip:[
+   {c:'c_pi_aneis', r:[{t:'pi_aneis',v:'Demora muito mais que o normal',p:4},{t:'pi_carter',v:'Com limalha',p:3}]},
+   {c:'c_pi_emulsao', r:[{t:'pi_carter',v:'Emulsionado / leitoso',p:5},{t:'pi_ciclo',op:'<',ref:30,p:2}]},
+   {c:'c_oleo_alto', r:[{t:'pi_carter',v:'Normal',p:-1}]},
+   {c:'c_filtro_ar', r:[{t:'dp_filtro_ar',v:'Totalmente vermelho',p:3}]}
+  ]},
+
+ {id:'pi_ruido', fam:'pistao', lab:'Batida / ruído anormal',
+  desc:'Batida metálica no cárter ou no cilindro.',
+  testes:['pi_carter','pi_correia','pi_valvulas','pi_aneis'],
+  hip:[
+   {c:'c_pi_aneis', r:[{t:'pi_carter',v:'Com limalha',p:5},{t:'pi_aneis',v:'Não atinge a pressão',p:2}]},
+   {c:'c_pi_valvulas', r:[{t:'pi_valvulas',v:'Um bolsão nitidamente mais quente',p:3}]},
+   {c:'c_correia', r:[{t:'pi_correia',v:'Polias desalinhadas',p:4},{t:'pi_correia',v:'Frouxa / patinando',p:3}]},
+   {c:'c_pi_emulsao', r:[{t:'pi_carter',v:'Emulsionado / leitoso',p:2}]}
+  ]},
+
+ /* ══ SECADOR ══ */
+ {id:'sec_umidade', fam:'secador', lab:'Umidade na rede / ponto de orvalho alto',
+  desc:'Água nos pontos de uso mesmo com o secador ligado.',
+  testes:['pdp','t_ent_sec','t_amb','cond_sec','vent_sec','dreno_sec','dim_sec','dp_sec'],
+  hip:[
+   {c:'c_sec_entrada', r:[{t:'t_ent_sec',op:'>',ref:40,p:5},{t:'t_ent_sec',op:'<',ref:35,p:-2}]},
+   {c:'c_sec_ambiente', r:[{t:'t_amb',op:'>',ref:40,p:4},{t:'t_amb',op:'<',ref:35,p:-2}]},
+   {c:'c_sec_condensador', r:[{t:'cond_sec',v:'Obstruído',p:5},{t:'cond_sec',v:'Sujo',p:3},{t:'cond_sec',v:'Limpo',p:-2}]},
+   {c:'c_sec_vent', r:[{t:'vent_sec',v:'Não liga',p:5},{t:'vent_sec',v:'Liga intermitente',p:3},{t:'vent_sec',v:'Liga normalmente',p:-2}]},
+   {c:'c_sec_gas', r:[{t:'pdp',op:'>',ref:15,p:2},{t:'cond_sec',v:'Limpo',p:1},{t:'vent_sec',v:'Liga normalmente',p:1}]},
+   {c:'c_sec_dreno', r:[{t:'dreno_sec',v:'Não purga',p:5},{t:'dreno_sec',v:'Registro agulha fechado',p:4},{t:'dreno_sec',v:'Purga normalmente',p:-2}]},
+   {c:'c_sec_dim', r:[{t:'dim_sec',v:'Secador menor que o compressor',p:5},{t:'dim_sec',v:'Secador igual ou maior',p:-2}]},
+   {c:'c_filtro_linha', r:[{t:'dp_sec',op:'>',ref:0.6,p:3}]}
+  ]},
+
+ {id:'sec_dreno', fam:'secador', lab:'Dreno não purga ou purga continuamente',
+  desc:'Purga do secador travada fechada (inunda) ou travada aberta (perde ar).',
+  testes:['dreno_sec','pdp','dp_sec'],
+  hip:[
+   {c:'c_sec_dreno', r:[{t:'dreno_sec',v:'Não purga',p:5},{t:'dreno_sec',v:'Registro agulha fechado',p:5},{t:'dreno_sec',v:'Purga contínua (perde ar)',p:4},{t:'dreno_sec',v:'Purga normalmente',p:-3}]},
+   {c:'c_vazamento', r:[{t:'dreno_sec',v:'Purga contínua (perde ar)',p:3}]}
+  ]},
+
+ {id:'sec_desarme', fam:'secador', lab:'Secador desarma / desliga sem motivo aparente',
+  desc:'O secador para sozinho ou apresenta alarme.',
+  testes:['t_amb','cond_sec','vent_sec','tensao_part','pdp'],
+  hip:[
+   {c:'c_sec_ambiente', r:[{t:'t_amb',op:'>',ref:38,p:5},{t:'t_amb',op:'<',ref:35,p:-2}]},
+   {c:'c_sec_condensador', r:[{t:'cond_sec',v:'Obstruído',p:5},{t:'cond_sec',v:'Sujo',p:3},{t:'cond_sec',v:'Limpo',p:-2}]},
+   {c:'c_sec_vent', r:[{t:'vent_sec',v:'Não liga',p:5},{t:'vent_sec',v:'Liga intermitente',p:3}]},
+   {c:'c_queda_tensao', r:[{t:'tensao_part',op:'>',ref:10,p:4}]}
+  ]},
+
+ {id:'sec_gelo', fam:'secador', lab:'Congelamento / perda de carga alta no secador',
+  desc:'Perda de pressão significativa através do secador, tubulação gelada.',
+  testes:['pdp','dp_sec','dp_filtro_ar','cond_sec'],
+  hip:[
+   {c:'c_sec_gelo', r:[{t:'pdp',op:'<',ref:-1,p:5},{t:'dp_sec',op:'>',ref:0.6,p:2}]},
+   {c:'c_filtro_linha', r:[{t:'dp_sec',op:'>',ref:0.6,p:4},{t:'dp_sec',op:'<',ref:0.3,p:-2}]}
+  ]},
+
+ /* ══ REDE / SISTEMA ══ */
+ {id:'rd_pressao', fam:'rede', lab:'Pressão insuficiente no ponto de uso (compressor aparentemente OK)',
+  desc:'A máquina entrega a pressão mas o ponto de uso não recebe.',
+  testes:['p_trab','p_rede','dp_sec','vazam_ar','teste_corrente','dp_filtro_ar'],
+  hip:[
+   {c:'c_perda_carga', r:[{t:'dp_sec',op:'>',ref:0.6,p:5},{t:'dp_sec',op:'<',ref:0.3,p:-2}]},
+   {c:'c_vazamento', r:[{t:'vazam_ar',v:'Muitos / significativos',p:5},{t:'vazam_ar',v:'Nenhum',p:-3},{t:'teste_corrente',v:'Corrente próxima da nominal em plena carga (máquina OK)',p:2}]},
+   {c:'c_demanda', r:[{t:'teste_corrente',v:'Corrente próxima da nominal em plena carga (máquina OK)',p:3}]},
+   {c:'c_filtro_linha', r:[{t:'dp_sec',op:'>',ref:0.4,p:2}]}
+  ]},
+
+ {id:'rd_vazamento', fam:'rede', lab:'Compressor rodando demais / suspeita de vazamento',
+  desc:'A máquina praticamente não descansa, inclusive com a produção parada.',
+  testes:['vazam_ar','h_total','h_carga','ciclos_min','p_trab','dreno_sec'],
+  hip:[
+   {c:'c_vazamento', r:[{t:'vazam_ar',v:'Muitos / significativos',p:5},{t:'vazam_ar',v:'Poucos / pequenos',p:2},{t:'vazam_ar',v:'Nenhum',p:-3}]},
+   {c:'c_dreno_res', r:[{t:'dreno_sec',v:'Purga contínua (perde ar)',p:4}]},
+   {c:'c_demanda', r:[{t:'ciclos_min',op:'<',ref:1,p:2}]},
+   {c:'c_press_alta', r:[{t:'p_trab',op:'>',ref:9,p:3}]}
+  ]}
+];
+
+/* Bloco de triagem NR-13 — sempre disponível, independente do sintoma. */
+const NR13_TESTES = ['nr_pmta','nr_vol','nr_ext','nr_prontuario','nr_valv'];
+
+const FAMILIAS = [
+  {id:'parafuso', lab:'Compressor de parafuso', ico:'🌀'},
+  {id:'pistao',   lab:'Compressor de pistão',   ico:'⚙️'},
+  {id:'secador',  lab:'Secador / tratamento',   ico:'💧'},
+  {id:'rede',     lab:'Rede e periféricos',     ico:'🔧'}
+];
+const CLASSES = ['Segurança','Meio ambiente','Operacional','Econômica'];
+const PRAZOS  = ['Imediato','7 dias','30 dias','Próxima preventiva'];
+
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTOR DE PDF — Gen 4: VETORIAL, sem html2canvas.
+   Por que mudou (ver §4.5 do estudo): a Gen 2 fatia um bitmap gigante a cada
+   297 mm (corte cego) e a Gen 3 captura folha a folha, mas ainda como imagem —
+   texto de 8 pt em JPEG 0,92 fica borrado, o arquivo fica grande, o cabeçalho
+   só existe na página 1 e canvas grande demais devolve PDF BRANCO no iOS.
+   Aqui o texto é desenhado direto no PDF: selecionável, nítido, arquivo pequeno,
+   cabeçalho e rodapé em TODAS as páginas, e -198 KB de carregamento (html2canvas
+   deixa de ser necessário). Só é viável porque o laudo tem estrutura previsível.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PW = 210, PH = 297, ML = 15, MR = 15, MTOP = 26, MBOT = 18;
+const COR = {
+  preto:'#1a1a1a', texto:'#222222', suave:'#666666', linha:'#d9d9d9',
+  fundoK:'#f4f4f4', laranja:'#f58220', laranja2:'#e85d1f',
+  ok:'#177245', at:'#b8860b', cr:'#b3261e'
+};
+function hx(h){ return [parseInt(h.substr(1,2),16), parseInt(h.substr(3,2),16), parseInt(h.substr(5,2),16)]; }
+
+/* As fontes padrão do jsPDF são WinAnsi (cp1252). Qualquer caractere fora
+   disso sai como lixo no PDF — foi o que aconteceu com "ΔT", que virou "”T"
+   na primeira bancada. S() traduz o que dá para traduzir e remove o resto.
+   Acentuação do português, °, ×, µ, ³ e · estão dentro do WinAnsi e passam. */
+const _MAPA_PDF = {'Δ':'Delta ','δ':'delta ','≤':'<=','≥':'>=','−':'-','–':'-','≈':'~',
+  'Ω':'ohm','→':'->','⚠':'!','✓':'v','★':'*','●':'-','↑':'^','↓':'v','⌀':'D','Ø':'D'};
+function S(t){
+  t = String(t==null ? '' : t);
+  var out = '';
+  for (var i=0; i<t.length; i++){
+    var c = t[i], cp = t.codePointAt(i);
+    if (cp > 0xFFFF){ i++; continue; }                 // emoji / pares substitutos
+    if (_MAPA_PDF[c] !== undefined){ out += _MAPA_PDF[c]; continue; }
+    if (cp < 32){ out += ' '; continue; }
+    if (cp < 256){ out += c; continue; }
+    if (c === '‘' || c === '’'){ out += "'"; continue; }
+    if (c === '“' || c === '”'){ out += '"'; continue; }
+    if (c === '—'){ out += '-'; continue; }
+    if (c === '…'){ out += '...'; continue; }
+    if (c === '€' || c === '•' || c === '‰'){ out += c; continue; } // já no cp1252
+    /* fora do WinAnsi e sem tradução: descarta em vez de imprimir lixo */
+  }
+  return out;
+}
+
+function Laudo(doc, meta){
+  this.d = doc; this.meta = meta; this.y = MTOP; this.figN = 0;
+  this._cabecalho();
+}
+Laudo.prototype._cabecalho = function(){
+  var d = this.d, m = this.meta, c;
+  try{ d.addImage(LOGO_DATAURL,'PNG', ML, 8, 11, 11); }catch(e){}
+  c = hx(COR.preto); d.setTextColor(c[0],c[1],c[2]);
+  d.setFont('helvetica','bold'); d.setFontSize(10);
+  d.text(S('PROPER COMPRESSORES'), ML+14, 12.5);
+  d.setFont('helvetica','normal'); d.setFontSize(7);
+  c = hx(COR.suave); d.setTextColor(c[0],c[1],c[2]);
+  d.text(S(String(m.subtitulo||'Laudo de diagnóstico em campo')), ML+14, 16.5);
+  d.setFontSize(7.5); c = hx(COR.texto); d.setTextColor(c[0],c[1],c[2]);
+  d.text(S(String(m.laudo||'')), PW-MR, 12.5, {align:'right'});
+  var linha2 = [m.cliente, m.equipamento].filter(Boolean).join(' · ');
+  d.setFontSize(7); c = hx(COR.suave); d.setTextColor(c[0],c[1],c[2]);
+  d.text(S(d.splitTextToSize(S(linha2), 90)[0]||''), PW-MR, 16.5, {align:'right'});
+  c = hx(COR.laranja); d.setDrawColor(c[0],c[1],c[2]); d.setLineWidth(0.9);
+  d.line(ML, 20.5, PW-MR, 20.5);
+  d.setLineWidth(0.2);
+};
+Laudo.prototype.novaPagina = function(){
+  this.d.addPage(); this.y = MTOP; this._cabecalho();
+};
+/* Reserva: se o bloco não cabe inteiro, vai para a próxima folha.
+   É o `break-inside: avoid` que o html2canvas nunca soube respeitar. */
+Laudo.prototype.reserva = function(h){
+  if (this.y + h > PH - MBOT){ this.novaPagina(); return true; }
+  return false;
+};
+Laudo.prototype.h1 = function(n, txt){
+  this.reserva(14);
+  var d = this.d, c = hx(COR.preto);
+  d.setFillColor(c[0],c[1],c[2]);
+  d.rect(ML, this.y, PW-ML-MR, 7, 'F');
+  d.setTextColor(255,255,255); d.setFont('helvetica','bold'); d.setFontSize(9);
+  d.text(S((n?n+'. ':'') + txt.toUpperCase()), ML+2.5, this.y+4.9);
+  this.y += 10;
+};
+Laudo.prototype.h2 = function(txt){
+  this.reserva(10);
+  var d = this.d, c = hx(COR.laranja2);
+  d.setTextColor(c[0],c[1],c[2]); d.setFont('helvetica','bold'); d.setFontSize(8);
+  d.text(S(txt), ML, this.y+3); this.y += 6;
+};
+Laudo.prototype.p = function(txt, opt){
+  opt = opt || {};
+  var d = this.d, larg = PW-ML-MR, c = hx(opt.cor || COR.texto);
+  d.setFont('helvetica', opt.bold ? 'bold' : 'normal');
+  d.setFontSize(opt.size || 8);
+  var linhas = d.splitTextToSize(S(String(txt||'')), larg);
+  for (var i=0; i<linhas.length; i++){
+    this.reserva(5);
+    d.setTextColor(c[0],c[1],c[2]);
+    d.setFont('helvetica', opt.bold ? 'bold' : 'normal');
+    d.setFontSize(opt.size || 8);
+    d.text(S(linhas[i]), ML, this.y+3.2); this.y += 4.2;
+  }
+  this.y += (opt.gap===0 ? 0 : 2);
+};
+/* Caixa de destaque do sumário executivo */
+Laudo.prototype.destaque = function(titulo, txt, cor){
+  var d = this.d, larg = PW-ML-MR;
+  d.setFont('helvetica','normal'); d.setFontSize(9);
+  var linhas = d.splitTextToSize(S(String(txt||'')), larg-8);
+  var h = 9 + linhas.length*4.6 + 3;
+  this.reserva(h+2);
+  var cc = hx(cor||COR.laranja);
+  d.setFillColor(250,250,250); d.setDrawColor(cc[0],cc[1],cc[2]); d.setLineWidth(0.4);
+  d.rect(ML, this.y, larg, h, 'FD');
+  d.setFillColor(cc[0],cc[1],cc[2]); d.rect(ML, this.y, 1.6, h, 'F');
+  d.setTextColor(cc[0],cc[1],cc[2]); d.setFont('helvetica','bold'); d.setFontSize(7);
+  d.text(S(String(titulo||'').toUpperCase()), ML+5, this.y+5);
+  var ct = hx(COR.preto); d.setTextColor(ct[0],ct[1],ct[2]);
+  d.setFont('helvetica','normal'); d.setFontSize(9);
+  for (var i=0;i<linhas.length;i++) d.text(S(linhas[i]), ML+5, this.y+10.5+i*4.6);
+  d.setLineWidth(0.2);
+  this.y += h + 4;
+};
+/* Tabela chave/valor de 2 colunas */
+Laudo.prototype.kv = function(pares){
+  var d = this.d, larg = PW-ML-MR, kw = 46, i, alt;
+  for (i=0;i<pares.length;i++){
+    if (pares[i][1]===undefined || pares[i][1]===null || pares[i][1]==='') continue;
+    var vs = d.splitTextToSize(S(String(pares[i][1])), larg-kw-4);
+    alt = Math.max(5.4, vs.length*4+1.6);
+    this.reserva(alt);
+    var cf = hx(COR.fundoK), cl = hx(COR.linha);
+    d.setFillColor(cf[0],cf[1],cf[2]); d.setDrawColor(cl[0],cl[1],cl[2]);
+    d.rect(ML, this.y, kw, alt, 'FD');
+    d.rect(ML+kw, this.y, larg-kw, alt, 'D');
+    var ct = hx(COR.texto); d.setTextColor(ct[0],ct[1],ct[2]);
+    d.setFont('helvetica','bold'); d.setFontSize(7.5);
+    d.text(S(String(pares[i][0])), ML+2, this.y+3.8);
+    d.setFont('helvetica','normal');
+    for (var j=0;j<vs.length;j++) d.text(S(vs[j]), ML+kw+2, this.y+3.8+j*4);
+    this.y += alt;
+  }
+  this.y += 3;
+};
+/* Tabela com cabeçalho repetido em toda folha e "(continuação)" — a correção
+   direta do defeito "repete títulos" da genérica: o cabeçalho volta MARCADO. */
+Laudo.prototype.tabela = function(cols, larguras, linhas, opt){
+  opt = opt || {};
+  var d = this.d, self = this, cont = false;
+  /* A marca "(continuação)" vai na coluna MAIS LARGA, nunca na primeira:
+     numa coluna de 8 mm ("#") ela invadia a coluna vizinha. */
+  var colCont = larguras.indexOf(Math.max.apply(null, larguras));
+  function head(){
+    var c = hx('#2b2b2b');
+    d.setFillColor(c[0],c[1],c[2]);
+    d.rect(ML, self.y, PW-ML-MR, 6, 'F');
+    d.setTextColor(255,255,255); d.setFont('helvetica','bold'); d.setFontSize(7);
+    var x = ML;
+    for (var i=0;i<cols.length;i++){
+      d.text(S(cols[i] + (cont && i===colCont ? ' (continuação)' : '')), x+2, self.y+4);
+      x += larguras[i];
+    }
+    self.y += 6;
+  }
+  this.reserva(6+8); head();
+  for (var r=0; r<linhas.length; r++){
+    var cel = linhas[r], alturas = [], k;
+    d.setFont('helvetica','normal'); d.setFontSize(7.2);
+    var partes = [];
+    for (k=0;k<cel.length;k++){
+      var txt = (cel[k]===null||cel[k]===undefined) ? '' : String(cel[k]);
+      var ls = d.splitTextToSize(S(txt), larguras[k]-4);
+      partes.push(ls); alturas.push(ls.length);
+    }
+    var alt = Math.max(5.4, Math.max.apply(null, alturas)*3.7+2);
+    if (this.y + alt > PH - MBOT){ this.novaPagina(); cont = true; head(); }
+    var cl = hx(COR.linha); d.setDrawColor(cl[0],cl[1],cl[2]);
+    if (r % 2 === 1){ d.setFillColor(250,250,250); d.rect(ML, this.y, PW-ML-MR, alt, 'F'); }
+    var x2 = ML;
+    for (k=0;k<cel.length;k++){
+      d.rect(x2, this.y, larguras[k], alt, 'D');
+      var cor = COR.texto;
+      if (opt.statusCol === k){
+        var v = String(cel[k]||'');
+        if (/cr[íi]tico/i.test(v)) cor = COR.cr;
+        else if (/aten/i.test(v))  cor = COR.at;
+        else if (/^ok/i.test(v) || /conforme/i.test(v)) cor = COR.ok;
+      }
+      var cc = hx(cor); d.setTextColor(cc[0],cc[1],cc[2]);
+      d.setFont('helvetica', (opt.statusCol===k || opt.boldCol===k) ? 'bold' : 'normal');
+      d.setFontSize(7.2);
+      for (var j2=0;j2<partes[k].length;j2++) d.text(S(partes[k][j2]), x2+2, this.y+3.6+j2*3.7);
+      x2 += larguras[k];
+    }
+    this.y += alt;
+  }
+  this.y += 4;
+};
+/* Foto + legenda como bloco indivisível — legenda nunca se separa da figura. */
+Laudo.prototype.figuras = function(fotos){
+  var d = this.d, larg = PW-ML-MR, colW = (larg-6)/2, imgH = 52, i;
+  for (i=0; i<fotos.length; i+=2){
+    var par = fotos.slice(i, i+2);
+    var legAlt = 0, legs = [];
+    d.setFont('helvetica','normal'); d.setFontSize(6.6);
+    for (var k=0;k<par.length;k++){
+      var ls = d.splitTextToSize(S('Figura ' + (this.figN+k+1) + ' — ' + (par[k].legenda||'Registro fotográfico')), colW-2);
+      legs.push(ls); legAlt = Math.max(legAlt, ls.length*3.1);
+    }
+    var alt = imgH + legAlt + 4;
+    this.reserva(alt);
+    var x = ML;
+    for (var j=0;j<par.length;j++){
+      var cl = hx(COR.linha); d.setDrawColor(cl[0],cl[1],cl[2]);
+      d.rect(x, this.y, colW, imgH, 'D');
+      try{ if (par[j].dataUrl) d.addImage(par[j].dataUrl,'JPEG', x+0.7, this.y+0.7, colW-1.4, imgH-1.4); }catch(e){}
+      this.figN++;
+      var cs = hx(COR.suave); d.setTextColor(cs[0],cs[1],cs[2]);
+      d.setFont('helvetica','normal'); d.setFontSize(6.6);
+      for (var l=0;l<legs[j].length;l++) d.text(S(legs[j][l]), x, this.y+imgH+3.2+l*3.1);
+      x += colW + 6;
+    }
+    this.y += alt;
+  }
+};
+Laudo.prototype.assinaturas = function(sigs){
+  var d = this.d, larg = PW-ML-MR, colW = (larg-8)/2, i;
+  for (i=0;i<sigs.length;i+=2){
+    var par = sigs.slice(i,i+2), alt = 30;
+    this.reserva(alt+4);
+    var x = ML;
+    for (var j=0;j<par.length;j++){
+      var s = par[j];
+      if (s.dataUrl){ try{ d.addImage(s.dataUrl,'PNG', x+4, this.y+2, colW-8, 16); }catch(e){} }
+      var cl = hx(COR.suave); d.setDrawColor(cl[0],cl[1],cl[2]);
+      d.line(x, this.y+20, x+colW, this.y+20);
+      var ct = hx(COR.texto); d.setTextColor(ct[0],ct[1],ct[2]);
+      d.setFont('helvetica','bold'); d.setFontSize(7.5);
+      d.text(S(String(s.nome||'')), x, this.y+24);
+      var cs = hx(COR.suave); d.setTextColor(cs[0],cs[1],cs[2]);
+      d.setFont('helvetica','normal'); d.setFontSize(6.8);
+      d.text(S(String(s.papel||'')), x, this.y+27.5);
+      x += colW + 8;
+    }
+    this.y += alt;
+  }
+};
+/* Rodapé só no fim, quando o total de páginas é conhecido. */
+Laudo.prototype.fecharRodapes = function(){
+  var d = this.d, total = d.getNumberOfPages(), m = this.meta;
+  for (var p=1; p<=total; p++){
+    d.setPage(p);
+    var cl = hx(COR.linha); d.setDrawColor(cl[0],cl[1],cl[2]); d.setLineWidth(0.2);
+    d.line(ML, PH-MBOT+6, PW-MR, PH-MBOT+6);
+    var cs = hx(COR.suave); d.setTextColor(cs[0],cs[1],cs[2]);
+    d.setFont('helvetica','normal'); d.setFontSize(6.5);
+    d.text(S('propercompressores.com.br · ' + (m.laudo||'') + ' · ' + (m.data||'')), ML, PH-MBOT+10);
+    d.text(S('Responsável técnico: ' + (m.tecnico||'—')), ML, PH-MBOT+13);
+    d.text(S('Página ' + p + ' de ' + total), PW-MR, PH-MBOT+10, {align:'right'});
+    d.text(S(KB_VERSAO), PW-MR, PH-MBOT+13, {align:'right'});
+  }
+};
+
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTOR DE DIAGNÓSTICO + UI + CONTRATO
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
+const TIPO_FORM = 'diagnostico';
+const PCF_PIPELINE_URL = 'https://grupotap.github.io/ProperTech/index.html';
+
+function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, google_credential: window._GC || '' })); }
+async function gcFetchJson(payload, tentativas){
+  var n = tentativas || 2, ultimo = null;
+  for (var i=1; i<=n; i++){
+    try{
+      var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      var t = await r.text();
+      try { return JSON.parse(t); } catch(e){ ultimo = new Error('servidor respondeu página de erro (não-JSON)'); }
+    }catch(e){ ultimo = e; }
+    if (i < n) await new Promise(function(res){ setTimeout(res, 700*i); });
+  }
+  throw (ultimo || new Error('falha de rede'));
+}
+function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function q(s){ return document.querySelector(s); }
+function val(id){ var e=document.getElementById(id); return e ? e.value.trim() : ''; }
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2600); }
+
+/* ── estado ─────────────────────────────────────────────────────────────── */
+var _osId='', _tarefaId='', _origem='', _retornoUrl='', _draftId='', _formUid=pgpUid();
+var _maquinas=[], _enviado=false, _pdfPendente=false, _sending=false, _psHasPending=false;
+var state = {
+  ident:{}, familia:'', sintomaId:'', tipoIntervencao:'Diagnóstico pontual (snapshot)',
+  resp:{},           // teste_id -> valor
+  fotos:[],          // {photoId, legenda, status, url, foto_uid, client_ts}
+  diagnostico:{},    // {causaId, texto, criticidade}
+  recomendacoes:[],  // {causaId, acao, classe, prazo, risco, pecas}
+  obs:'', nr13:{}, assinaturas:[]
+};
+var _sigBySlot = {};
+
+/* ── MOTOR: placar de hipóteses ─────────────────────────────────────────── */
+function sintomaAtual(){ return SINTOMAS.filter(function(s){ return s.id===state.sintomaId; })[0] || null; }
+
+function statusMedicao(tid, v){
+  var t = TESTES[tid]; if (!t || !t.lim || v==='' || v==null) return '';
+  var n = parseFloat(String(v).replace(',','.')); if (isNaN(n)) return '';
+  var L = t.lim;
+  if (L.dir === 'acima') return n >= L.cr ? 'Crítico' : (n >= L.at ? 'Atenção' : 'OK');
+  return n <= L.cr ? 'Crítico' : (n <= L.at ? 'Atenção' : 'OK');
+}
+function _casa(regra){
+  var v = state.resp[regra.t];
+  if (v === undefined || v === '' || v === null) return false;
+  if (regra.op){
+    var n = parseFloat(String(v).replace(',','.')); if (isNaN(n)) return false;
+    if (regra.op === '<')  return n <  regra.ref;
+    if (regra.op === '>')  return n >  regra.ref;
+    if (regra.op === '<=') return n <= regra.ref;
+    if (regra.op === '>=') return n >= regra.ref;
+    return false;
+  }
+  return String(v) === String(regra.v);
+}
+function placar(){
+  var s = sintomaAtual(); if (!s) return [];
+  return s.hip.map(function(h){
+    var pontos=0, prova=[], falta=[];
+    h.r.forEach(function(rg){
+      if (rg.p === 0) return;                       // regra informativa
+      if (_casa(rg)){
+        pontos += rg.p;
+        var T = TESTES[rg.t];
+        var txt = T.lab + ': ' + rotuloResp(rg.t);
+        if (rg.p > 0) prova.push(txt); else prova.push('descarta — ' + txt);
+      } else if (state.resp[rg.t]===undefined || state.resp[rg.t]==='') {
+        if (rg.p > 0 && falta.indexOf(TESTES[rg.t].lab) < 0) falta.push(TESTES[rg.t].lab);
+      }
+    });
+    var st = pontos >= 3 ? 'confirmada' : (pontos >= 1 ? 'provavel' : (pontos < 0 ? 'descartada' : 'aberta'));
+    return { causaId:h.c, causa:CAUSAS[h.c], pontos:pontos, status:st, prova:prova, falta:falta };
+  }).sort(function(a,b){ return b.pontos - a.pontos; });
+}
+function rotuloResp(tid){
+  var t = TESTES[tid], v = state.resp[tid];
+  if (v===undefined || v==='') return '—';
+  if (t.tipo === 'med') return v + ' ' + (t.un||'');
+  if (t.tipo === 'sn')  return v === 'sim' ? 'Sim' : (v === 'nao' ? 'Não' : 'N.A.');
+  return String(v);
+}
+
+/* ── UI ─────────────────────────────────────────────────────────────────── */
+var _passo = 1;
+const PASSOS = ['Triagem','Verificações','Sistema','Conclusão'];
+
+function irPara(n){
+  if (n===2 && !state.sintomaId){ toast('Escolha o sintoma principal para continuar'); return; }
+  _passo = Math.max(1, Math.min(4, n));
+  render(); window.scrollTo(0,0); scheduleSave();
+}
+function render(){
+  document.getElementById('steps').innerHTML = PASSOS.map(function(p,i){
+    return '<div class="stp '+(i+1===_passo?'on':(i+1<_passo?'done':''))+'" onclick="irPara('+(i+1)+')">'+
+           '<span class="n">'+(i+1<_passo?'✓':(i+1))+'</span>'+esc(p)+'</div>';
+  }).join('');
+  var app = document.getElementById('app');
+  if (_passo===1) app.innerHTML = telaTriagem();
+  else if (_passo===2) app.innerHTML = telaVerificacoes();
+  else if (_passo===3) app.innerHTML = telaSistema();
+  else app.innerHTML = telaConclusao();
+  document.getElementById('dock').innerHTML =
+    (_passo>1 ? '<button class="btn-sec" onclick="irPara('+(_passo-1)+')">‹ Voltar</button>' : '') +
+    (_passo<4 ? '<button class="fab" onclick="irPara('+(_passo+1)+')">Avançar ›</button>'
+              : '<button class="fab" onclick="_comLoadingBtn_(this, enviar, \'Enviando…\')">✓ Concluir laudo</button>');
+  hydrate();
+}
+
+function telaTriagem(){
+  var i = state.ident;
+  return card('Identificação', ''
+    + campo('f_cliente','Cliente', i.cliente||'')
+    + campo('f_os','Nº da OS', i.os||'')
+    + (_maquinas.length>1 ? '<label>Máquina da OS</label><select id="f_maqSel" onchange="selMaquina(this.value)"><option value="">— selecione —</option>'
+        + _maquinas.map(function(m,ix){ return '<option value="'+ix+'">'+esc(maqLabel(m))+'</option>'; }).join('') + '</select>' : '')
+    + '<div class="row2">' + campo('f_marca','Marca', i.marca||'') + campo('f_modelo','Modelo', i.modelo||'') + '</div>'
+    + '<div class="row2">' + campo('f_serie','Nº de série', i.serie||'') + campo('f_pot','Potência (CV/kW)', i.pot||'') + '</div>'
+    + '<div class="row2">' + campo('f_data','Data', i.data||'', 'date') + campo('f_tecnico','Técnico responsável', i.tecnico||'') + '</div>'
+  )
+  + card('Contexto do atendimento', ''
+    + '<label>Tipo de intervenção</label>'
+    + pills('tipoInt', ['Diagnóstico pontual (snapshot)','Avaliação de sistema (com registro contínuo)'], state.tipoIntervencao)
+    + '<div class="hint">Uma visita de 1–2 h não é uma auditoria de 10 dias. O laudo declara qual foi.</div>'
+    + '<label style="margin-top:10px">Relato do cliente</label>'
+    + '<textarea id="f_relato" rows="2" placeholder="O que o cliente descreveu, nas palavras dele">'+esc(i.relato||'')+'</textarea>'
+    + '<div class="row2" style="margin-top:8px">' + campo('f_htotal','Horímetro total (h)', state.resp.h_total||'', 'number')
+    + campo('f_hcarga','Horímetro em carga (h)', state.resp.h_carga||'', 'number') + '</div>'
+    + '<div class="hint" id="razaoCarga">'+razaoCargaTexto()+'</div>'
+    + '<label style="margin-top:10px">A máquina está operando agora?</label>'
+    + pills('rodando', ['Sim, em operação','Parada — desarmada','Parada — desligada pelo cliente'], state.ident.rodando||'')
+  )
+  + card('Família do equipamento', '<div class="fam-grid">' + FAMILIAS.map(function(f){
+      return '<button class="fam '+(state.familia===f.id?'on':'')+'" onclick="setFamilia(\''+f.id+'\')"><b>'+f.ico+'</b>'+esc(f.lab)+'</button>';
+    }).join('') + '</div>')
+  + (state.familia ? card('Sintoma principal',
+      '<div class="hint" style="margin-bottom:8px">Lista fechada de propósito: descrição livre do problema é a causa nº 1 de retrabalho em campo.</div>'
+      + SINTOMAS.filter(function(s){ return s.fam===state.familia; }).map(function(s){
+          return '<button class="sym '+(state.sintomaId===s.id?'on':'')+'" onclick="setSintoma(\''+s.id+'\')">'
+               + '<b>'+esc(s.lab)+'</b><span>'+esc(s.desc)+'</span></button>';
+        }).join('')) : '');
+}
+
+function telaVerificacoes(){
+  var s = sintomaAtual(); if (!s) return card('Verificações','<div class="hint">Escolha um sintoma no passo 1.</div>');
+  var pl = placar();
+  return '<div class="sym-head"><span class="tag">'+esc(FAMILIAS.filter(function(f){return f.id===s.fam;})[0].lab)+'</span><h1>'+esc(s.lab)+'</h1></div>'
+  + card('Placar de hipóteses', '<div class="hint">Atualiza a cada resposta. O motor sugere; quem decide é você.</div><div id="placar">'+placarHtml(pl)+'</div>')
+  + card('Testes discriminantes',
+      '<div class="hint">Cada teste separa hipóteses. Responda na ordem que quiser — o que não der para medir fica em branco e o laudo registra como pendente.</div>'
+      + s.testes.map(testeHtml).join(''));
+}
+function placarHtml(pl){
+  if (!pl.length) return '';
+  var respondidos = Object.keys(state.resp).filter(function(k){ return state.resp[k]!==''; }).length;
+  var head = '<div class="hint" style="margin-bottom:6px">'+respondidos+' verificação(ões) respondida(s)</div>';
+  return head + pl.map(function(h){
+    var pct = Math.max(0, Math.min(100, (h.pontos/6)*100));
+    return '<div class="hyp '+h.status+'">'
+      + '<div class="hyp-t"><b>'+esc(h.causa.lab)+'</b><span class="st st-'+h.status+'">'+rotStatus(h.status)+'</span></div>'
+      + '<div class="bar"><i style="width:'+pct+'%"></i></div>'
+      + '<div class="hyp-c">'+esc(h.causa.comp)+'</div>'
+      + (h.prova.length ? '<div class="hyp-p">'+h.prova.map(function(p){return '• '+esc(p);}).join('<br>')+'</div>' : '')
+      + (h.falta.length && h.status!=='descartada' ? '<div class="hyp-f">falta medir: '+esc(h.falta.join(' · '))+'</div>' : '')
+      + '</div>';
+  }).join('');
+}
+function rotStatus(s){ return {confirmada:'CONFIRMADA', provavel:'PROVÁVEL', aberta:'EM ABERTO', descartada:'DESCARTADA'}[s]; }
+
+function testeHtml(tid){
+  var t = TESTES[tid], v = state.resp[tid]===undefined ? '' : state.resp[tid];
+  var st = t.tipo==='med' ? statusMedicao(tid, v) : '';
+  var h = '<div class="tst" id="tst_'+tid+'">'
+    + '<div class="tst-h"><b>'+esc(t.lab)+'</b>'+(st?'<span class="st st-'+st.toLowerCase().replace('í','i')+'">'+st+'</span>':'')+'</div>'
+    + '<div class="ref">Referência: '+esc(t.ref)+'</div>';
+  if (t.tipo==='med'){
+    h += '<div class="med"><input type="number" step="any" inputmode="decimal" id="in_'+tid+'" value="'+esc(v)+'" '
+       + 'oninput="setResp(\''+tid+'\', this.value)" placeholder="valor"><span class="u">'+esc(t.un||'')+'</span></div>';
+  } else if (t.tipo==='sn'){
+    h += pills('t:'+tid, ['sim','nao','na'], v, ['Sim','Não','N.A.']);
+  } else {
+    h += pills('t:'+tid, t.opts, v);
+  }
+  h += '<div class="met">🛠 '+esc(t.met)+'</div>'
+    +  '<div class="fonte">📖 '+esc(t.fonte)+'</div>'
+    +  '<div class="tst-a"><button class="mini" onclick="fotoDoTeste(\''+tid+'\')">📷 Foto desta verificação</button></div>'
+    +  '</div>';
+  return h;
+}
+
+function telaSistema(){
+  var extras = ['dp_sec','p_rede','vazam_ar','dreno_sec','pdp','dim_sec','ciclos_min','volume_res'];
+  var s = sintomaAtual();
+  var jaTem = s ? s.testes : [];
+  var lista = extras.filter(function(x){ return jaTem.indexOf(x) < 0; });
+  return card('Sistema e periféricos <span class="opt">opcional</span>',
+      '<div class="hint">Em muitos chamados a máquina está boa e o problema é a rede. Preencha o que o escopo contratado cobrir.</div>'
+      + (lista.length ? lista.map(testeHtml).join('') : '<div class="hint">Todas as verificações de sistema relevantes já estão no passo 2.</div>'))
+  + card('Reservatório — triagem NR-13 <span class="opt">opcional</span>',
+      '<div class="hint">Triagem, não inspeção. O laudo declara que não substitui inspeção por Profissional Habilitado.</div>'
+      + NR13_TESTES.map(testeHtml).join('')
+      + '<div class="nr-res" id="nrRes">'+nr13Texto()+'</div>');
+}
+
+function telaConclusao(){
+  var pl = placar();
+  var sugeridas = pl.filter(function(h){ return h.status==='confirmada' || h.status==='provavel'; });
+  if (!state.recomendacoes.length && sugeridas.length) sincronizarRecomendacoes(sugeridas);
+  return card('Diagnóstico',
+      '<div class="hint">O motor sugere pelo placar. Confirme ou troque — e justifique se divergir.</div>'
+      + '<label>Causa determinada</label><select id="f_causa" onchange="setCausa(this.value)"><option value="">— selecione —</option>'
+      + Object.keys(CAUSAS).map(function(k){
+          var m = pl.filter(function(h){return h.causaId===k;})[0];
+          return '<option value="'+k+'" '+(state.diagnostico.causaId===k?'selected':'')+'>'
+               + (m ? '★ ' : '') + esc(CAUSAS[k].lab) + ' — ' + esc(CAUSAS[k].comp) + '</option>';
+        }).join('') + '</select>'
+      + '<label style="margin-top:10px">Conclusão em uma frase (vai no topo do laudo)</label>'
+      + '<textarea id="f_conclusao" rows="3" placeholder="Resposta direta ao motivo do chamado">'+esc(state.diagnostico.texto||'')+'</textarea>'
+      + '<label style="margin-top:10px">Criticidade do achado principal</label>'
+      + pills('crit', ['Segurança','Meio ambiente','Operacional','Econômica'], state.diagnostico.criticidade||''))
+  + card('Recomendações', '<div class="hint">Ordenadas por classe de consequência. Ajuste prazo e texto; remova o que não se aplica.</div>'
+      + '<div id="recs">'+recsHtml()+'</div>'
+      + '<button class="mini" style="margin-top:8px" onclick="addRecLivre()">+ Recomendação manual</button>')
+  + card('Evidência fotográfica',
+      '<div class="hint">Foto é obrigatória em achado de Segurança ou Crítico — é a prova da condição encontrada.</div>'
+      + '<div class="fotos" id="fotosWrap">'+fotosHtml()+'</div>'
+      + '<div class="row2" style="margin-top:8px">'
+      + '<button class="btn-sec" onclick="pickPhoto()">📷 Câmera</button>'
+      + '<button class="btn-sec" onclick="pickPhotoGal()">🖼 Galeria</button></div>')
+  + card('Registro complementar',
+      '<textarea id="f_obs" rows="3" maxlength="600" placeholder="Só o que a estrutura acima não previu (máx. 600 caracteres)">'+esc(state.obs||'')+'</textarea>')
+  + card('Assinaturas',
+      '<div id="sigs">'+sigsHtml()+'</div>'
+      + '<div class="row2" style="margin-top:8px">'
+      + '<button class="btn-sign" onclick="assinar(\'Técnico\')">✍️ Técnico</button>'
+      + '<button class="btn-sign" onclick="assinar(\'Responsável do Cliente\')">✍️ Cliente</button></div>');
+}
+
+/* Hipótese CONFIRMADA vira ação com peça. Hipótese apenas PROVÁVEL vira ação
+   de CONFIRMAÇÃO, sem peça — é o freio contra os ~35 % de peças trocadas que
+   depois se mostram boas (ver §3.4 do estudo). O técnico pode promover à mão. */
+function sincronizarRecomendacoes(sug){
+  state.recomendacoes = sug.map(function(h){
+    var c = h.causa, confirmada = (h.status === 'confirmada');
+    if (confirmada){
+      return { causaId:h.causaId, acao:c.acao, classe:c.classe,
+               prazo: c.classe==='Segurança' ? 'Imediato' : '30 dias',
+               risco:c.risco, pecas:(c.pecas||[]).slice(), origem:'motor' };
+    }
+    var falta = h.falta.length ? ' (falta medir: ' + h.falta.join('; ') + ')' : '';
+    return { causaId:h.causaId, classe:c.classe, prazo:'7 dias', risco:c.risco, pecas:[], origem:'motor',
+             acao:'Confirmar a hipótese "' + c.lab + '" antes de qualquer substituição' + falta +
+                  '. Se confirmada: ' + c.acao.charAt(0).toLowerCase() + c.acao.slice(1) };
+  });
+  ordenarRecs();
+}
+function ordenarRecs(){
+  state.recomendacoes.sort(function(a,b){ return CLASSES.indexOf(a.classe) - CLASSES.indexOf(b.classe); });
+}
+function recsHtml(){
+  if (!state.recomendacoes.length) return '<div class="hint">Nenhuma hipótese confirmada ainda — responda mais verificações no passo 2.</div>';
+  return state.recomendacoes.map(function(r,ix){
+    return '<div class="rec">'
+      + '<div class="rec-h"><span class="cl cl-'+r.classe.replace(/\s/g,'')+'">'+esc(r.classe)+'</span>'
+      + '<button class="xdel" onclick="delRec('+ix+')">✕</button></div>'
+      + '<textarea rows="2" oninput="setRec('+ix+',\'acao\',this.value)">'+esc(r.acao)+'</textarea>'
+      + '<div class="row2" style="margin-top:6px">'
+      + '<select onchange="setRec('+ix+',\'classe\',this.value)">'+CLASSES.map(function(c){return '<option '+(r.classe===c?'selected':'')+'>'+c+'</option>';}).join('')+'</select>'
+      + '<select onchange="setRec('+ix+',\'prazo\',this.value)">'+PRAZOS.map(function(p){return '<option '+(r.prazo===p?'selected':'')+'>'+p+'</option>';}).join('')+'</select>'
+      + '</div>'
+      + (r.risco ? '<div class="risco">⚠ Risco de não fazer: '+esc(r.risco)+'</div>' : '')
+      + (r.pecas && r.pecas.length ? '<div class="pecas">🔩 '+esc(r.pecas.join(' · '))+'</div>' : '')
+      + '</div>';
+  }).join('');
+}
+function fotosHtml(){
+  if (!state.fotos.length) return '<div class="hint">Nenhuma foto ainda.</div>';
+  return state.fotos.map(function(f,ix){
+    return '<div class="fot">'
+      + '<img class="thumb '+(f.status||'pending')+'" src="'+(f.prev||f.url||'')+'">'
+      + '<input value="'+esc(f.legenda||'')+'" oninput="setFotoLeg('+ix+',this.value)" placeholder="Legenda — descreva o que a foto prova">'
+      + '<button class="xdel" onclick="delFoto('+ix+')">✕</button></div>';
+  }).join('');
+}
+function sigsHtml(){
+  if (!state.assinaturas.length) return '<div class="hint">Nenhuma assinatura coletada.</div>';
+  return state.assinaturas.map(function(s,ix){
+    return '<div class="sig"><img src="'+(_sigBySlot[s.slot]||'')+'"><div><b>'+esc(s.nome)+'</b><span>'+esc(s.papel)+'</span></div>'
+      + '<button class="xdel" onclick="delSig('+ix+')">✕</button></div>';
+  }).join('');
+}
+
+/* helpers de UI */
+function card(t,b){ return '<div class="card"><h2>'+t+'</h2>'+b+'</div>'; }
+function campo(id,lab,v,tipo){ return '<label for="'+id+'">'+esc(lab)+'</label><input id="'+id+'" type="'+(tipo||'text')+'" value="'+esc(v)+'">'; }
+function pills(grupo, opts, sel, rotulos){
+  return '<div class="pills">' + opts.map(function(o,i){
+    var r = rotulos ? rotulos[i] : o;
+    return '<button class="'+(String(sel)===String(o)?'on':'')+'" onclick="setPill(\''+grupo+'\',\''+String(o).replace(/'/g,"\\'")+'\')">'+esc(r)+'</button>';
+  }).join('') + '</div>';
+}
+function setPill(grupo, v){
+  if (grupo.indexOf('t:')===0){ setResp(grupo.slice(2), v); return; }
+  if (grupo==='tipoInt') state.tipoIntervencao = v;
+  if (grupo==='rodando') state.ident.rodando = v;
+  if (grupo==='crit'){ state.diagnostico.criticidade = v; }
+  render(); scheduleSave();
+}
+function setResp(tid, v){
+  state.resp[tid] = v;
+  if (_passo===2){
+    var pl = placar(); document.getElementById('placar').innerHTML = placarHtml(pl);
+    var t = TESTES[tid];
+    if (t.tipo!=='med'){ render(); }
+    else { var st = statusMedicao(tid,v), h = document.querySelector('#tst_'+tid+' .tst-h');
+           var old = h.querySelector('.st'); if (old) old.remove();
+           if (st) h.insertAdjacentHTML('beforeend','<span class="st st-'+st.toLowerCase().replace('í','i')+'">'+st+'</span>'); }
+  } else if (_passo===3){ document.getElementById('nrRes').innerHTML = nr13Texto();
+           var t2 = TESTES[tid]; if (t2.tipo!=='med') render(); }
+  scheduleSave();
+}
+function setFamilia(f){ state.familia=f; state.sintomaId=''; render(); scheduleSave(); }
+function setSintoma(id){ state.sintomaId=id; state.recomendacoes=[]; render(); scheduleSave(); }
+function setCausa(k){
+  state.diagnostico.causaId = k;
+  if (k && !state.diagnostico.texto){
+    var c = CAUSAS[k];
+    document.getElementById('f_conclusao').value = c.lab + ' — ' + c.comp + '. ' + c.acao + '.';
+    state.diagnostico.texto = document.getElementById('f_conclusao').value;
+  }
+  if (k && !state.diagnostico.criticidade){ state.diagnostico.criticidade = CAUSAS[k].classe; }
+  scheduleSave();
+}
+function setRec(ix,campo,v){ state.recomendacoes[ix][campo]=v; if(campo==='classe'){ ordenarRecs(); render(); } scheduleSave(); }
+function delRec(ix){ state.recomendacoes.splice(ix,1); render(); scheduleSave(); }
+function addRecLivre(){ state.recomendacoes.push({causaId:'', acao:'', classe:'Operacional', prazo:'30 dias', risco:'', pecas:[], origem:'manual'}); ordenarRecs(); render(); scheduleSave(); }
+function setFotoLeg(ix,v){ state.fotos[ix].legenda=v; scheduleSave(); }
+function delFoto(ix){ state.fotos.splice(ix,1); render(); scheduleSave(); }
+function delSig(ix){ delete _sigBySlot[state.assinaturas[ix].slot]; state.assinaturas.splice(ix,1); render(); scheduleSave(); }
+function razaoCargaTexto(){
+  var t = parseFloat(state.resp.h_total), c = parseFloat(state.resp.h_carga);
+  if (!t || !c) return 'A razão carga/total revela superdimensionamento — abaixo de ~50 % é sinal.';
+  var r = Math.round(c/t*100);
+  return 'Razão carga/total: ' + r + '%' + (r < 50 ? ' — indicativo de superdimensionamento ou vazamento pequeno e constante.' : ' — dentro do esperado.');
+}
+function nr13Texto(){
+  var p = parseFloat(state.resp.nr_pmta), v = parseFloat(state.resp.nr_vol);
+  if (!p || !v) return 'Informe PMTA (MPa) e volume (m³) para calcular P×V e a categoria.';
+  var pv = p*v, cat = pv>300?'I':(pv>100?'II':(pv>30?'III':(pv>2.5?'IV':'V')));
+  var s = 'P×V = ' + pv.toFixed(2) + ' MPa·m³ → <b>Categoria ' + cat + '</b> (ar comprimido = fluido Grupo 3).';
+  if (state.resp.nr_ext === 'Vencida' || state.resp.nr_ext === 'Sem registro')
+    s += ' <span class="warn">Exame externo pendente — requer Profissional Habilitado (CREA + ART).</span>';
+  return s;
+}
+function maqLabel(m){
+  var base=[m.brand,m.model].filter(Boolean).join(' '), extra=[];
+  if(m.serial) extra.push('Série '+m.serial); if(m.tag) extra.push(m.tag);
+  return (base||'Máquina')+(extra.length?' · '+extra.join(' · '):'');
+}
+function selMaquina(ix){ if(ix==='') return; aplicarMaquina(_maquinas[parseInt(ix,10)]); }
+function aplicarMaquina(m){
+  if(!m) return;
+  state.ident.marca = state.ident.marca || m.brand || '';
+  state.ident.modelo = state.ident.modelo || m.model || '';
+  state.ident.serie = state.ident.serie || m.serial || '';
+  state.ident.maquinaId = m.id || m.machineKey || '';
+  state.ident.maquinaLabel = maqLabel(m);
+  render();
+}
+function hydrate(){
+  ['f_cliente','f_os','f_marca','f_modelo','f_serie','f_pot','f_data','f_tecnico'].forEach(function(id){
+    var e = document.getElementById(id); if (e) e.oninput = function(){ state.ident[id.slice(2)] = e.value; scheduleSave(); };
+  });
+  var r = document.getElementById('f_relato'); if (r) r.oninput = function(){ state.ident.relato = r.value; scheduleSave(); };
+  var o = document.getElementById('f_obs');   if (o) o.oninput = function(){ state.obs = o.value; scheduleSave(); };
+  var c = document.getElementById('f_conclusao'); if (c) c.oninput = function(){ state.diagnostico.texto = c.value; scheduleSave(); };
+  var ht = document.getElementById('f_htotal'); if (ht) ht.oninput = function(){ state.resp.h_total = ht.value; document.getElementById('razaoCarga').textContent = razaoCargaTexto(); scheduleSave(); };
+  var hc = document.getElementById('f_hcarga'); if (hc) hc.oninput = function(){ state.resp.h_carga = hc.value; document.getElementById('razaoCarga').textContent = razaoCargaTexto(); scheduleSave(); };
+}
+
+/* ── fotos ──────────────────────────────────────────────────────────────── */
+var _fotoLegendaPendente = '';
+function fotoDoTeste(tid){ _fotoLegendaPendente = TESTES[tid].lab; pickPhoto(); }
+function pickPhoto(){ document.getElementById('fileInput').click(); }
+function pickPhotoGal(){ document.getElementById('fileInputGal').click(); }
+async function handlePhoto(file){
+  var dataUrl = await new Promise(function(res,rej){
+    var fr = new FileReader(); fr.onload=function(){res(fr.result);}; fr.onerror=rej; fr.readAsDataURL(file);
+  });
+  var img = await new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=rej; i.src=dataUrl; });
+  var w=img.width, h=img.height;
+  if (w>MAX_IMG_PX || h>MAX_IMG_PX){ var r=Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
+  var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(img,0,0,w,h);
+  var out = cv.toDataURL('image/jpeg', IMG_QUALITY);
+  var ts = Date.now(), fid = 'f_'+_formUid+'_'+ts+'_'+Math.random().toString(36).slice(2,6);
+  state.fotos.push({ photoId:fid, legenda:_fotoLegendaPendente||'', status:'pending',
+                     prev:out, dataUrl:out, foto_uid:fid, client_ts:String(ts) });
+  _fotoLegendaPendente='';
+  render(); scheduleSave();
+  enfileirarFoto(state.fotos[state.fotos.length-1]);
+}
+function enfileirarFoto(f){
+  if (!_osId) { f.status='ok'; return; }
+  PS.enqueue({ draftId:_draftId, kind:'salvarFotoForm', url:GAS_URL, label:'Foto: '+(f.legenda||'sem legenda'),
+    body:{ action:'salvarFotoForm', os:state.ident.os||_osId, cliente:state.ident.cliente||'',
+           secao:'diagnostico', legenda:f.legenda||'', nomeArquivo:f.photoId+'.jpg',
+           base64:f.dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_diagnostico',
+           entity_type:'os', foto_uid:f.foto_uid, client_ts:f.client_ts } });
+}
+
+/* ── assinatura ─────────────────────────────────────────────────────────── */
+async function assinar(papel){
+  var slot = 'sig_'+Date.now();
+  var r = await pgpColetarAssinatura({ titulo:'Assinatura — '+papel, sub:'Digite o nome e toque em Avançar.' });
+  if (!r || !r.dataUrl) return;
+  _sigBySlot[slot] = r.dataUrl;
+  state.assinaturas.push({ slot:slot, papel:papel, nome:r.nome||'' });
+  render(); scheduleSave();
+}
+
+/* ── rascunho ───────────────────────────────────────────────────────────── */
+var _saveT=null;
+function scheduleSave(){ clearTimeout(_saveT); _saveT=setTimeout(saveDraft, 600); }
+function draftKeyFor(osId, tarefaId){ return TIPO_FORM+'::'+(osId||'avulso')+'::'+(tarefaId||'-'); }
+async function saveDraft(){
+  try{ await PS.saveDraft({ draftId:_draftId, ts:Date.now(),
+      data:{ state:state, sigs:_sigBySlot, passo:_passo, formUid:_formUid, enviado:_enviado } }); }catch(e){}
+}
+async function restoreDraft(){
+  try{
+    var d = await PS.loadDraft(_draftId); if (!d || !d.data) return;
+    if (d.data.state) state = Object.assign(state, d.data.state);
+    if (d.data.sigs) _sigBySlot = d.data.sigs;
+    if (d.data.formUid) _formUid = d.data.formUid;
+    if (d.data.passo) _passo = d.data.passo;
+    _enviado = !!d.data.enviado;
+  }catch(e){}
+}
+
+/* ── envio ──────────────────────────────────────────────────────────────── */
+function validar(){
+  if (!state.sintomaId) return 'Escolha o sintoma principal (passo 1).';
+  if (!state.diagnostico.causaId) return 'Selecione a causa determinada (passo 4).';
+  if (!String(state.diagnostico.texto||'').trim()) return 'Escreva a conclusão em uma frase.';
+  var seg = state.recomendacoes.filter(function(r){ return r.classe==='Segurança'; }).length;
+  if (seg && !state.fotos.length) return 'Achado de Segurança exige ao menos uma foto de evidência.';
+  var semTeste = state.recomendacoes.filter(function(r){
+    return r.origem==='motor' && r.pecas && r.pecas.length && (placar().filter(function(h){ return h.causaId===r.causaId && h.pontos>0; }).length===0);
+  });
+  if (semTeste.length) return 'Há troca de peça recomendada sem verificação que a sustente — responda o teste correspondente.';
+  return '';
+}
+async function enviar(){
+  var erro = validar(); if (erro){ toast(erro); return; }
+  _sending = true;
+  var pl = placar();
+  var payload = {
+    kb: KB_VERSAO, familia: state.familia, sintoma_id: state.sintomaId,
+    sintoma: (sintomaAtual()||{}).lab, tipo_intervencao: state.tipoIntervencao,
+    identificacao: state.ident,
+    verificacoes: Object.keys(state.resp).map(function(k){
+      if (!TESTES[k]) return null;
+      return { id:k, label:TESTES[k].lab, valor:state.resp[k], unidade:TESTES[k].un||'',
+               limite:TESTES[k].ref, metodo:TESTES[k].met, status:statusMedicao(k,state.resp[k]), fonte:TESTES[k].fonte };
+    }).filter(Boolean),
+    hipoteses: pl.map(function(h){ return { causa_id:h.causaId, causa:h.causa.lab, pontos:h.pontos, status:h.status, evidencia:h.prova, pendencias:h.falta }; }),
+    diagnostico: state.diagnostico,
+    recomendacoes: state.recomendacoes,
+    nr13: { pmta:state.resp.nr_pmta||'', volume:state.resp.nr_vol||'', texto:nr13Texto().replace(/<[^>]+>/g,'') },
+    observacao: state.obs,
+    assinaturas: state.assinaturas.map(function(s){ return {papel:s.papel, nome:s.nome}; })
+  };
+  var _sess = null; try{ _sess = JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+  var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:TIPO_FORM,
+    form_uid:_formUid, origem:_origem||'',
+    tecnico_nome: state.ident.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
+    tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '',
+    campos_json: JSON.stringify(payload),
+    fotos_json: JSON.stringify(state.fotos.map(function(f){ return {foto_uid:f.foto_uid, legenda:f.legenda, url:f.url||''}; })) };
+  if (_osId) await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Laudo de diagnóstico' });
+  _enviado = true; _sending = false;
+  await enfileirarPdf();
+  document.getElementById('okScreen').style.display='block';
+  document.getElementById('app').style.display='none';
+  document.getElementById('dock').style.display='none';
+  document.getElementById('steps').style.display='none';
+  saveDraft();
+}
+
+/* ── PDF ────────────────────────────────────────────────────────────────── */
+function numeroLaudo(){
+  var os = state.ident.os || _osId || 'AVULSO';
+  return 'Laudo DIAG ' + os + '/' + new Date().getFullYear();
+}
+async function buildPdfBase64(){
+  await pgpEnsureLibsPDF();
+  var jsPDFctor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  var doc = new jsPDFctor({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
+  doc.setProperties({ title: numeroLaudo(), subject:'Laudo de diagnóstico em campo', creator:'ProperCare' });
+  var s = sintomaAtual(), pl = placar();
+  var L = new Laudo(doc, {
+    laudo: numeroLaudo(),
+    cliente: state.ident.cliente || '—',
+    equipamento: [state.ident.marca, state.ident.modelo, state.ident.serie ? 'S/N '+state.ident.serie : ''].filter(Boolean).join(' '),
+    data: state.ident.data || new Date().toLocaleDateString('pt-BR'),
+    tecnico: state.ident.tecnico || '—'
+  });
+
+  /* 1. Sumário executivo */
+  L.h1(1,'Sumário executivo');
+  var corCrit = state.diagnostico.criticidade==='Segurança' ? COR.cr
+              : (state.diagnostico.criticidade==='Econômica' ? COR.at : COR.laranja);
+  L.destaque('Diagnóstico · criticidade ' + (state.diagnostico.criticidade||'—'), state.diagnostico.texto||'—', corCrit);
+  var top = state.recomendacoes.slice(0,3);
+  if (top.length){
+    L.p('Ações prioritárias:', {bold:true, size:8, gap:0});
+    L.tabela(['#','Ação recomendada','Classe','Prazo'], [10,110,35,25],
+      top.map(function(r,i){ return [i+1, r.acao, r.classe, r.prazo]; }), {boldCol:2});
+  }
+
+  /* 2. Identificação */
+  L.h1(2,'Identificação e escopo');
+  L.kv([
+    ['Cliente', state.ident.cliente],
+    ['Ordem de serviço', state.ident.os || _osId],
+    ['Equipamento', [state.ident.marca, state.ident.modelo].filter(Boolean).join(' ')],
+    ['Nº de série', state.ident.serie],
+    ['Potência', state.ident.pot],
+    ['Horímetro', (state.resp.h_total?state.resp.h_total+' h total':'') + (state.resp.h_carga?' · '+state.resp.h_carga+' h em carga':'')],
+    ['Razão carga/total', razaoCargaTexto().replace('Razão carga/total: ','')],
+    ['Data do atendimento', state.ident.data],
+    ['Técnico responsável', state.ident.tecnico],
+    ['Tipo de intervenção', state.tipoIntervencao],
+    ['Condição na chegada', state.ident.rodando]
+  ]);
+
+  /* 3. Sintoma */
+  L.h1(3,'Sintoma relatado e observado');
+  if (state.ident.relato) { L.h2('Relato do cliente'); L.p('"'+state.ident.relato+'"'); }
+  L.h2('Sintoma classificado');
+  L.p((s?s.lab:'—') + (s ? ' — ' + s.desc : ''));
+
+  /* 4. Medições */
+  var medidos = Object.keys(state.resp).filter(function(k){ return TESTES[k] && state.resp[k]!=='' && state.resp[k]!=null; });
+  if (medidos.length){
+    L.h1(4,'Verificações e medições');
+    L.tabela(['Parâmetro','Resultado','Referência / limite','Método','Status'],
+      [46,24,46,44,20],
+      medidos.map(function(k){
+        return [TESTES[k].lab, rotuloResp(k), TESTES[k].ref, TESTES[k].met, statusMedicao(k, state.resp[k]) || '—'];
+      }), {statusCol:4});
+    var pend = (s ? s.testes : []).filter(function(k){ return state.resp[k]===undefined || state.resp[k]===''; });
+    if (pend.length){
+      L.p('Verificações não executadas nesta visita: ' + pend.map(function(k){ return TESTES[k].lab; }).join('; ') + '.',
+          {size:7, cor:COR.suave});
+    }
+  }
+
+  /* 5. Análise */
+  L.h1(5,'Análise diagnóstica');
+  L.p('As hipóteses abaixo foram avaliadas contra as verificações executadas. O critério de cada limite está indicado na coluna de referência do item 4.', {size:7.5, cor:COR.suave});
+  var linhas = pl.filter(function(h){ return h.pontos!==0 || h.prova.length; }).map(function(h){
+    return [h.causa.lab, rotStatus(h.status), h.prova.length ? h.prova.join('; ') : (h.falta.length ? 'pendente: '+h.falta.join('; ') : '—')];
+  });
+  if (!linhas.length) linhas = pl.slice(0,4).map(function(h){ return [h.causa.lab,'EM ABERTO','sem verificação conclusiva']; });
+  L.tabela(['Hipótese','Situação','Evidência'], [58,26,96], linhas, {statusCol:-1, boldCol:1});
+
+  /* 6. Fotos */
+  if (state.fotos.length){ L.h1(6,'Registro fotográfico'); L.figuras(state.fotos); }
+
+  /* 7. Conclusão */
+  L.h1(7,'Conclusão');
+  L.p(state.diagnostico.texto||'—', {size:9});
+  if (state.diagnostico.causaId){
+    var c = CAUSAS[state.diagnostico.causaId];
+    L.p('Componente: ' + c.comp + ' · Classe de consequência: ' + c.classe, {size:7.5, cor:COR.suave, gap:0});
+    L.p('Critério técnico: ' + (c.fontes||[]).join(' · '), {size:7, cor:COR.suave});
+  }
+
+  /* 8. Recomendações */
+  if (state.recomendacoes.length){
+    L.h1(8,'Recomendações');
+    L.tabela(['#','Ação','Classe','Prazo','Risco de não executar'],
+      [8,58,25,20,69],
+      state.recomendacoes.map(function(r,i){ return [i+1, r.acao, r.classe, r.prazo, r.risco||'—']; }), {boldCol:2});
+    var pecas = [];
+    state.recomendacoes.forEach(function(r){ (r.pecas||[]).forEach(function(p){ if (pecas.indexOf(p)<0) pecas.push(p); }); });
+    if (pecas.length){
+      L.h1(9,'Peças necessárias');
+      L.tabela(['#','Peça / material','Justificado por'], [10,90,80],
+        pecas.map(function(p,i){
+          var just = state.recomendacoes.filter(function(r){ return (r.pecas||[]).indexOf(p)>=0; })
+                     .map(function(r){ return CAUSAS[r.causaId] ? CAUSAS[r.causaId].lab : r.acao; })[0] || '—';
+          return [i+1, p, just];
+        }));
+    }
+  }
+
+  /* NR-13 / observação */
+  if (state.resp.nr_pmta || state.resp.nr_vol || state.resp.nr_ext){
+    L.h1(10,'Triagem NR-13 do reservatório');
+    L.p(nr13Texto().replace(/<[^>]+>/g,''));
+    L.p('Esta triagem NÃO substitui a inspeção de segurança prevista na NR-13, que deve ser executada por Profissional Habilitado com emissão de ART.', {size:7, cor:COR.suave});
+  }
+  if (state.obs){ L.h1(11,'Registro complementar'); L.p(state.obs); }
+
+  /* Assinaturas */
+  L.h1(12,'Assinaturas');
+  var sigs = state.assinaturas.map(function(a){ return { nome:a.nome, papel:a.papel, dataUrl:_sigBySlot[a.slot] }; });
+  if (!sigs.length) sigs = [{nome: state.ident.tecnico||'', papel:'Técnico responsável'}, {nome:'', papel:'Responsável do cliente'}];
+  L.assinaturas(sigs);
+
+  L.fecharRodapes();
+  return doc.output('datauristring').split(',')[1];
+}
+async function enfileirarPdf(){
+  try{
+    _pdfPendente = true;
+    var b64 = await buildPdfBase64();
+    if (!_osId){ _pdfPendente=false; baixarPdfLocal(b64); return; }
+    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, label:'Laudo em PDF',
+      body:{ action:'salvarPdfDrive', base64:b64, fileName: numeroLaudo().replace(/[\/\\:*?"<>|]/g,'-')+'.pdf',
+             cliente: state.ident.cliente||'', os_id:_osId, os_numero: state.ident.os||'',
+             maquina_id: state.ident.maquinaId||'', maquina_label: state.ident.maquinaLabel||'',
+             categoria:'pdf_diagnostico', caption:'Laudo de diagnóstico em campo', pdf_uid:'pdf_'+_formUid } });
+    _pdfPendente = false;
+  }catch(e){ _pdfPendente=false; toast('Falha ao gerar o PDF: '+e.message); }
+}
+function baixarPdfLocal(b64){
+  var a=document.createElement('a'); a.href='data:application/pdf;base64,'+b64;
+  a.download = numeroLaudo().replace(/[\/\\:*?"<>|]/g,'-')+'.pdf'; a.click();
+}
+async function verPdf(){
+  await _comLoadingBtn_(document.getElementById('btnVerPdf'), async function(){
+    var b64 = await buildPdfBase64(); baixarPdfLocal(b64);
+  }, 'Gerando…');
+}
+
+/* ── retorno ao pipeline ────────────────────────────────────────────────── */
+function lerRetornoDaUrl(){
+  var raw=''; try{ raw = new URLSearchParams(location.search).get('ret')||''; }catch(e){ raw=''; }
+  _retornoUrl = /^https:\/\/grupotap\.github\.io\//.test(raw) ? raw : '';
+}
+function destinoDeVolta(){
+  if (_retornoUrl) return _retornoUrl;
+  if (_osId) return PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+  return '';
+}
+function voltarAgora(){ var d = destinoDeVolta(); if (d) location.href = d; }
+
+/* ── boot ───────────────────────────────────────────────────────────────── */
+function registrarSender(){
+  PS.setSender(async function(job){
+    if (job.kind==='salvarFotoForm' || job.kind==='saveFormulario' || job.kind==='salvarPdfDrive'){
+      var r = await fetch(job.url, { method:'POST', body: gcBody(job.body) });
+      var t = await r.text(); var j = null; try{ j = JSON.parse(t); }catch(e){ throw new Error('resposta não-JSON'); }
+      if (j && j.status==='error') throw new Error(j.error||'erro do servidor');
+      if (job.kind==='salvarFotoForm' && j && j.url){
+        var f = state.fotos.filter(function(x){ return x.foto_uid===job.body.foto_uid; })[0];
+        if (f){ f.url=j.url; f.status='ok'; if (_passo===4) render(); }
+      }
+      return j;
+    }
+  });
+}
+function psRefreshBadge(){
+  PS.counts().then(function(c){
+    var b = document.getElementById('psBadge'); if (!b) return;
+    _psHasPending = (c.pending>0 || c.dead>0);
+    b.style.display = _psHasPending ? 'block' : 'none';
+    b.textContent = '📤 ' + (c.pending||0) + ' na fila' + (c.dead ? ' · '+c.dead+' com falha' : '');
+  }).catch(function(){});
+}
+function psAbrirPainel(){ document.getElementById('psOverlay').classList.add('open'); }
+function psFecharPainel(){ document.getElementById('psOverlay').classList.remove('open'); }
+
+(async function init(){
+  var p = new URLSearchParams(location.search);
+  _osId = p.get('os_id')||''; _tarefaId = p.get('tarefa_id')||'';
+  window._GC = p.get('gc')||window._GC||'';
+  _origem = p.get('origem')||'';
+  lerRetornoDaUrl();
+  _draftId = draftKeyFor(_osId, _tarefaId);      // SEMPRE depois de ler os_id
+  registrarSender();
+  PS.onChange(function(){ psRefreshBadge(); });
+  try{ await PS.open(); }catch(e){}
+  await restoreDraft();
+  if (!state.ident.data) state.ident.data = new Date().toISOString().slice(0,10);
+  if (!state.ident.cliente) state.ident.cliente = p.get('cliente')||'';
+  if (!state.ident.os) state.ident.os = p.get('os_numero')||'';
+  if (!state.ident.tecnico){
+    try{ var s=JSON.parse(localStorage.getItem('proper_session')||'null'); if(s&&s.tecnico&&s.tecnico.nome) state.ident.tecnico=s.tecnico.nome; }catch(e){}
+  }
+  if (_osId){
+    try{
+      var data = await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
+      var ms = (data&&data.machines)||[];
+      if (ms.length){ _maquinas = ms; if (ms.length===1) aplicarMaquina(ms[0]); }
+    }catch(e){ /* sem rede: o técnico preenche à mão */ }
+  }
+  document.getElementById('fileInput').addEventListener('change', function(e){ if(e.target.files[0]) handlePhoto(e.target.files[0]); e.target.value=''; });
+  document.getElementById('fileInputGal').addEventListener('change', function(e){
+    Array.prototype.forEach.call(e.target.files, function(f){ handlePhoto(f); }); e.target.value='';
+  });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
+  window.addEventListener('pagehide', function(){ saveDraft(); });
+  window.addEventListener('online', function(){ PS.pump(); });
+  setInterval(function(){ PS.pump(); }, 30000);
+  setInterval(function(){ if(!_sending) saveDraft(); }, 15000);
+  window.addEventListener('beforeunload', function(e){ if(_psHasPending){ e.preventDefault(); e.returnValue=''; return ''; } });
+  render(); psRefreshBadge(); PS.pump();
+  window._pronto = true;
+})();
+
+</script>
+</body>
+</html>
