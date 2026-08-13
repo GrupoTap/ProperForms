@@ -754,15 +754,62 @@ function gcBody(obj){ return JSON.stringify(Object.assign({}, obj, { key: KEY, g
 // silencioso — o técnico via campos vazios sem saber por quê. NÃO usa a fila durável de
 // propósito: estas chamadas são auxiliares (ler máquinas da OS / atualizar cadastro) e não
 // podem competir com a outbox de fotos/formulário.
+// ════════════════════════════════════════════════════════════════════════════
+// 13/08 (b) — TETO DE TEMPO. NENHUM DOS 9 FORMULÁRIOS TINHA.
+//
+// Relatado em 13/08 no Termo de Desmontagem: "Carregando dados da OS…" por
+// QUASE 3 MINUTOS. A causa é comum a todos os forms: o `fetch` abaixo nunca teve
+// `signal`. Sem teto, uma requisição que o Apps Script aceita e não responde
+// (cold start ruim, cota disputada, execução do mesmo usuário serializada atrás
+// do PCF do técnico) fica pendurada até o navegador desistir sozinho — e como há
+// tentativas encadeadas, o total é N× esse limbo mais os backoffs.
+//
+// ⚠ `signal` NÃO é header: a requisição continua "simples" e o preflight OPTIONS
+//   segue não acontecendo (o Apps Script não responde OPTIONS).
+// ⚠ WebView antiga sem AbortSignal.timeout: Promise.race garante que a promessa
+//   RESOLVA no prazo. Não cancela o socket (sem AbortController não há como),
+//   mas devolve o controle à tela em vez de deixá-la em "Carregando…" para
+//   sempre.
+// ⚠ Escrita tem teto maior que leitura: abortar um upload bom é pior que esperar.
+// ════════════════════════════════════════════════════════════════════════════
+const GAS_TIMEOUT_LEITURA = 25000;
+const GAS_TIMEOUT_ESCRITA = 60000;
+function _gasSinal(ms){
+  try { if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms); }
+  catch(e){}
+  return undefined;
+}
+function _gasEhEscrita(payload){
+  var a = String((payload && (payload.action || payload.acao)) || '');
+  return a.indexOf('salvar') === 0 || a.indexOf('save') === 0;
+}
+async function _gasFetchComTeto(url, payload, corpo){
+  const teto = _gasEhEscrita(payload) ? GAS_TIMEOUT_ESCRITA : GAS_TIMEOUT_LEITURA;
+  // Sinal NOVO a cada chamada: um AbortSignal já disparado permanece disparado.
+  const sinal = _gasSinal(teto);
+  const opts = { method:'POST', body: corpo };
+  if (sinal) opts.signal = sinal;
+  const req = fetch(url, opts);
+  if (sinal) return await req;
+  return await Promise.race([req, new Promise(function(_, rej){
+    setTimeout(function(){ var er = new Error('o servidor não respondeu em ' + Math.round(teto/1000) + 's'); er.name = 'TimeoutError'; rej(er); }, teto);
+  })]);
+}
+function _gasMsgErro(e){
+  if (e && (e.name === 'TimeoutError' || e.name === 'AbortError' || /timed? ?out|abort/i.test(String(e.message||''))))
+    return new Error('o servidor não respondeu a tempo — tente de novo');
+  return e;
+}
+
 async function gcFetchJson(payload, tentativas){
   var n = tentativas || 2, ultimo = null;
   for (var i = 1; i <= n; i++){
     try{
-      var r = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      var r = await _gasFetchComTeto(GAS_URL, payload, gcBody(payload));   // 13/08 (b)
       var t = await r.text();
       try { return JSON.parse(t); }
       catch(e){ ultimo = new Error('servidor respondeu página de erro (não-JSON)'); }
-    }catch(e){ ultimo = e; }
+    }catch(e){ ultimo = _gasMsgErro(e); }
     if (i < n) await new Promise(function(res){ setTimeout(res, 700 * i); });
   }
   throw (ultimo || new Error('falha de rede'));

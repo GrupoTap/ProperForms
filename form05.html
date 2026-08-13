@@ -1,5 +1,26 @@
 <!DOCTYPE html>
 <!--
+════════════════════════════════════════════════════════════════════════════
+form05.html — 13/08/2026 (b) — O PDF ABRIA SOZINHO E O BOOT DEMORAVA 3 MINUTOS.
+100% ADITIVO: nenhum id, name, action ou função existente renomeado/removido.
+
+(1) O PDF NÃO ABRE MAIS SOZINHO. Havia um `baixarPdf()` disparado logo depois de
+    mostrar a tela "Termo gerado". No celular isso não é "baixar": jsPDF.save()
+    navega para o blob e o iOS abre o VISUALIZADOR por cima de tudo — o PDF
+    aparecia ANTES da tela, e o adm não via nem o botão de download nem o
+    "Concluir e voltar ao pipeline". Agora o download é só do botão.
+(2) E a CONTAGEM de volta automática (20 s) só começa DEPOIS que o PDF foi
+    baixado. Antes ela corria por trás do visualizador e podia devolver a tela
+    ao pipeline sem ninguém ter pegado o arquivo para mandar pela Assinafy.
+(3) TETO DE TEMPO. "Carregando dados da OS…" por quase 3 minutos: o `fetch`
+    nunca teve `signal`, e são 3 tentativas encadeadas. Leitura 25 s, escrita
+    60 s, com Promise.race para WebView sem AbortSignal.timeout.
+(4) A tela passa a DIZER quando não conseguiu buscar os dados da OS (antes o
+    catch era silencioso e a única informação depois de 3 min era a mesma do
+    primeiro segundo), e avisa aos 30 s que o servidor está demorando.
+════════════════════════════════════════════════════════════════════════════
+-->
+<!--
   ════════════════════════════════════════════════════════════════════════════
   13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
   Reclamacao do estagiario: "os formularios demoram demais para abrir" e
@@ -230,17 +251,60 @@ function pgpUid(){ return 'uid_' + Date.now().toString(36) + '_' + Math.random()
 // 29/07 (F-12): POST robusto ao GAS — parse seguro + retry (bloco canônico do
 // form01, 28/07). O Apps Script às vezes responde página HTML de erro; o
 // JSON.parse cru estourava "JSON Parse error: Unrecognized token '<'".
+// ════════════════════════════════════════════════════════════════════════════
+// 13/08 (b) — TETO DE TEMPO. "Carregando dados da OS…" por QUASE 3 MINUTOS.
+//
+// Relatado em 13/08 nesta tela. O `fetch` abaixo NUNCA teve `signal`: sem teto,
+// uma requisição que o Apps Script aceita e não responde (cold start ruim, cota
+// disputada, execução do mesmo usuário serializada atrás do PCF do técnico) fica
+// pendurada até o navegador desistir sozinho — e como há 3 TENTATIVAS
+// encadeadas, o tempo total é 3× esse limbo mais os backoffs. Foram os ~3 min.
+//
+// Agora: teto por tentativa e a chance de dizer o que houve. Leitura do boot
+// tem teto menor (o dado é para preencher a tela, dá para tentar de novo);
+// escrita — que carrega o PDF em base64 — mantém teto generoso, porque abortar
+// um upload bom é pior que esperar.
+// ⚠ `signal` não é header: a requisição continua "simples" e o preflight OPTIONS
+//   segue não acontecendo (o Apps Script não responde OPTIONS).
+// ⚠ WebView antiga sem AbortSignal.timeout: Promise.race garante que a promessa
+//   RESOLVA no prazo. Não cancela o socket (sem AbortController não há como),
+//   mas devolve o controle à tela em vez de deixá-la em "Carregando…" para
+//   sempre.
+// ════════════════════════════════════════════════════════════════════════════
+const GAS_TIMEOUT_LEITURA = 25000;
+const GAS_TIMEOUT_ESCRITA = 60000;
+function _gasSinal(ms){
+  try { if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms); }
+  catch(e){}
+  return undefined;
+}
+function _gasEhEscrita(payload){
+  var a = String((payload && payload.action) || '');
+  return a.indexOf('salvar') === 0 || a.indexOf('save') === 0;
+}
 async function gasPostJson(payload, tentativas){
   tentativas = tentativas || 3;
+  const teto = _gasEhEscrita(payload) ? GAS_TIMEOUT_ESCRITA : GAS_TIMEOUT_LEITURA;
   let ultimoErro = null;
   for (let i = 0; i < tentativas; i++){
     try{
-      const resp = await fetch(GAS_URL, { method:'POST', body: gcBody(payload) });
+      // Sinal NOVO a cada tentativa: um AbortSignal já disparado permanece
+      // disparado, e reusá-lo abortaria o retry instantaneamente.
+      const sinal = _gasSinal(teto);
+      const opts = { method:'POST', body: gcBody(payload) };
+      if (sinal) opts.signal = sinal;
+      const req = fetch(GAS_URL, opts);
+      const resp = sinal ? await req : await Promise.race([req, new Promise(function(_, rej){
+        setTimeout(function(){ var er = new Error('tempo esgotado'); er.name = 'TimeoutError'; rej(er); }, teto);
+      })]);
       const text = await resp.text();
       try { return JSON.parse(text); }
       catch(ePar){ throw new Error('servidor respondeu página de erro (não-JSON)'); }
     }catch(e){
-      ultimoErro = e;
+      var _ehTempo = e && (e.name === 'TimeoutError' || e.name === 'AbortError' || /timed? ?out|abort/i.test(String(e.message||'')));
+      ultimoErro = _ehTempo
+        ? new Error('o servidor não respondeu em ' + Math.round(teto/1000) + 's')
+        : e;
       if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
     }
   }
@@ -286,6 +350,14 @@ async function carregarDados(){
   var _dbox = document.getElementById('dadosBox');
   if (_dbox) _dbox.innerHTML = '<div class="dado"><span class="k">⏳ Carregando dados da OS…</span><span class="v"></span></div>';
   pgpBootAviso('🔄 Carregando dados da OS…');
+  // 13/08 (b) — vigia de tela: se o boot passar de 30 s, o rótulo para de
+  // repetir "carregando" e diz que está demorando, com o que fazer. Antes, a
+  // única informação que a tela dava depois de 3 minutos era a mesma do
+  // primeiro segundo.
+  var _vigia = setTimeout(function(){
+    if (_dbox) _dbox.innerHTML = '<div class="dado"><span class="k">⏳ O servidor está demorando…</span>' +
+      '<span class="v">dá para preencher e gerar o termo mesmo assim</span></div>';
+  }, 30000);
   try{
   // 13/08 (perf): sem_pecas=true — GAS v97. Este POST e' a UNICA chamada de rede do
   // boot, e no v96 ele lia MACHINE_PARTS inteira (uma linha por peca por maquina) e
@@ -299,9 +371,21 @@ async function carregarDados(){
     state.os = data && data.os ? data.os : null;
     var machines = (data && data.machines) || [];
     state.maquina = machines.length ? machines[0] : null;
-  }catch(e){ /* silencioso */ }
-  finally{ pgpBootAviso(null); }   // 13/08 (perf)
+  }catch(e){
+    // 13/08 (b) — não é mais silencioso: falhar em buscar os dados da OS é
+    // exatamente o que o adm precisa saber para decidir se recarrega ou segue.
+    console.warn('[form05] getMaquinasByOS:', e && e.message);
+    window._erroBoot = (e && e.message) || 'falha de comunicação';
+  }
+  finally{ clearTimeout(_vigia); pgpBootAviso(null); }   // 13/08 (perf) · (b) vigia
   renderDados();
+  if (window._erroBoot) {
+    var _db2 = document.getElementById('dadosBox');
+    if (_db2) _db2.insertAdjacentHTML('beforeend',
+      '<div class="dado"><span class="k">⚠ Não consegui buscar os dados da OS</span>' +
+      '<span class="v">' + escHtml(window._erroBoot) + '</span></div>' +
+      '<div class="dado"><span class="k"></span><span class="v">Dá para preencher e gerar o termo mesmo assim.</span></div>');
+  }
 }
 
 // ── Geração do PDF (jsPDF) ────────────────────────────────────────────────────
@@ -481,12 +565,29 @@ async function gerar(){
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
   document.getElementById('okSub').textContent = _osId ? 'Salvo na pasta da OS no Drive e tarefa concluída.' : 'PDF gerado. Sem OS vinculada, nada foi salvo no sistema.';
-  baixarPdf();
-  // ⚠ 20s, não 8: aqui o técnico/adm ainda precisa BAIXAR o PDF e mandar pela
-  //   Assinafy. Sair da tela em 8s tiraria o botão de download da frente dele.
+  // ══════════════════════════════════════════════════════════════════════════
+  // 13/08 (b) — O PDF NÃO ABRE MAIS SOZINHO.
+  //
+  // Aqui havia um `baixarPdf()` disparado automaticamente. No celular isso não
+  // é "baixar": `jsPDF.save()` navega para o blob, e o iOS abre o VISUALIZADOR
+  // de PDF por cima de tudo. O resultado é o relatado: o PDF aparece ANTES da
+  // tela "Termo gerado", e o adm nem chega a ver o botão de download nem o
+  // "Concluir e voltar ao pipeline".
+  // Pior: a contagem de volta automática seguia correndo por trás do
+  // visualizador — voltando ao pipeline sem que ninguém tivesse pegado o
+  // arquivo para mandar pela Assinafy.
+  // O download passa a ser SÓ do botão, que é o que a tela sempre prometeu.
+  // ══════════════════════════════════════════════════════════════════════════
   prepararTelaFinal(false);
 }
-function baixarPdf(){ if (_pdfDoc) _pdfDoc.save(_pdfName); }
+var _pdfBaixado = false;
+function baixarPdf(){
+  if (!_pdfDoc) return;
+  _pdfDoc.save(_pdfName);
+  // 13/08 (b) — agora que o arquivo saiu, a tela pode se oferecer para voltar.
+  _pdfBaixado = true;
+  try { prepararTelaFinal(false); } catch (e) {}
+}
 
 // ══ SAÍDA PARA O PIPELINE (12/08/2026) ══════════════════════════════════════
 // Chamado do Fernando (12/08): "ao concluir o formulário de recebimento fica
@@ -546,6 +647,10 @@ function prepararTelaFinal(falhou) {
   btnV.style.display = '';
   btnV.textContent = _retornoUrl ? '✅ Concluir e voltar ao ProperAdmin' : '✅ Concluir e voltar ao pipeline';
   if (falhou || _autoVoltaCancelado) { if (aviso) aviso.style.display = 'none'; return; }
+  // 13/08 (b) — a contagem só começa DEPOIS que o PDF foi baixado. Enquanto o
+  // arquivo não estiver na mão do adm, esta tela não sai da frente sozinha: é
+  // dela que sai o documento que vai para a Assinafy.
+  if (!_pdfBaixado) { if (aviso) aviso.style.display = 'none'; return; }
   Promise.resolve(_pdfAguardando).catch(function () {}).then(function () { iniciarAutoVolta(20); });
 }
 

@@ -24,6 +24,26 @@
   renomeada ou removida. Ver detalhe por bloco nos comentarios marcados
   "13/08 (perf)".
   ════════════════════════════════════════════════════════════════════════════
+form02.html — 13/08/2026 (b) — DOIS ITENS QUE EXIGEM A MÁQUINA LIGADA.
+  Chamado do Fernando: "válvula de alívio em boas condições só é possível ver se
+  a máquina puder ser ligada"; "tensão de alimentação dentro do esperado só se
+  mede se for ligar a máquina também".
+  · B2 "Válvula de alívio em boas condições" passa a ser data-cond="run".
+    Avaliar a válvula é ver se ela ALIVIA na pressão de ajuste — sem máquina
+    operando não há pressão para aliviar.
+  · B6 "Tensão de alimentação dentro do esperado" (e o campo "Tensão lida")
+    também. ⚠ Isto REVERTE, de propósito, uma decisão de 29/07 que os havia
+    liberado ("mede-se justamente na máquina que não liga"): quem está em campo
+    tem razão sobre o campo — "dentro do esperado" é a tensão SOB CARGA.
+    NÃO voltou atrás para display da IHM, código de falha, corrente nominal de
+    plaqueta e desequilíbrio entre fases, que seguem liberados.
+  · B6 tensão ganhou o botão N/T, que faltava SÓ nele entre todos os congêneres:
+    sem ele o técnico não tinha como registrar "não testado".
+  · O PDF usa a MESMA regra (os dois passaram de `false` para `skip`).
+  · TETO DE TEMPO no gasPostJson (nenhum dos 9 forms tinha) — leitura 25 s,
+    escrita 60 s, com Promise.race para WebView antiga.
+  Tudo ADITIVO: nada renomeado ou removido.
+  ----------------------------------------------------------------------------
 form02.html — 29/07/2026 (V2) — CONDICIONAIS DO GATEWAY + SAÍDA PARA O PIPELINE
   Chamado do Fernando na PGP-2026-0022 ("bloqueia o que devia liberar, libera o
   que devia bloquear, e ao salvar o form não fecha pra continuar o pipeline").
@@ -1002,7 +1022,16 @@ function pgpBootAviso(msg){
               <button class="btn-toggle" data-field="b2-regulagemPressao" data-val="NT" onclick="selectToggle(this)">N/T</button>
             </div>
           </div>
-          <div class="item-row">
+          <!-- 13/08 (b) — PASSA A SER CONDICIONAL. Chamado do Fernando: "válvula
+               de alívio em boas condições só é possível ver se a máquina puder ser
+               ligada". Está certo: avaliar a válvula é verificar se ela ALIVIA na
+               pressão de ajuste — sem máquina operando não há pressão para aliviar,
+               e o que sobra é inspeção visual, que não é o que a pergunta pede.
+               Entra na MESMA regra dos vizinhos de B2 (data-cond="run"), então a
+               tela pula, o valor é limpo e o PDF marca "(pulado)" — as três coisas
+               pela mesma fonte. -->
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Válvula de alívio em boas condições</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b2-valvulaAlivio" data-val="S" onclick="selectToggle(this)">S</button>
@@ -1275,15 +1304,35 @@ function pgpBootAviso(msg){
           <span>B6 – Elétrico sem Abertura do Painel</span><span class="chevron">▼</span>
         </div>
         <div class="accordion-body">
-          <div class="item-row">
+          <!-- ══════════════════════════════════════════════════════════════
+               13/08 (b) — REVERSÃO CONSCIENTE DE UMA DECISÃO DE 29/07.
+               Em 29/07 este item foi LIBERADO com a justificativa "mede-se
+               justamente na máquina que não liga". Chamado do Fernando em 13/08:
+               "tensão de alimentação dentro do esperado só se mede se for ligar a
+               máquina também". Quem está em campo tem razão sobre o campo: "dentro
+               do esperado" é a tensão SOB CARGA, com o equipamento energizado e
+               partindo — numa máquina que não pode ser ligada o que se mede é
+               tensão de rede em vazio, que responde outra pergunta.
+               ⚠ O que NÃO voltou atrás: display da IHM, código de falha, corrente
+                 nominal de plaqueta e desequilíbrio entre fases seguem LIBERADOS —
+                 esses são lidos sem operar, e a justificativa de 29/07 vale para
+                 eles.
+               ⚠ Também entra o N/T, que faltava SÓ neste item entre todos os
+                 congêneres: sem ele o técnico não tinha como registrar
+                 "não testado" e ficava obrigado a mentir S, N ou N/A.
+               ══════════════════════════════════════════════════════════════ -->
+          <div class="item-row conditional-item" data-cond="run">
+            <span class="skipped-badge">⚡ PULADO</span>
             <div class="item-label">Tensão de alimentação dentro do esperado</div>
             <div class="btn-group">
               <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="S" onclick="selectToggle(this)">S</button>
               <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="N" onclick="selectToggle(this)">N</button>
               <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="NA" onclick="selectToggle(this)">N/A</button>
+              <button class="btn-toggle" data-field="b6-tensaoAlimentacao" data-val="NT" onclick="selectToggle(this)" title="Não testado">N/T</button>
             </div>
           </div>
-          <div class="field-group" style="margin-top:4px;">
+          <div class="field-group conditional-item" data-cond="run" style="margin-top:4px;">
+            <span class="skipped-badge">⚡ PULADO</span>
             <label>Tensão lida</label>
             <div class="med-row"><input type="number" id="b6-tensaoLida" inputmode="decimal" step="any" min="0" placeholder="0"><span class="med-unit">V</span></div>
           </div>
@@ -1601,17 +1650,64 @@ function gcParam() {
 // de erro em vez de JSON (pico de carga/erro transitório); o JSON.parse cru
 // estourava "Unrecognized token '<'" e o envio morria sem retry (fotos com
 // contorno vermelho / "Não sincronizado"). Parse seguro + 3 tentativas c/ backoff.
+// ════════════════════════════════════════════════════════════════════════════
+// 13/08 (b) — TETO DE TEMPO. NENHUM DOS 9 FORMULÁRIOS TINHA.
+//
+// Relatado em 13/08 no Termo de Desmontagem: "Carregando dados da OS…" por
+// QUASE 3 MINUTOS. A causa é comum a todos os forms: o `fetch` abaixo nunca teve
+// `signal`. Sem teto, uma requisição que o Apps Script aceita e não responde
+// (cold start ruim, cota disputada, execução do mesmo usuário serializada atrás
+// do PCF do técnico) fica pendurada até o navegador desistir sozinho — e como há
+// tentativas encadeadas, o total é N× esse limbo mais os backoffs.
+//
+// ⚠ `signal` NÃO é header: a requisição continua "simples" e o preflight OPTIONS
+//   segue não acontecendo (o Apps Script não responde OPTIONS).
+// ⚠ WebView antiga sem AbortSignal.timeout: Promise.race garante que a promessa
+//   RESOLVA no prazo. Não cancela o socket (sem AbortController não há como),
+//   mas devolve o controle à tela em vez de deixá-la em "Carregando…" para
+//   sempre.
+// ⚠ Escrita tem teto maior que leitura: abortar um upload bom é pior que esperar.
+// ════════════════════════════════════════════════════════════════════════════
+const GAS_TIMEOUT_LEITURA = 25000;
+const GAS_TIMEOUT_ESCRITA = 60000;
+function _gasSinal(ms){
+  try { if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms); }
+  catch(e){}
+  return undefined;
+}
+function _gasEhEscrita(payload){
+  var a = String((payload && (payload.action || payload.acao)) || '');
+  return a.indexOf('salvar') === 0 || a.indexOf('save') === 0;
+}
+async function _gasFetchComTeto(url, payload, corpo){
+  const teto = _gasEhEscrita(payload) ? GAS_TIMEOUT_ESCRITA : GAS_TIMEOUT_LEITURA;
+  // Sinal NOVO a cada chamada: um AbortSignal já disparado permanece disparado.
+  const sinal = _gasSinal(teto);
+  const opts = { method:'POST', body: corpo };
+  if (sinal) opts.signal = sinal;
+  const req = fetch(url, opts);
+  if (sinal) return await req;
+  return await Promise.race([req, new Promise(function(_, rej){
+    setTimeout(function(){ var er = new Error('o servidor não respondeu em ' + Math.round(teto/1000) + 's'); er.name = 'TimeoutError'; rej(er); }, teto);
+  })]);
+}
+function _gasMsgErro(e){
+  if (e && (e.name === 'TimeoutError' || e.name === 'AbortError' || /timed? ?out|abort/i.test(String(e.message||''))))
+    return new Error('o servidor não respondeu a tempo — tente de novo');
+  return e;
+}
+
 async function gasPostJson(payload, tentativas) {
   tentativas = tentativas || 3;
   let ultimoErro = null;
   for (let i = 0; i < tentativas; i++) {
     try {
-      const resp = await fetch(GAS_URL, { method: 'POST', body: gcBody(payload) });
+      const resp = await _gasFetchComTeto(GAS_URL, payload, gcBody(payload));   // 13/08 (b)
       const text = await resp.text();
       try { return JSON.parse(text); }
       catch (ePar) { throw new Error('servidor respondeu página de erro (não-JSON)'); }
     } catch (e) {
-      ultimoErro = e;
+      ultimoErro = _gasMsgErro(e);   // 13/08 (b)
       if (i < tentativas - 1) await new Promise(r => setTimeout(r, 700 * (i + 1)));
     }
   }
@@ -3128,7 +3224,7 @@ function buildPdfLayout() {
         ${pdfCheckHead('OK','Ñ OK','N/A','N/T')}
         ${pdfCheckRow('⚡ Pressão de trabalho dentro do esperado (bar)',  'b2-pressaoTrabalho',  'b2-pressaoLida',      skip)}
         ${pdfCheckRow('⚡ Regulagem de pressão funciona (bar ref.)',      'b2-regulagemPressao', 'b2-pressaoEsperada',  skip)}
-        ${pdfCheckRow('Válvula de alívio em boas condições',              'b2-valvulaAlivio',    null,                  false)}
+        ${pdfCheckRow('⚡ Válvula de alívio em boas condições',            'b2-valvulaAlivio',    null,                  skip)}
         ${pdfMedRow('⚡ Pressão de alívio conf. no controlador',          'b2-pressaoAlivioValor', 'bar', 'b2-pressaoAlivio', skip)}
         <tr${skip ? ' class="pdf-cond-skip"' : ''}><td colspan="2" style="font-size:6pt;color:#666">⚡ Vazão estimada (m³/min):</td>
             <td colspan="4">${skip ? '<em>(pulado)</em>' : ((sB.pressao.vazaoEstimada||'') && (sB.pressao.vazaoEstimada + ' m³/min'))}</td></tr>
@@ -3181,7 +3277,7 @@ function buildPdfLayout() {
       <div class="pdf-subsec-head-blue">ELÉTRICO — SEM ABERTURA DE PAINEL</div>
       <table class="pdf-check-table">
         ${pdfCheckHead()}
-        ${pdfCheckRow('Tensão de alimentação dentro do esperado (V)', 'b6-tensaoAlimentacao', 'b6-tensaoLida',         false)}
+        ${pdfCheckRow('⚡ Tensão de alimentação dentro do esperado (V)', 'b6-tensaoAlimentacao', 'b6-tensaoLida',       skip)}
         ${pdfMedRow('⚡ Corrente lida em operação',                   'b6-correnteLida', 'A', null,                 skip)}
         ${pdfMedRow('⚡ Corrente em carga plena (amperímetro)',       'b6-correnteCargaValor', 'A', 'b6-correnteCarga', skip)}
         <tr>
