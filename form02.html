@@ -1,4 +1,29 @@
 <!--
+  ════════════════════════════════════════════════════════════════════════════
+  13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
+  Reclamacao do estagiario: "os formularios demoram demais para abrir" e
+  "eu clico e nao acontece nada, nao sei se pegou".
+  (1) jsPDF + html2canvas SAIRAM DO <head>. Eram ~562 KB parser-blocking em
+      TODA abertura, embora so sejam usados na conclusao/geracao de PDF. Agora
+      entram sob demanda por pgpEnsureLibsPDF() (local primeiro, CDN de
+      fallback) no inicio de cada funcao que precisa delas.
+  (2) FEEDBACK DE ESPERA padrao da casa, aditivo: .is-busy (spinner no botao),
+      _comLoadingBtn_() (trava de duplo-toque) e pgpEsperaLonga() (barra fixa
+      no rodape que NAO some sozinha — o toast de 2,5 s e' curto demais para
+      um upload de 30 s).
+  (3) Todo clique com espera perceptivel passou a ter sinal: concluir/enviar,
+      gerar PDF, anexar foto (inclusive DURANTE a compressao), buscar maquina
+      da OS no boot, reenviar fila.
+  (4) getMaquinasByOS do boot passou a mandar sem_pecas=true (GAS v97). Era a
+      unica chamada de rede da abertura e trazia junto a leitura inteira de
+      MACHINE_PARTS + um laco maquinas x linhas para montar eq.parts — que
+      NENHUM formulario le. Medido no backend: -88% de celulas lidas e -72% de
+      payload na escala de 500 maquinas. Parametro OPCIONAL: GAS anterior ao
+      v97 simplesmente ignora, entao a ordem de publicacao nao importa.
+  ADITIVO: nenhuma funcao, id, data-key, data-cond ou classe existente foi
+  renomeada ou removida. Ver detalhe por bloco nos comentarios marcados
+  "13/08 (perf)".
+  ════════════════════════════════════════════════════════════════════════════
 form02.html — 29/07/2026 (V2) — CONDICIONAIS DO GATEWAY + SAÍDA PARA O PIPELINE
   Chamado do Fernando na PGP-2026-0022 ("bloqueia o que devia liberar, libera o
   que devia bloquear, e ao salvar o form não fecha pra continuar o pipeline").
@@ -140,7 +165,14 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>PROPER – Diagnóstico Sem Desmontagem</title>
   <link id="manifest-link" rel="manifest">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- 13/08 (perf): a Inter era CSS render-blocking + DNS/TLS para DOIS dominios novos
+       (fonts.googleapis.com e fonts.gstatic.com) em toda abertura. Agora: preconnect
+       para adiantar o handshake e carregamento nao-bloqueante (media=print + onload),
+       padrao ja usado no PCF. O <noscript> mantem a fonte para quem esta sem JS. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
@@ -628,12 +660,98 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
        Aditivo: só usado no envio quando a OS está vinculada. -->
   <!-- 28/07: locais primeiro (mesmo repo ProperForms — mata a classe de bug da OS-0016);
        CDN só como fallback se o local não carregar -->
-  <script src="./jspdf.umd.min.js"></script>
-  <script src="./html2canvas.min.js"></script>
-  <script>
-    if (!window.jspdf)       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>');
-    if (!window.html2canvas) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>');
-  </script>
+<!-- 13/08 (perf): jsPDF/html2canvas SAIRAM daqui. Eram parser-blocking (~562 KB) em
+     toda abertura e so servem na conclusao. Agora entram por pgpEnsureLibsPDF(). -->
+<!-- 13/08 (perf): spinner + barra de espera padrao da casa (aditivo; nada existente foi alterado) -->
+<style>
+@keyframes pgpspin{to{transform:rotate(360deg)}}
+.is-busy{position:relative;color:transparent !important;pointer-events:none}
+.is-busy::after{content:'';position:absolute;width:16px;height:16px;top:calc(50% - 8px);left:calc(50% - 8px);border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpEsperaBar{position:fixed;left:0;right:0;bottom:0;z-index:100050;display:none;background:#111827;border-top:1px solid #374151;color:#e5e7eb;font-size:13px;line-height:1.35;padding:11px 14px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+#pgpEsperaBar.show{display:block}
+#pgpEsperaBar .pgp-dot{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpBootAviso{position:fixed;left:0;right:0;top:0;z-index:100049;display:none;background:rgba(30,58,138,.97);color:#dbeafe;font-size:13px;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#pgpBootAviso.show{display:block}
+#pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+</style>
+<script>
+/* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
+   ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
+   pdfStatus(), psRefreshBadge() e os "btn.disabled=true" continuam valendo.
+   Estes helpers cobrem o que NAO tinha sinal nenhum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Carrega as libs de PDF SOB DEMANDA. Antes desta rodada elas eram dois
+   <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
+   quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
+   se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+function pgpEnsureLibsPDF(){
+  if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
+  function carregar(local, cdn, jaExiste){
+    if (jaExiste()) return Promise.resolve();
+    return new Promise(function(ok, falha){
+      var s=document.createElement('script'); s.src=local;
+      s.onload=function(){ ok(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=cdn;
+        c.onload=function(){ ok(); };
+        c.onerror=function(){ falha(new Error('lib')); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  window._pgpLibsPdfPromise = Promise.all([
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; }),
+    carregar('./html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', function(){ return !!window.html2canvas; })
+  ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
+  return window._pgpLibsPdfPromise;
+}
+
+/* Botao com spinner + trava de duplo-toque. Mesmo nome e semantica do
+   PCF L13052 / PCM L11790 — e' o padrao da casa, nao um terceiro dialeto. */
+async function _comLoadingBtn_(btnEl, asyncFn, texto){
+  if(!btnEl) return asyncFn();
+  if(btnEl.dataset.pgpBusy==='1') return;      // trava de duplo-toque
+  btnEl.dataset.pgpBusy='1';
+  var txt=btnEl.textContent, dis=btnEl.disabled;
+  btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent=texto||'⏳ Processando…';
+  try{ return await asyncFn(); }
+  finally{ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; delete btnEl.dataset.pgpBusy; }
+}
+
+/* Espera LONGA (gerar PDF, subir ao Drive, baixar fotos): barra fixa no rodape
+   que NAO some sozinha e diz o que esta acontecendo. Chamar com null/'' esconde.
+   Existe porque o toast da casa dura 2,5 s e o upload dura ate 40 s. */
+function pgpEsperaLonga(msg){
+  var b=document.getElementById('pgpEsperaBar');
+  if(!b){
+    if(!msg) return;
+    b=document.createElement('div'); b.id='pgpEsperaBar';
+    b.setAttribute('role','status'); b.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(!msg){ b.classList.remove('show'); b.textContent=''; return; }
+  b.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  b.classList.add('show');
+}
+
+/* Aviso discreto de boot ("buscando a maquina da OS"). Some sozinho ao terminar,
+   e some TAMBEM quando falha — o catch silencioso do carregarMaquinasOS e'
+   intencional: sem rede o tecnico preenche a maquina a mao e segue. */
+function pgpBootAviso(msg){
+  var e=document.getElementById('pgpBootAviso');
+  if(!e){
+    if(!msg) return;
+    e=document.createElement('div'); e.id='pgpBootAviso';
+    e.setAttribute('role','status'); e.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(e);
+  }
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  e.classList.add('show');
+}
+</script>
 </head>
 <body>
 <div id="app">
@@ -1397,7 +1515,11 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
     </div>
     <div class="footer-nav">
       <button class="btn-back" onclick="showScreen('screen-e')">←</button>
-      <button class="btn-next" onclick="goToFinal()">Finalizar →</button>
+      <!-- 13/08 (perf): ESTE era o pior clique do sistema — goToFinal() faz um POST
+           ao GAS com ate 3 tentativas e backoff, e o botao nao desabilitava, nao
+           mudava de texto e nao tinha spinner. O id e' NOVO (nenhum id existente
+           mudou) e goToFinal() continua existindo e chamável como antes. -->
+      <button class="btn-next" id="btn-finalizar" onclick="goToFinalComEspera(this)">Finalizar →</button>
     </div>
   </div>
 
@@ -1409,7 +1531,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
     </div>
     <div id="sync-warning" class="card" style="display:none;border:1.5px solid #f59e0b;color:#f59e0b;">
       <div style="margin-bottom:10px;">Não sincronizado — o diagnóstico ainda NÃO chegou ao sistema. Toque em Reenviar.</div>
-      <button class="btn-primary" style="background:#f59e0b;" onclick="reenviarFormulario()">🔄 Reenviar formulário</button>
+      <button class="btn-primary" id="btn-reenviar-form" style="background:#f59e0b;" onclick="_comLoadingBtn_(this, reenviarFormulario, '🔄 Reenviando…')">🔄 Reenviar formulário</button>
     </div>
     <div class="card">
       <button class="btn-primary" id="btn-voltar-pipeline" style="display:none" onclick="voltarAoPipeline()">✅ Concluir e voltar ao pipeline</button>
@@ -1417,7 +1539,7 @@ Publicado como form08.html (a versão form08_v1_3.html é antiga/aposentada).
         Voltando ao pipeline em <span id="auto-volta-seg">8</span>s… <a onclick="cancelarAutoVolta()">cancelar</a>
       </div>
       <button class="btn-primary" id="btn-rascunho-final" style="background:#374151;border:1.5px solid #6B7280;" onclick="saveDraft(); showToast('Rascunho salvo!')">💾 Salvar Rascunho</button>
-      <button class="btn-primary" style="background:#374151;border:1.5px solid #6B7280;" onclick="printAll()">🖨️ Imprimir / Gerar PDF</button>
+      <button class="btn-primary" id="btn-imprimir-tudo" style="background:#374151;border:1.5px solid #6B7280;" onclick="_comLoadingBtn_(this, printAll, '🖨️ Preparando…')">🖨️ Imprimir / Gerar PDF</button>
       <button class="btn-secondary" onclick="newDiagnostic()">＋ Novo Diagnóstico</button>
     </div>
   </div>
@@ -2066,7 +2188,14 @@ function onPhotoSelected(secao, input) {
   const file = input.files[0];
   if (!file) return;
   input.value = ''; // reset so same file can be selected again
-  compressImage(file).then(compressed => uploadPhoto(secao, compressed));
+  // 13/08 (perf): compressImage roda na main thread (decode + canvas + toDataURL).
+  // Numa foto de 12 MP a tela trava por segundos ANTES de a miniatura existir, e
+  // esse intervalo nao tinha sinal. A miniatura (.photo-thumb.uploading, que pulsa)
+  // assume o sinal a partir do uploadPhoto.
+  pgpEsperaLonga('📷 Preparando a foto…');
+  compressImage(file)
+    .then(compressed => { pgpEsperaLonga(null); return uploadPhoto(secao, compressed); })
+    .catch(err => { pgpEsperaLonga(null); showToast('Não consegui ler essa foto'); });
 }
 
 function createLocalPlaceholder(secao, fileName) {
@@ -2212,6 +2341,21 @@ function updateThumbState(thumbId, cssClass) {
 }
 
 // ══ FINAL SCREEN ══════════════════════════════════════════════════════════
+// 13/08 (perf): wrapper de espera do "Finalizar →". Fica FORA do goToFinal para
+// nao alterar a funcao que reenviarFormulario() ja chamava. Trava duplo-toque,
+// poe spinner no botao e mantem a barra de rodape enquanto o POST acontece.
+async function goToFinalComEspera(btnEl){
+  return _comLoadingBtn_(btnEl, async function(){
+    pgpEsperaLonga('📤 Enviando o diagnóstico…');
+    try{ return await goToFinal(); }
+    finally{
+      // O PDF (se houver) assume a barra dentro de enviarPdfParaDrive; sem OS
+      // vinculada nao ha PDF nenhum, entao a barra sai aqui.
+      if(!_osId) pgpEsperaLonga(null);
+    }
+  }, '⏳ Enviando…');
+}
+
 async function goToFinal() {
   captureAllInputs();
 
@@ -2239,6 +2383,7 @@ async function goToFinal() {
     } catch (e) {
       _formularioEnviado = false; // falha real — libera nova tentativa
       _envioFalhou = true;
+      pgpEsperaLonga(null);   // 13/08 (perf): falhou — nao deixa a barra pendurada
       showToast('Erro ao enviar: ' + e.message);
       var _syncWarn = document.getElementById('sync-warning');
       if (_syncWarn) _syncWarn.style.display = 'block';
@@ -2377,8 +2522,21 @@ function _pdfChecarCanvas(canvas, imgData){
 async function enviarPdfParaDrive() {
 
   if (_pdfEnviado || !_osId) return;
+  // 13/08 (perf): jsPDF/html2canvas saem sob demanda. A mensagem de erro abaixo e' a
+  // MESMA de antes — so mudou o gatilho (era "nao carregou no boot", agora e' "nao
+  // carregou agora"). Antes, com a CDN bloqueada, isto aparecia SEM nenhuma espera
+  // visivel; agora a barra mostra que houve uma tentativa.
+  pgpEsperaLonga('📄 Preparando o PDF do diagnóstico…');
+  try {
+    await pgpEnsureLibsPDF();
+  } catch (eLib) {
+    pgpEsperaLonga(null);
+    showToast('PDF não gerado: biblioteca não carregou. Recarregue a página e finalize de novo.');
+    return;
+  }
   if (!window.jspdf || !window.html2canvas) {
     // 28/07: era um return SILENCIOSO (classe do achado #2 da OS-0016) — agora avisa
+    pgpEsperaLonga(null);
     showToast('PDF não gerado: biblioteca não carregou. Recarregue a página e finalize de novo.');
     return;
   }
@@ -2386,6 +2544,7 @@ async function enviarPdfParaDrive() {
   var el = document.getElementById('pdf-layout');
   try {
     await pdfHidratarFotosDrive(); // 28/07: embute fotos de rascunho restaurado
+    pgpEsperaLonga('📄 Montando o PDF do diagnóstico…');   // 13/08 (perf)
     buildPdfLayout();
     // Torna o layout renderável fora da tela, com largura de página A4 (~794px @96dpi).
     var _prevStyle = el.getAttribute('style') || '';
@@ -2436,6 +2595,7 @@ async function enviarPdfParaDrive() {
       pdf_uid: _pdfUid,
       createdBy: (id.tecnico || (_sess && _sess.tecnico && _sess.tecnico.nome) || '')
     };
+    pgpEsperaLonga('📤 Enviando o PDF ao Drive…');   // 13/08 (perf)
     var d = await gasPostJson(payload); // 28/07: parse seguro + retry
     if (!d || d.status !== 'ok') throw new Error((d && d.error) || 'falha ao salvar PDF');
     showToast('PDF do diagnóstico salvo no Drive');
@@ -2443,6 +2603,8 @@ async function enviarPdfParaDrive() {
     _pdfEnviado = false; // libera nova tentativa numa próxima finalização
     if (el) { el.classList.remove('pdf-capturing'); el.style.cssText = 'display:none'; }
     showToast('Diagnóstico enviado; PDF ao Drive falhou: ' + e.message);
+  } finally {
+    pgpEsperaLonga(null);   // 13/08 (perf): sai no sucesso E no erro
   }
 }
 
@@ -2538,8 +2700,20 @@ function pdfPhoto(zone) {
 // Antes, com rascunho restaurado, as fotos antigas entravam como <img src=drive-url>
 // que o html2canvas NÃO captura (sem CORS) → PDF com fotos faltando.
 const _fotoB64Cache = {};
+// 13/08 (perf): ANTES este laco era 100% SERIAL — um round-trip ao Apps Script POR
+// FOTO, cada um com 2 tentativas. Com 10 fotos de rascunho restaurado davam 10 idas
+// em fila (~1-3 s cada): ate ~30 s com a tela final ja aparente e NENHUM indicador.
+// Era o candidato mais forte a "travou ao concluir". Agora vai em lotes de 4 em
+// paralelo, com contador "N de M" na barra de espera.
+// PRESERVADOS de proposito: as 2 tentativas do gasPostJson (o ", 2"), a key inline
+// (o gcBody deste arquivo NAO injeta key), o cache por url, o "pula a zona que a
+// sessao atual ja cobre" e a ORDEM das fotos — que vive em state.fotos[zone] e nao
+// e' tocada aqui: este passo so preenche o mapa url -> dataURL.
+const _PDF_HIDRATA_LOTE = 4;
 async function pdfHidratarFotosDrive() {
   const zonas = Object.keys(state.fotos || {});
+  const urls = [];
+  const vistas = {};
   for (const zone of zonas) {
     const dataUrls = _fotoDataUrls[zone] || [];
     const driveEntries = (state.fotos[zone] || []).filter(e => e && e.url);
@@ -2547,17 +2721,31 @@ async function pdfHidratarFotosDrive() {
     if (dataUrls.length >= driveEntries.length) continue;
     for (const e of driveEntries) {
       if (_fotoB64Cache[e.url]) continue;
+      if (vistas[e.url]) continue;   // 13/08: mesma url em duas zonas = um download so
+      vistas[e.url] = true;
+      urls.push(e.url);
+    }
+  }
+  if (!urls.length) return;
+  const total = urls.length;
+  let feitas = 0;
+  pgpEsperaLonga('📥 Baixando fotos (0 de ' + total + ')…');
+  for (let i = 0; i < urls.length; i += _PDF_HIDRATA_LOTE) {
+    const lote = urls.slice(i, i + _PDF_HIDRATA_LOTE);
+    await Promise.all(lote.map(async function (u) {
       try {
         const d = await gasPostJson({
           action: 'getFotoBase64',
           key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
-          url: e.url
+          url: u
         }, 2);
         if (d && d.status === 'ok' && d.base64) {
-          _fotoB64Cache[e.url] = 'data:' + (d.mimeType || 'image/jpeg') + ';base64,' + d.base64;
+          _fotoB64Cache[u] = 'data:' + (d.mimeType || 'image/jpeg') + ';base64,' + d.base64;
         }
       } catch (eF) { /* segue — a foto entra como lembrete no PDF */ }
-    }
+      feitas++;
+      pgpEsperaLonga('📥 Baixando fotos (' + feitas + ' de ' + total + ')…');
+    }));
   }
 }
 
@@ -2888,8 +3076,16 @@ function buildPdfLayout() {
 
 async function printAll() {
   captureAllInputs();
+  // 13/08 (perf): o dialogo de impressao so abre depois de TODAS as fotos baixarem.
+  // Antes isso era serial e mudo; agora e' em lotes de 4 e com contador na barra.
+  pgpEsperaLonga('🖨️ Preparando a impressão…');
+  try { await pgpEnsureLibsPDF(); } catch(e) { /* impressao nativa nao depende das libs */ }
   try { await pdfHidratarFotosDrive(); } catch(e) {} // 28/07: impressão local tb com fotos
-  buildPdfLayout();
+  try {
+    buildPdfLayout();
+  } finally {
+    pgpEsperaLonga(null);   // 13/08 (perf): fora antes do print(), que e' bloqueante
+  }
   window.print();
 }
 
@@ -2977,8 +3173,19 @@ function selMaquina(){
 }
 async function carregarMaquinasOS(){
   if (!_osId) return;
+  // 13/08 (perf): chamada de boot ate hoje invisivel — os campos de maquina
+  // apareciam "do nada" segundos depois. O catch silencioso segue proposital.
+  pgpBootAviso('🔄 Carregando dados da OS…');
   try{
-    const data = await gasPostJson({ action:'getMaquinasByOS', key: FORM_KEY, id_os:_osId });   // 29/07 (F-12): último JSON.parse cru do arquivo
+  // 13/08 (perf): sem_pecas=true — GAS v97. Este POST e' a UNICA chamada de rede do
+  // boot, e no v96 ele lia MACHINE_PARTS inteira (uma linha por peca por maquina) e
+  // varria um laco maquinas x linhas so para anexar eq.parts a cada maquina. NENHUM
+  // dos 8 formularios le .parts (grep confirma: zero ocorrencias). O parametro e'
+  // OPCIONAL e ignorado por um GAS antigo, entao publicar o form antes do v97 nao
+  // quebra nada. saveMachine (usado pela corretiva para devolver a maquina com o
+  // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
+  // logo remover parts do objeto nao apaga peca nenhuma.
+    const data = await gasPostJson({ action:'getMaquinasByOS', key: FORM_KEY, sem_pecas: true, id_os:_osId });   // 29/07 (F-12): último JSON.parse cru do arquivo
     const machines = (data && data.machines) || [];
     if (!machines.length) return;
     _maquinas = machines;
@@ -2992,6 +3199,7 @@ async function carregarMaquinasOS(){
       wrap.style.display = '';
     }
   }catch(e){ /* silencioso — técnico pode preencher à mão */ }
+  finally{ pgpBootAviso(null); }   // 13/08 (perf)
 }
 function preencherResponsavelSessao(){
   var el = document.getElementById('id-tecnico');

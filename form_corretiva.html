@@ -1,5 +1,30 @@
 <!DOCTYPE html>
 <!--
+  ════════════════════════════════════════════════════════════════════════════
+  13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
+  Reclamacao do estagiario: "os formularios demoram demais para abrir" e
+  "eu clico e nao acontece nada, nao sei se pegou".
+  (1) jsPDF + html2canvas SAIRAM DO <head>. Eram ~562 KB parser-blocking em
+      TODA abertura, embora so sejam usados na conclusao/geracao de PDF. Agora
+      entram sob demanda por pgpEnsureLibsPDF() (local primeiro, CDN de
+      fallback) no inicio de cada funcao que precisa delas.
+  (2) FEEDBACK DE ESPERA padrao da casa, aditivo: .is-busy (spinner no botao),
+      _comLoadingBtn_() (trava de duplo-toque) e pgpEsperaLonga() (barra fixa
+      no rodape que NAO some sozinha — o toast de 2,5 s e' curto demais para
+      um upload de 30 s).
+  (3) Todo clique com espera perceptivel passou a ter sinal: concluir/enviar,
+      gerar PDF, anexar foto (inclusive DURANTE a compressao), buscar maquina
+      da OS no boot, reenviar fila.
+  (4) getMaquinasByOS do boot passou a mandar sem_pecas=true (GAS v97). Era a
+      unica chamada de rede da abertura e trazia junto a leitura inteira de
+      MACHINE_PARTS + um laco maquinas x linhas para montar eq.parts — que
+      NENHUM formulario le. Medido no backend: -88% de celulas lidas e -72% de
+      payload na escala de 500 maquinas. Parametro OPCIONAL: GAS anterior ao
+      v97 simplesmente ignora, entao a ordem de publicacao nao importa.
+  ADITIVO: nenhuma funcao, id, data-key, data-cond ou classe existente foi
+  renomeada ou removida. Ver detalhe por bloco nos comentarios marcados
+  "13/08 (perf)".
+  ════════════════════════════════════════════════════════════════════════════
 form_corretiva.html — 29/07/2026 — pacote pós-teste profundo (F-25, F-26, F-27, F-30, F-01)
   - F-25a: job enfileirado DURANTE um pump ativo ficava órfão (o enqueue chama
     pump(), que sai no guard 'pumping'). Ao final do pump, se sobrou 'pending',
@@ -226,8 +251,98 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
      CDN em campo, que é a causa da OS-0016 (PDF sumia quando o cdnjs era bloqueado
      no celular). CDN só como fallback se o arquivo local faltar. Publicar os dois
      .js JUNTO com este HTML no repo ProperForms. -->
-<script src="jspdf.umd.min.js" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';document.head.appendChild(s);"></script>
-<script src="html2canvas.min.js" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';document.head.appendChild(s);"></script>
+<!-- 13/08 (perf): jsPDF/html2canvas SAIRAM daqui. Eram parser-blocking (~562 KB) em
+     toda abertura e so servem na conclusao. Agora entram por pgpEnsureLibsPDF(). -->
+<!-- 13/08 (perf): spinner + barra de espera padrao da casa (aditivo; nada existente foi alterado) -->
+<style>
+@keyframes pgpspin{to{transform:rotate(360deg)}}
+.is-busy{position:relative;color:transparent !important;pointer-events:none}
+.is-busy::after{content:'';position:absolute;width:16px;height:16px;top:calc(50% - 8px);left:calc(50% - 8px);border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpEsperaBar{position:fixed;left:0;right:0;bottom:0;z-index:100050;display:none;background:#111827;border-top:1px solid #374151;color:#e5e7eb;font-size:13px;line-height:1.35;padding:11px 14px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+#pgpEsperaBar.show{display:block}
+#pgpEsperaBar .pgp-dot{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpBootAviso{position:fixed;left:0;right:0;top:0;z-index:100049;display:none;background:rgba(30,58,138,.97);color:#dbeafe;font-size:13px;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#pgpBootAviso.show{display:block}
+#pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+</style>
+<script>
+/* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
+   ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
+   pdfStatus(), psRefreshBadge() e os "btn.disabled=true" continuam valendo.
+   Estes helpers cobrem o que NAO tinha sinal nenhum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Carrega as libs de PDF SOB DEMANDA. Antes desta rodada elas eram dois
+   <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
+   quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
+   se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+function pgpEnsureLibsPDF(){
+  if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
+  function carregar(local, cdn, jaExiste){
+    if (jaExiste()) return Promise.resolve();
+    return new Promise(function(ok, falha){
+      var s=document.createElement('script'); s.src=local;
+      s.onload=function(){ ok(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=cdn;
+        c.onload=function(){ ok(); };
+        c.onerror=function(){ falha(new Error('lib')); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  window._pgpLibsPdfPromise = Promise.all([
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; }),
+    carregar('./html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', function(){ return !!window.html2canvas; })
+  ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
+  return window._pgpLibsPdfPromise;
+}
+
+/* Botao com spinner + trava de duplo-toque. Mesmo nome e semantica do
+   PCF L13052 / PCM L11790 — e' o padrao da casa, nao um terceiro dialeto. */
+async function _comLoadingBtn_(btnEl, asyncFn, texto){
+  if(!btnEl) return asyncFn();
+  if(btnEl.dataset.pgpBusy==='1') return;      // trava de duplo-toque
+  btnEl.dataset.pgpBusy='1';
+  var txt=btnEl.textContent, dis=btnEl.disabled;
+  btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent=texto||'⏳ Processando…';
+  try{ return await asyncFn(); }
+  finally{ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; delete btnEl.dataset.pgpBusy; }
+}
+
+/* Espera LONGA (gerar PDF, subir ao Drive, baixar fotos): barra fixa no rodape
+   que NAO some sozinha e diz o que esta acontecendo. Chamar com null/'' esconde.
+   Existe porque o toast da casa dura 2,5 s e o upload dura ate 40 s. */
+function pgpEsperaLonga(msg){
+  var b=document.getElementById('pgpEsperaBar');
+  if(!b){
+    if(!msg) return;
+    b=document.createElement('div'); b.id='pgpEsperaBar';
+    b.setAttribute('role','status'); b.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(!msg){ b.classList.remove('show'); b.textContent=''; return; }
+  b.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  b.classList.add('show');
+}
+
+/* Aviso discreto de boot ("buscando a maquina da OS"). Some sozinho ao terminar,
+   e some TAMBEM quando falha — o catch silencioso do carregarMaquinasOS e'
+   intencional: sem rede o tecnico preenche a maquina a mao e segue. */
+function pgpBootAviso(msg){
+  var e=document.getElementById('pgpBootAviso');
+  if(!e){
+    if(!msg) return;
+    e=document.createElement('div'); e.id='pgpBootAviso';
+    e.setAttribute('role','status'); e.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(e);
+  }
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  e.classList.add('show');
+}
+</script>
 </head>
 <body>
 <div id="app">
@@ -421,7 +536,9 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
     <div class="sub">Lançamentos aguardando confirmação do servidor. Ficam salvos no aparelho até enviar — reenviam sozinhos quando houver internet.</div>
     <div id="psJobs"></div>
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-sign" style="flex:1" onclick="PS.pump()">↻ Tentar enviar agora</button>
+      <!-- 13/08 (perf): nao tinha feedback nenhum — o painel so mudava quando a fila
+           emitia, e o toque duplo era comum. _comLoadingBtn_ trava e mostra spinner. -->
+      <button class="btn-sign" style="flex:1" onclick="_comLoadingBtn_(this, function(){ return PS.pump(); }, '↻ Enviando…')">↻ Tentar enviar agora</button>
       <button class="btn-sign" style="flex:1" onclick="psFecharPainel()">Fechar</button>
     </div>
   </div>
@@ -448,6 +565,34 @@ window.PS = (function(){
   var DB='properSafe', VER=1, db=null, ready=false, pumping=false, sender=null, listeners=[];
   var MAX_TRIES=6, mem={ drafts:{}, photos:{}, outbox:{} }, seq=1;
 
+  /* ── 13/08 (perf): ESPELHO DE STATUS EM MEMORIA ────────────────────────────
+     counts() lia o outbox INTEIRO — all('outbox') e' um getAll() que desserializa
+     o body de cada job, e esses bodies carregam o base64 das fotos e do PDF
+     (megabytes). Isso rodava a CADA emit(), ou seja, uma vez por job processado
+     dentro do pump: num envio de 12 fotos eram 12 leituras completas do outbox so
+     para escrever "Enviando 12" num badge.
+     Agora um mapa jobId -> status e' semeado UMA vez por sessao e mantido em
+     put()/del(), que sao os UNICOS caminhos de escrita deste modulo. O outbox so
+     e' lido de verdade quando ha trabalho para enviar.
+     NADA da persistencia mudou: o IndexedDB continua sendo a fonte da verdade e
+     o espelho e' descartavel (some no reload e e' re-semeado). ───────────────── */
+  var _st = {};        // jobId -> status (espelho leve do outbox)
+  var _stOk = false;   // espelho ja semeado nesta sessao?
+  function _seedSt(){
+    if(_stOk) return Promise.resolve();
+    return all('outbox').then(function(a){
+      _st={}; a.forEach(function(j){ _st[j.jobId]=j.status; }); _stOk=true;
+    }).catch(function(){ _stOk=true; });   // se falhar, segue com o que tiver
+  }
+  function _contarSt(){
+    var c={pending:0,dead:0,done:0,total:0};
+    Object.keys(_st).forEach(function(k){
+      var s=_st[k]; c.total++;
+      if(s==='pending') c.pending++; else if(s==='dead') c.dead++; else if(s==='done') c.done++;
+    });
+    return c;
+  }
+
   function open(){ return new Promise(function(res){
     try{
       if(!('indexedDB' in window) || !window.indexedDB){ ready=false; return res(false); }
@@ -468,13 +613,20 @@ window.PS = (function(){
   function keyOf(name){ return name==='drafts'?'draftId':(name==='photos'?'photoId':'jobId'); }
 
   function put(name,val){
-    if(ready) return rq(store(name,'readwrite').put(val)).then(function(k){ if(val[keyOf(name)]==null) val[keyOf(name)]=k; return k; });
+    if(ready) return rq(store(name,'readwrite').put(val)).then(function(k){
+      if(val[keyOf(name)]==null) val[keyOf(name)]=k;
+      if(name==='outbox') _st[val.jobId!=null?val.jobId:k]=val.status;   // 13/08 (perf)
+      return k; });
     var kp=keyOf(name); if(val[kp]==null) val[kp]=(name==='drafts'?val.draftId:(seq++));
-    mem[name][val[kp]]=JSON.parse(JSON.stringify(val)); return Promise.resolve(val[kp]);
+    mem[name][val[kp]]=JSON.parse(JSON.stringify(val));
+    if(name==='outbox') _st[val[kp]]=val.status;                          // 13/08 (perf)
+    return Promise.resolve(val[kp]);
   }
   function get(name,key){ if(ready) return rq(store(name,'readonly').get(key)); return Promise.resolve(mem[name][key]?JSON.parse(JSON.stringify(mem[name][key])):null); }
   function all(name){ if(ready) return rq(store(name,'readonly').getAll()); return Promise.resolve(Object.keys(mem[name]).map(function(k){ return JSON.parse(JSON.stringify(mem[name][k])); })); }
-  function del(name,key){ if(ready) return rq(store(name,'readwrite')['delete'](key)); delete mem[name][key]; return Promise.resolve(); }
+  function del(name,key){
+    if(name==='outbox') delete _st[key];                                  // 13/08 (perf)
+    if(ready) return rq(store(name,'readwrite')['delete'](key)); delete mem[name][key]; return Promise.resolve(); }
 
   function emit(){ listeners.forEach(function(fn){ try{ fn(); }catch(e){} }); }
   function onChange(fn){ listeners.push(fn); }
@@ -512,6 +664,10 @@ window.PS = (function(){
     if(typeof navigator!=='undefined' && navigator.onLine===false) return;
     pumping=true;
     try{
+      // 13/08 (perf): sem nada pendente nao ha por que desserializar o outbox
+      // inteiro. Isto e' o caso comum do setInterval de rede de seguranca.
+      await _seedSt();
+      if(_contarSt().pending===0) return;
       var jobs=await listJobs();
       var pend=jobs.filter(function(j){ return j.status==='pending'; }).sort(function(a,b){ return a.createdAt-b.createdAt; });
       for(var i=0;i<pend.length;i++){
@@ -543,11 +699,9 @@ window.PS = (function(){
     }catch(e){}
   }
 
-  function counts(){ return listJobs().then(function(a){
-    return { pending:a.filter(function(j){return j.status==='pending';}).length,
-             dead:a.filter(function(j){return j.status==='dead';}).length,
-             done:a.filter(function(j){return j.status==='done';}).length,
-             total:a.length }; }); }
+  // 13/08 (perf): mesma assinatura (Promise de {pending,dead,done,total}) — so nao
+  // toca mais no IndexedDB depois da primeira semeadura.
+  function counts(){ return _seedSt().then(_contarSt); }
 
   return { open:open, ready:function(){return ready;}, onChange:onChange, MAX_TRIES:MAX_TRIES,
     saveDraft:saveDraft, loadDraft:loadDraft, dropDraft:dropDraft, listDrafts:listDrafts,
@@ -714,24 +868,37 @@ function setSN(k, v, btn){
 // ══ FOTOS (por leitura; bytes no IndexedDB + fila durável) ═════════════════
 function pickPhoto(k){
   const inp = document.getElementById('fileInput');
-  inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(k, f); inp.value=''; };
+  inp.onchange = e => { const f = e.target.files[0]; inp.value='';
+    if (!f) return;
+    pgpEsperaLonga('📷 Preparando a foto…');   // 13/08 (perf): cobre a compressao
+    handlePhoto(k, f).then(function(){ pgpEsperaLonga(null); }, function(){ pgpEsperaLonga(null); });
+  };
   inp.click();
 }
 function handlePhoto(k, file){
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      let w = img.width, h = img.height;
-      if (w > MAX_IMG_PX || h > MAX_IMG_PX){ const r = Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
-      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
-      cv.getContext('2d').drawImage(img,0,0,w,h);
-      const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
-      addPhoto(k, dataUrl, file.name || 'foto.jpg');
+  // 13/08 (perf): (a) a compressao roda na main thread — FileReader + decode +
+  // canvas + toDataURL. Numa foto de 12 MP isso trava a tela por segundos ANTES de
+  // a miniatura existir, e ate hoje esse intervalo nao tinha sinal nenhum.
+  // (b) passou a DEVOLVER uma Promise para o pickPhotoGal poder enfileirar varias
+  // fotos e contar "N de M". Quem chamava ignorando o retorno continua igual.
+  return new Promise(function(resolve){
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > MAX_IMG_PX || h > MAX_IMG_PX){ const r = Math.min(MAX_IMG_PX/w, MAX_IMG_PX/h); w=Math.round(w*r); h=Math.round(h*r); }
+        const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
+        Promise.resolve(addPhoto(k, dataUrl, file.name || 'foto.jpg')).then(resolve, resolve);
+      };
+      img.onerror = () => { toast('Não consegui ler essa foto'); resolve(); };
+      img.src = reader.result;
     };
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(file);
+    reader.onerror = () => { toast('Não consegui ler essa foto'); resolve(); };
+    reader.readAsDataURL(file);
+  });
 }
 // Salva a foto NO APARELHO (IndexedDB) e enfileira o envio ao Drive. A miniatura
 // nasce "pendente" (âmbar) e vira verde só quando o servidor confirma — mas os
@@ -1121,7 +1288,14 @@ function assinaturasMeta(){
 async function enviar(){
   if(_sending){ toast('Esta corretiva já foi concluída — acompanhe os envios abaixo.'); return; }
   captura();
-  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Concluindo…';
+  const btn=document.getElementById('btnEnviar');
+  // 13/08 (perf): disabled+texto ja existiam; .is-busy soma o spinner e a trava de
+  // duplo-toque. A barra cobre a parte cara que vem depois: gerar o PDF (uma captura
+  // html2canvas por folha) antes de a tela de sucesso aparecer.
+  if(btn && btn.dataset.pgpBusy==='1') return;
+  if(btn) btn.dataset.pgpBusy='1';
+  btn.disabled=true; btn.textContent='Concluindo…'; if(btn) btn.classList.add('is-busy');
+  pgpEsperaLonga('📤 Concluindo a corretiva…');
   await ensureDraftSaved();
   if(_osId){
     var _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
@@ -1138,12 +1312,15 @@ async function enviar(){
   _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
   rotacionarUidAvulsa();                        // 29/07 (F-27a): próxima avulsa nasce limpa
   document.getElementById('app').style.display='none';
+  pgpEsperaLonga(null);   // 13/08 (perf): terminou — o badge da fila assume daqui
+  if(btn){ btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; btn.disabled=false; btn.textContent='✓ Concluir corretiva'; }
   document.getElementById('okScreen').style.display='';
   atualizarOkScreen();
   PS.pump();
 }
 
 // ══ MOTOR DE ENVIO (sender do ProperSafe) + finalização + painel da fila ═══
+var _psUiTimer = null;   // 13/08 (perf): coalescencia das atualizacoes de UI da fila
 function registrarSender(){
   PS.setSender(async function(job){
     try{
@@ -1459,6 +1636,11 @@ async function loadPhotosByKey(){
 // 29/07 (F-27b): extraído de buildPdfBase64 (mesma lógica, sem renomear nada) —
 // a avulsa precisa do documento em si para baixar no aparelho, não do base64.
 async function _buildPdfDoc(){
+  // 13/08 (perf): as libs de PDF nao vem mais no <head> (eram ~562 KB parser-blocking
+  // em TODA abertura). Entram aqui, sob demanda. Se nao carregarem, o throw abaixo
+  // continua valendo exatamente como antes — quem chama (enfileirarPdf) marca
+  // _pdfPendente e o PDF e' gerado na proxima abertura com internet.
+  try{ await pgpEnsureLibsPDF(); }catch(eLib){ /* o throw abaixo cuida da mensagem */ }
   if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
   var el=document.getElementById('pdf-layout');
   var photosByKey=await loadPhotosByKey();
@@ -1466,6 +1648,7 @@ async function _buildPdfDoc(){
   el.classList.add('pdf-capturing');
   el.style.cssText='display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
   try{
+    pgpEsperaLonga('📄 Capturando o laudo…');   // 13/08 (perf)
     var _scale=_pdfScaleSeguro(el);   // 29/07 (F-30)
     var canvas=await html2canvas(el,{ scale:_scale, backgroundColor:'#ffffff', useCORS:true, logging:false });
     var jsPDF=window.jspdf.jsPDF;
@@ -1554,8 +1737,20 @@ function selMaquina(){
 }
 async function carregarMaquinasOS(){
   if(!_osId) return;
+  // 13/08 (perf): chamada de boot ate hoje invisivel — os campos de maquina
+  // apareciam "do nada" segundos depois. O catch silencioso segue proposital:
+  // sem rede, o tecnico preenche a maquina a mao e toca o trabalho.
+  pgpBootAviso('🔄 Carregando dados da OS…');
   try{
-    const data=await gcFetchJson({ action:'getMaquinasByOS', id_os:_osId });
+  // 13/08 (perf): sem_pecas=true — GAS v97. Este POST e' a UNICA chamada de rede do
+  // boot, e no v96 ele lia MACHINE_PARTS inteira (uma linha por peca por maquina) e
+  // varria um laco maquinas x linhas so para anexar eq.parts a cada maquina. NENHUM
+  // dos 8 formularios le .parts (grep confirma: zero ocorrencias). O parametro e'
+  // OPCIONAL e ignorado por um GAS antigo, entao publicar o form antes do v97 nao
+  // quebra nada. saveMachine (usado pela corretiva para devolver a maquina com o
+  // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
+  // logo remover parts do objeto nao apaga peca nenhuma.
+    const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -1565,6 +1760,7 @@ async function carregarMaquinasOS(){
       wrap.style.display='';
     }
   }catch(e){ /* silencioso — técnico preenche à mão */ }
+  finally{ pgpBootAviso(null); }   // 13/08 (perf)
 }
 function preencherResponsavelSessao(){
   var el=document.getElementById('f_tecnico'); if(!el || el.value.trim()) return;
@@ -1609,10 +1805,22 @@ async function atualizarMaquinaCadastro(){
 
 // ── Auto-save em qualquer digitação ──
 function wireInputs(){
-  document.querySelectorAll('input,textarea,select').forEach(function(el){
-    if(el.id && el.id.indexOf('pgpSign')===0) return; // não drafta o overlay de assinatura
-    el.addEventListener('input', scheduleSave);
-    el.addEventListener('change', scheduleSave);
+  // 13/08 (perf): era um listener POR ELEMENTO, vezes DOIS eventos, e so nos campos
+  // que existiam no instante do init. Efeito colateral conhecido: os turnos criados
+  // depois (addTurno) NAO eram cobertos — quem salvava era o onchange="scheduleSave()"
+  // inline de cada campo de turno. Esses inline CONTINUAM no HTML de proposito; com
+  // a delegacao eles viram redundancia inofensiva (scheduleSave ja e' debounced em
+  // 500 ms, entao chamar duas vezes nao gera duas gravacoes).
+  // A exclusao do overlay de assinatura foi preservada tal e qual.
+  ['input','change'].forEach(function(ev){
+    document.addEventListener(ev, function(e){
+      var el=e.target;
+      if(!el || !el.tagName) return;
+      var t=el.tagName.toUpperCase();
+      if(t!=='INPUT' && t!=='TEXTAREA' && t!=='SELECT') return;
+      if(el.id && el.id.indexOf('pgpSign')===0) return; // não drafta o overlay de assinatura
+      scheduleSave();
+    }, true);
   });
 }
 
@@ -1624,7 +1832,15 @@ function wireInputs(){
   window._GC=p.get('gc')||window._GC||'';
   // motor de envio + reações de UI antes de abrir o banco
   registrarSender();
-  PS.onChange(function(){ psRefreshBadge(); checkFinalize(); });
+  // 13/08 (perf): o pump chama emit() UMA VEZ POR JOB. Antes, cada emit disparava
+  // duas varreduras completas do outbox (psRefreshBadge + checkFinalize) — num
+  // envio de 12 fotos eram 24 leituras do banco inteiro. Agora os emits em
+  // sequencia sao coalescidos numa unica atualizacao de UI. Nada de logica mudou:
+  // as duas funcoes continuam sendo chamadas, so que uma vez por rajada.
+  PS.onChange(function(){
+    clearTimeout(_psUiTimer);
+    _psUiTimer = setTimeout(function(){ psRefreshBadge(); checkFinalize(); }, 250);
+  });
   await PS.open();
   try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}   // limpa rascunho do formato antigo
   ensureDraftId();
@@ -1646,8 +1862,13 @@ function wireInputs(){
   if(_sending){
     document.getElementById('app').style.display='none';
     document.getElementById('okScreen').style.display='';
-    if(_pdfPendente && window.jspdf && window.html2canvas){
-      try{ if(_osId) await enfileirarPdf(); else await gerarLaudoAvulso(); }catch(e){}   // 29/07 (F-27b)
+    // 13/08 (perf): ANTES esta condicao dependia de as libs ja estarem em window.
+    // Com o onerror->CDN (wifi de oficina) elas nao estavam neste ponto do boot e a
+    // retomada do PDF pendente nunca acontecia. Agora sao pedidas explicitamente.
+    if(_pdfPendente){
+      pgpEsperaLonga('📄 Retomando o laudo pendente desta corretiva…');
+      try{ await pgpEnsureLibsPDF(); if(_osId) await enfileirarPdf(); else await gerarLaudoAvulso(); }catch(e){}   // 29/07 (F-27b)
+      finally{ pgpEsperaLonga(null); }
     }
     atualizarOkScreen();
   }
@@ -1656,8 +1877,8 @@ function wireInputs(){
   window.addEventListener('pagehide', function(){ saveDraft(); });
   window.addEventListener('online', function(){ PS.pump(); });
   window.addEventListener('beforeunload', function(e){ if(_psHasPending){ e.preventDefault(); e.returnValue=''; return ''; } });
-  setInterval(function(){ if(!_sending) saveDraft(); }, 8000);   // autosave periódico
-  setInterval(function(){ PS.pump(); }, 30000);                  // 29/07 (F-25a): rede de segurança da fila
+  setInterval(function(){ if(!_sending) saveDraft(); }, 15000);   // autosave periódico
+  setInterval(function(){ PS.pump(); }, 30000);   /* 13/08 (perf): o proprio pump agora sai na hora quando nao ha job pendente (contador em memoria), entao esta rede de seguranca nao le mais o outbox a toa */                  // 29/07 (F-25a): rede de segurança da fila
   // Retoma envios pendentes de sessões anteriores (fim de turno, app fechado, queda de sinal)
   psRefreshBadge();
   PS.pump();

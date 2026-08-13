@@ -1,5 +1,30 @@
 <!DOCTYPE html>
 <!--
+  ════════════════════════════════════════════════════════════════════════════
+  13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
+  Reclamacao do estagiario: "os formularios demoram demais para abrir" e
+  "eu clico e nao acontece nada, nao sei se pegou".
+  (1) jsPDF + html2canvas SAIRAM DO <head>. Eram ~562 KB parser-blocking em
+      TODA abertura, embora so sejam usados na conclusao/geracao de PDF. Agora
+      entram sob demanda por pgpEnsureLibsPDF() (local primeiro, CDN de
+      fallback) no inicio de cada funcao que precisa delas.
+  (2) FEEDBACK DE ESPERA padrao da casa, aditivo: .is-busy (spinner no botao),
+      _comLoadingBtn_() (trava de duplo-toque) e pgpEsperaLonga() (barra fixa
+      no rodape que NAO some sozinha — o toast de 2,5 s e' curto demais para
+      um upload de 30 s).
+  (3) Todo clique com espera perceptivel passou a ter sinal: concluir/enviar,
+      gerar PDF, anexar foto (inclusive DURANTE a compressao), buscar maquina
+      da OS no boot, reenviar fila.
+  (4) getMaquinasByOS do boot passou a mandar sem_pecas=true (GAS v97). Era a
+      unica chamada de rede da abertura e trazia junto a leitura inteira de
+      MACHINE_PARTS + um laco maquinas x linhas para montar eq.parts — que
+      NENHUM formulario le. Medido no backend: -88% de celulas lidas e -72% de
+      payload na escala de 500 maquinas. Parametro OPCIONAL: GAS anterior ao
+      v97 simplesmente ignora, entao a ordem de publicacao nao importa.
+  ADITIVO: nenhuma funcao, id, data-key, data-cond ou classe existente foi
+  renomeada ou removida. Ver detalhe por bloco nos comentarios marcados
+  "13/08 (perf)".
+  ════════════════════════════════════════════════════════════════════════════
 form04.html — 29/07/2026 — pacote pós-teste profundo (F-12, F-12b, F-13, F-01, F-01b, F-14, F-30)
   - Gêmeo do form03, mesmas correções: gasPostJson (parse seguro + 3 tentativas)
     em TODOS os POSTs; status persistente do laudo na tela final + botão
@@ -111,8 +136,98 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
   .pl-badge.na{background:#eee;color:#555}
 </style>
 <!-- Geração do PDF da peritagem para subir ao Drive (Gestão de Documentos). Aditivo. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- 13/08 (perf): jsPDF/html2canvas SAIRAM daqui. Eram parser-blocking (~562 KB) em
+     toda abertura e so servem na conclusao. Agora entram por pgpEnsureLibsPDF(). -->
+<!-- 13/08 (perf): spinner + barra de espera padrao da casa (aditivo; nada existente foi alterado) -->
+<style>
+@keyframes pgpspin{to{transform:rotate(360deg)}}
+.is-busy{position:relative;color:transparent !important;pointer-events:none}
+.is-busy::after{content:'';position:absolute;width:16px;height:16px;top:calc(50% - 8px);left:calc(50% - 8px);border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpEsperaBar{position:fixed;left:0;right:0;bottom:0;z-index:100050;display:none;background:#111827;border-top:1px solid #374151;color:#e5e7eb;font-size:13px;line-height:1.35;padding:11px 14px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+#pgpEsperaBar.show{display:block}
+#pgpEsperaBar .pgp-dot{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpBootAviso{position:fixed;left:0;right:0;top:0;z-index:100049;display:none;background:rgba(30,58,138,.97);color:#dbeafe;font-size:13px;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#pgpBootAviso.show{display:block}
+#pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+</style>
+<script>
+/* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
+   ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
+   pdfStatus(), psRefreshBadge() e os "btn.disabled=true" continuam valendo.
+   Estes helpers cobrem o que NAO tinha sinal nenhum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Carrega as libs de PDF SOB DEMANDA. Antes desta rodada elas eram dois
+   <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
+   quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
+   se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+function pgpEnsureLibsPDF(){
+  if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
+  function carregar(local, cdn, jaExiste){
+    if (jaExiste()) return Promise.resolve();
+    return new Promise(function(ok, falha){
+      var s=document.createElement('script'); s.src=local;
+      s.onload=function(){ ok(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=cdn;
+        c.onload=function(){ ok(); };
+        c.onerror=function(){ falha(new Error('lib')); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  window._pgpLibsPdfPromise = Promise.all([
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; }),
+    carregar('./html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', function(){ return !!window.html2canvas; })
+  ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
+  return window._pgpLibsPdfPromise;
+}
+
+/* Botao com spinner + trava de duplo-toque. Mesmo nome e semantica do
+   PCF L13052 / PCM L11790 — e' o padrao da casa, nao um terceiro dialeto. */
+async function _comLoadingBtn_(btnEl, asyncFn, texto){
+  if(!btnEl) return asyncFn();
+  if(btnEl.dataset.pgpBusy==='1') return;      // trava de duplo-toque
+  btnEl.dataset.pgpBusy='1';
+  var txt=btnEl.textContent, dis=btnEl.disabled;
+  btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent=texto||'⏳ Processando…';
+  try{ return await asyncFn(); }
+  finally{ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; delete btnEl.dataset.pgpBusy; }
+}
+
+/* Espera LONGA (gerar PDF, subir ao Drive, baixar fotos): barra fixa no rodape
+   que NAO some sozinha e diz o que esta acontecendo. Chamar com null/'' esconde.
+   Existe porque o toast da casa dura 2,5 s e o upload dura ate 40 s. */
+function pgpEsperaLonga(msg){
+  var b=document.getElementById('pgpEsperaBar');
+  if(!b){
+    if(!msg) return;
+    b=document.createElement('div'); b.id='pgpEsperaBar';
+    b.setAttribute('role','status'); b.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(!msg){ b.classList.remove('show'); b.textContent=''; return; }
+  b.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  b.classList.add('show');
+}
+
+/* Aviso discreto de boot ("buscando a maquina da OS"). Some sozinho ao terminar,
+   e some TAMBEM quando falha — o catch silencioso do carregarMaquinasOS e'
+   intencional: sem rede o tecnico preenche a maquina a mao e segue. */
+function pgpBootAviso(msg){
+  var e=document.getElementById('pgpBootAviso');
+  if(!e){
+    if(!msg) return;
+    e=document.createElement('div'); e.id='pgpBootAviso';
+    e.setAttribute('role','status'); e.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(e);
+  }
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  e.classList.add('show');
+}
+</script>
 </head>
 <body>
 <div id="app">
@@ -324,12 +439,18 @@ function pickPhoto(secao){
   inp.click();
 }
 function handlePhoto(secao,file){
+  // 13/08 (perf): a compressao roda na main thread (FileReader + decode + canvas +
+  // toDataURL). Numa foto de 12 MP isso trava a tela por segundos ANTES de a
+  // miniatura aparecer — e ate hoje esse intervalo nao tinha sinal nenhum.
+  pgpEsperaLonga('📷 Preparando a foto…');
   const reader=new FileReader();
   reader.onload=()=>{ const img=new Image(); img.onload=()=>{
     let {width:w,height:h}=img; if(w>MAX_IMG_PX||h>MAX_IMG_PX){const r=Math.min(MAX_IMG_PX/w,MAX_IMG_PX/h);w=Math.round(w*r);h=Math.round(h*r);}
     const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    pgpEsperaLonga(null);   // 13/08 (perf): daqui em diante quem sinaliza e' a miniatura
     uploadPhoto(secao,cv.toDataURL('image/jpeg',IMG_QUALITY),file.name||'foto.jpg');
-  }; img.src=reader.result; };
+  }; img.onerror=()=>{ pgpEsperaLonga(null); toast('Não consegui ler essa foto'); }; img.src=reader.result; };
+  reader.onerror=()=>{ pgpEsperaLonga(null); toast('Não consegui ler essa foto'); };
   reader.readAsDataURL(file);
 }
 // 29/07 (F-01): legenda humana da foto (rótulo do item do schema) → coluna Caption
@@ -340,21 +461,52 @@ function _labelFoto(k){
   }
   return k;
 }
+// 13/08 (UX): RETRY CLICAVEL DA FOTO — reposto. form01 e form02 sempre tiveram a
+// miniatura vermelha clicavel; form03/form04 nao, e a foto que falhava morria ali
+// (o tecnico so via o contorno vermelho e nao tinha o que fazer). Nada do que ja
+// ia para o state mudou: o registro 'erro' continua sendo empilhado igual, e o
+// retry apenas o ATUALIZA no lugar. foto_uid/client_ts seguem CONGELADOS na
+// captura (F-01) — sao passados adiante, nunca regerados.
+const _fotoRetryStore = {};
 async function uploadPhoto(secao,dataUrl,fileName){
   const cont=document.getElementById('thumbs-'+secao);
-  const el=document.createElement('img');el.className='thumb uploading';el.src=dataUrl;cont.appendChild(el);
+  const thumbId='th-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);   // 13/08
+  const el=document.createElement('img');el.className='thumb uploading';el.id=thumbId;el.src=dataUrl;cont.appendChild(el);
   state.fotos[secao]=state.fotos[secao]||[];
   // 29/07 (F-01): gerados UMA vez, na captura. O payload abaixo é montado uma
   // única vez e reusado pelas 3 tentativas do gasPostJson → nunca é regerado.
   const _clientTs = Date.now();
   const _fotoUid  = 'f_' + _formUid + '_' + _clientTs + '_' + Math.random().toString(36).slice(2,8);
+  await _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_fotoUid);
+}
+async function _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_fotoUid){
+  const el=document.getElementById(thumbId);
+  state.fotos[secao]=state.fotos[secao]||[];
+  function _reg(){ return (state.fotos[secao]||[]).filter(function(f){ return f && f.foto_uid===_fotoUid; })[0]; }
   try{
     const payload={action:'salvarFotoForm',os:curOs(),cliente:val('i_cliente')||'SemCliente',secao,nomeArquivo:fileName,base64:dataUrl.split(',')[1],mimeType:'image/jpeg',categoria:'foto_'+SC.tipoForm,entity_type:SC.tipoForm,
       client_ts:_clientTs, foto_uid:_fotoUid, legenda:_labelFoto(secao)};
     const data=await gasPostJson(payload);   // 29/07 (F-12): parse seguro + retry
     if(!data||data.ok!==true) throw new Error(data.error||'falha');
-    el.className='thumb ok'; state.fotos[secao].push({url:data.url,fileName,status:'ok',foto_uid:_fotoUid,client_ts:_clientTs}); scheduleSave();
-  }catch(err){ el.className='thumb erro'; state.fotos[secao].push({url:null,fileName,status:'erro',foto_uid:_fotoUid,client_ts:_clientTs}); toast('Erro ao enviar foto'); scheduleSave(); }
+    if(el){ el.className='thumb ok'; el.onclick=null; el.title=''; }
+    delete _fotoRetryStore[thumbId];
+    var _r=_reg();
+    if(_r){ _r.url=data.url; _r.status='ok'; }
+    else state.fotos[secao].push({url:data.url,fileName,status:'ok',foto_uid:_fotoUid,client_ts:_clientTs});
+    scheduleSave();
+  }catch(err){
+    if(el){ el.className='thumb erro'; el.title='Falha no envio — toque para reenviar'; el.onclick=function(){ retryFoto(thumbId); }; }
+    _fotoRetryStore[thumbId]={ secao:secao, dataUrl:dataUrl, fileName:fileName, clientTs:_clientTs, fotoUid:_fotoUid };
+    if(!_reg()) state.fotos[secao].push({url:null,fileName,status:'erro',foto_uid:_fotoUid,client_ts:_clientTs});
+    toast('Erro ao enviar foto — toque na miniatura vermelha para reenviar'); scheduleSave();
+  }
+}
+async function retryFoto(thumbId){
+  const r=_fotoRetryStore[thumbId]; if(!r) return;
+  const el=document.getElementById(thumbId);
+  if(el){ el.onclick=null; el.className='thumb uploading'; }
+  toast('Reenviando foto…');
+  await _tentarUploadFoto0304(r.secao,r.dataUrl,r.fileName,thumbId,r.clientTs,r.fotoUid);
 }
 function curOs(){ return val('i_os')||_osId||'SemOS'; }
 
@@ -368,7 +520,13 @@ function captura(){
 }
 async function enviar(){
   captura();
-  const btn=document.getElementById('btnEnviar'); btn.disabled=true; btn.textContent='Enviando…';
+  const btn=document.getElementById('btnEnviar');
+  // 13/08 (perf): disabled+texto ja existiam; .is-busy soma spinner + trava de
+  // duplo-toque, e a barra explica a espera (o POST tem 3 tentativas com backoff).
+  if(btn && btn.dataset.pgpBusy==='1') return;
+  if(btn) btn.dataset.pgpBusy='1';
+  btn.disabled=true; btn.textContent='Enviando…'; if(btn) btn.classList.add('is-busy');
+  pgpEsperaLonga('📤 Enviando a peritagem…');
   if(_osId && !_enviado){
     _enviado=true;
     var _sess=null;
@@ -382,11 +540,17 @@ async function enviar(){
       const d=await gasPostJson(payload);                 // 29/07 (F-12): parse seguro + retry
       if(d.status!=='ok') throw new Error(d.message||d.error||'Erro do servidor');
       limparRascunho();                                   // 29/07 (F-13): só com OK do servidor
-    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem'; toast('Erro ao enviar: ' + e.message); return; }
+    }catch(e){ _enviado=false; btn.disabled=false; btn.textContent='✓ Concluir peritagem';
+      btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; pgpEsperaLonga(null);   // 13/08 (perf)
+      toast('Erro ao enviar: ' + e.message); return; }
   }
   // Gera o PDF da peritagem (estilo Form 02) e sobe ao Drive → Gestão de Documentos
   // na hora, sem depender de finalizar a OS. Não bloqueia a tela de conclusão.
+  btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy;   // 13/08 (perf)
+  // 13/08 (perf): com PDF, a barra de espera passa a ser do enviarPdfParaDrive
+  // (que segue SEM await de proposito — ver a armadilha do _pdfAguardando).
   if(_osId){ _pdfAguardando = enviarPdfParaDrive(); }
+  else { pgpEsperaLonga(null); }
   document.getElementById('app').style.display='none';
   const ok=document.getElementById('okScreen'); ok.style.display='';
   document.getElementById('okSub').textContent=_osId?'A tarefa foi concluída no pipeline. Gere o PDF para anexar ao laudo.':'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
@@ -598,12 +762,26 @@ async function reenviarPdf(){
 }
 async function enviarPdfParaDrive(){
   if (_pdfEnviado || !_osId) return;
+  // 13/08 (perf): as libs de PDF nao vem mais no <head> — entram aqui, no unico
+  // momento em que fazem falta. A mensagem de erro e' a MESMA de antes; so mudou
+  // o gatilho. O pdfStatus/btnReenviarPdf que ja existiam continuam mandando.
+  pdfStatus('📄 Preparando o laudo…');
+  pgpEsperaLonga('📄 Preparando o laudo…');
+  try{
+    await pgpEnsureLibsPDF();
+  }catch(eLib){
+    pgpEsperaLonga(null);
+    pdfStatus('⚠️ Laudo NÃO enviado: a biblioteca de PDF não carregou. Recarregue a página e toque em Reenviar.', true);
+    return;
+  }
   if (!window.jspdf || !window.html2canvas){
+    pgpEsperaLonga(null);
     pdfStatus('⚠️ Laudo NÃO enviado: a biblioteca de PDF não carregou. Recarregue a página e toque em Reenviar.', true);
     return;
   }
   _pdfEnviado = true;
   pdfStatus('📄 Enviando laudo ao Drive…');
+  pgpEsperaLonga('📄 Gerando o laudo em PDF…');   // 13/08 (perf)
   var el = document.getElementById('pdf-layout');
   try{
     buildPdfLayout();
@@ -795,8 +973,20 @@ function selMaquina(){
 }
 async function carregarMaquinasOS(){
   if(!_osId) return;
+  // 13/08 (perf): chamada de boot que ate hoje era 100% invisivel. O aviso some ao
+  // terminar E ao falhar — o catch silencioso e' proposital (sem rede, preenche-se
+  // a maquina a mao e segue).
+  pgpBootAviso('🔄 Carregando dados da OS…');
   try{
-    const data=await gasPostJson({action:'getMaquinasByOS',id_os:_osId});   // 29/07 (F-12)
+  // 13/08 (perf): sem_pecas=true — GAS v97. Este POST e' a UNICA chamada de rede do
+  // boot, e no v96 ele lia MACHINE_PARTS inteira (uma linha por peca por maquina) e
+  // varria um laco maquinas x linhas so para anexar eq.parts a cada maquina. NENHUM
+  // dos 8 formularios le .parts (grep confirma: zero ocorrencias). O parametro e'
+  // OPCIONAL e ignorado por um GAS antigo, entao publicar o form antes do v97 nao
+  // quebra nada. saveMachine (usado pela corretiva para devolver a maquina com o
+  // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
+  // logo remover parts do objeto nao apaga peca nenhuma.
+    const data=await gasPostJson({action:'getMaquinasByOS',sem_pecas:true,id_os:_osId});   // 29/07 (F-12)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -807,6 +997,7 @@ async function carregarMaquinasOS(){
         wrap.style.display=''; }
     }
   }catch(e){ /* silencioso — técnico preenche à mão */ }
+  finally{ pgpBootAviso(null); }   // 13/08 (perf)
 }
 function preencherResponsavelSessao(){
   var el=document.getElementById('i_tecnico'); if(!el||el.value.trim()) return;

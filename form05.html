@@ -1,5 +1,30 @@
 <!DOCTYPE html>
 <!--
+  ════════════════════════════════════════════════════════════════════════════
+  13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
+  Reclamacao do estagiario: "os formularios demoram demais para abrir" e
+  "eu clico e nao acontece nada, nao sei se pegou".
+  (1) jsPDF + html2canvas SAIRAM DO <head>. Eram ~562 KB parser-blocking em
+      TODA abertura, embora so sejam usados na conclusao/geracao de PDF. Agora
+      entram sob demanda por pgpEnsureLibsPDF() (local primeiro, CDN de
+      fallback) no inicio de cada funcao que precisa delas.
+  (2) FEEDBACK DE ESPERA padrao da casa, aditivo: .is-busy (spinner no botao),
+      _comLoadingBtn_() (trava de duplo-toque) e pgpEsperaLonga() (barra fixa
+      no rodape que NAO some sozinha — o toast de 2,5 s e' curto demais para
+      um upload de 30 s).
+  (3) Todo clique com espera perceptivel passou a ter sinal: concluir/enviar,
+      gerar PDF, anexar foto (inclusive DURANTE a compressao), buscar maquina
+      da OS no boot, reenviar fila.
+  (4) getMaquinasByOS do boot passou a mandar sem_pecas=true (GAS v97). Era a
+      unica chamada de rede da abertura e trazia junto a leitura inteira de
+      MACHINE_PARTS + um laco maquinas x linhas para montar eq.parts — que
+      NENHUM formulario le. Medido no backend: -88% de celulas lidas e -72% de
+      payload na escala de 500 maquinas. Parametro OPCIONAL: GAS anterior ao
+      v97 simplesmente ignora, entao a ordem de publicacao nao importa.
+  ADITIVO: nenhuma funcao, id, data-key, data-cond ou classe existente foi
+  renomeada ou removida. Ver detalhe por bloco nos comentarios marcados
+  "13/08 (perf)".
+  ════════════════════════════════════════════════════════════════════════════
 form05.html — 29/07/2026 — pacote pós-teste profundo (F-12, F-01b, F-14)
   - F-12: gasPostJson (parse seguro + 3 tentativas com backoff), bloco canônico do
     form01, nos 3 POSTs (getMaquinasByOS, salvarPdfDrive, saveFormulario). O
@@ -30,7 +55,10 @@ form05.html — 13/07/2026 — Termo de Desmontagem (novo form ProperForms)
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Form 05 — Termo de Desmontagem</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- 13/08 (perf): jsPDF/html2canvas SAIRAM daqui. Eram parser-blocking (~562 KB) em
+     toda abertura e so servem na conclusao. Agora entram por pgpEnsureLibsPDF().
+     Com isso o <style> desta pagina passou a ser o PRIMEIRO recurso do head —
+     antes o CSS ficava atras de 364 KB de jsPDF e nem a tela pintava. -->
 <style>
   :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#C0392B;--green:#22c55e;--red:#ef4444;--radius:12px}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -56,6 +84,96 @@ form05.html — 13/07/2026 — Termo de Desmontagem (novo form ProperForms)
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
   #toast.show{opacity:1}
 </style>
+<!-- 13/08 (perf): spinner + barra de espera padrao da casa (aditivo; nada existente foi alterado) -->
+<style>
+@keyframes pgpspin{to{transform:rotate(360deg)}}
+.is-busy{position:relative;color:transparent !important;pointer-events:none}
+.is-busy::after{content:'';position:absolute;width:16px;height:16px;top:calc(50% - 8px);left:calc(50% - 8px);border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpEsperaBar{position:fixed;left:0;right:0;bottom:0;z-index:100050;display:none;background:#111827;border-top:1px solid #374151;color:#e5e7eb;font-size:13px;line-height:1.35;padding:11px 14px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.45)}
+#pgpEsperaBar.show{display:block}
+#pgpEsperaBar .pgp-dot{display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+#pgpBootAviso{position:fixed;left:0;right:0;top:0;z-index:100049;display:none;background:rgba(30,58,138,.97);color:#dbeafe;font-size:13px;padding:8px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#pgpBootAviso.show{display:block}
+#pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
+</style>
+<script>
+/* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
+   ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
+   pdfStatus(), psRefreshBadge() e os "btn.disabled=true" continuam valendo.
+   Estes helpers cobrem o que NAO tinha sinal nenhum.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Carrega as libs de PDF SOB DEMANDA. Antes desta rodada elas eram dois
+   <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
+   quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
+   se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+function pgpEnsureLibsPDF(){
+  if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
+  function carregar(local, cdn, jaExiste){
+    if (jaExiste()) return Promise.resolve();
+    return new Promise(function(ok, falha){
+      var s=document.createElement('script'); s.src=local;
+      s.onload=function(){ ok(); };
+      s.onerror=function(){
+        var c=document.createElement('script'); c.src=cdn;
+        c.onload=function(){ ok(); };
+        c.onerror=function(){ falha(new Error('lib')); };
+        document.head.appendChild(c);
+      };
+      document.head.appendChild(s);
+    });
+  }
+  // form05 so usa jsPDF (nao gera captura de tela) — mesmo NOME de funcao, uma lib so.
+  window._pgpLibsPdfPromise = Promise.all([
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; })
+  ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
+  return window._pgpLibsPdfPromise;
+}
+
+/* Botao com spinner + trava de duplo-toque. Mesmo nome e semantica do
+   PCF L13052 / PCM L11790 — e' o padrao da casa, nao um terceiro dialeto. */
+async function _comLoadingBtn_(btnEl, asyncFn, texto){
+  if(!btnEl) return asyncFn();
+  if(btnEl.dataset.pgpBusy==='1') return;      // trava de duplo-toque
+  btnEl.dataset.pgpBusy='1';
+  var txt=btnEl.textContent, dis=btnEl.disabled;
+  btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent=texto||'⏳ Processando…';
+  try{ return await asyncFn(); }
+  finally{ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; delete btnEl.dataset.pgpBusy; }
+}
+
+/* Espera LONGA (gerar PDF, subir ao Drive, baixar fotos): barra fixa no rodape
+   que NAO some sozinha e diz o que esta acontecendo. Chamar com null/'' esconde.
+   Existe porque o toast da casa dura 2,5 s e o upload dura ate 40 s. */
+function pgpEsperaLonga(msg){
+  var b=document.getElementById('pgpEsperaBar');
+  if(!b){
+    if(!msg) return;
+    b=document.createElement('div'); b.id='pgpEsperaBar';
+    b.setAttribute('role','status'); b.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(b);
+  }
+  if(!msg){ b.classList.remove('show'); b.textContent=''; return; }
+  b.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  b.classList.add('show');
+}
+
+/* Aviso discreto de boot ("buscando a maquina da OS"). Some sozinho ao terminar,
+   e some TAMBEM quando falha — o catch silencioso do carregarMaquinasOS e'
+   intencional: sem rede o tecnico preenche a maquina a mao e segue. */
+function pgpBootAviso(msg){
+  var e=document.getElementById('pgpBootAviso');
+  if(!e){
+    if(!msg) return;
+    e=document.createElement('div'); e.id='pgpBootAviso';
+    e.setAttribute('role','status'); e.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(e);
+  }
+  if(!msg){ e.classList.remove('show'); e.textContent=''; return; }
+  e.innerHTML='<span class="pgp-dot"></span>'+String(msg).replace(/[<>&]/g,function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  e.classList.add('show');
+}
+</script>
 </head>
 <body>
 <div id="app">
@@ -162,12 +280,27 @@ function escHtml(s){ return String(s==null?'':s).replace(/[<>&]/g, function(c){ 
 var _clienteUrl = '';
 async function carregarDados(){
   if (!_osId) { renderDados(); return; }
+  // 13/08 (perf): aqui o renderDados() so roda DEPOIS do await, entao o #dadosBox
+  // ficava literalmente vazio na tela durante toda a chamada ao GAS — o pior caso
+  // de "abri e nao tem nada" dos 8 forms. Agora o proprio box diz que esta indo.
+  var _dbox = document.getElementById('dadosBox');
+  if (_dbox) _dbox.innerHTML = '<div class="dado"><span class="k">⏳ Carregando dados da OS…</span><span class="v"></span></div>';
+  pgpBootAviso('🔄 Carregando dados da OS…');
   try{
-    const data = await gasPostJson({ action:'getMaquinasByOS', id_os:_osId });   // 29/07 (F-12)
+  // 13/08 (perf): sem_pecas=true — GAS v97. Este POST e' a UNICA chamada de rede do
+  // boot, e no v96 ele lia MACHINE_PARTS inteira (uma linha por peca por maquina) e
+  // varria um laco maquinas x linhas so para anexar eq.parts a cada maquina. NENHUM
+  // dos 8 formularios le .parts (grep confirma: zero ocorrencias). O parametro e'
+  // OPCIONAL e ignorado por um GAS antigo, entao publicar o form antes do v97 nao
+  // quebra nada. saveMachine (usado pela corretiva para devolver a maquina com o
+  // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
+  // logo remover parts do objeto nao apaga peca nenhuma.
+    const data = await gasPostJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });   // 29/07 (F-12)
     state.os = data && data.os ? data.os : null;
     var machines = (data && data.machines) || [];
     state.maquina = machines.length ? machines[0] : null;
   }catch(e){ /* silencioso */ }
+  finally{ pgpBootAviso(null); }   // 13/08 (perf)
   renderDados();
 }
 
@@ -289,11 +422,26 @@ async function gerar(){
   var valor = val('f_valor') || '1.500,00';
   var resp = val('f_resp');
   var btn = document.getElementById('btnGerar');
-  btn.disabled = true; btn.textContent = 'Gerando…';
+  // 13/08 (perf): disabled+texto ja existiam; .is-busy soma spinner + trava de
+  // duplo-toque. O tratamento de erro de 3 ramos abaixo continua intacto — so
+  // ganhou a limpeza do estado visual novo.
+  if (btn && btn.dataset.pgpBusy === '1') return;
+  if (btn) btn.dataset.pgpBusy = '1';
+  btn.disabled = true; btn.textContent = 'Gerando…'; if (btn) btn.classList.add('is-busy');
+  function _liberarBtn(){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS';
+    btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; pgpEsperaLonga(null); }   // 13/08 (perf)
 
+  // 13/08 (perf): o jsPDF nao vem mais no <head> (eram 364 KB bloqueando o primeiro
+  // paint de toda abertura, e este form so precisa dele quando o botao e' tocado).
+  pgpEsperaLonga('📄 Preparando o gerador de PDF…');
+  try{
+    await pgpEnsureLibsPDF();
+  }catch(eLib){ _liberarBtn(); toast('PDF não gerado: biblioteca não carregou. Recarregue e tente de novo.'); return; }
+
+  pgpEsperaLonga('📄 Montando o termo…');   // 13/08 (perf)
   try{
     _pdfDoc = buildPdf(dias, valor, resp);
-  }catch(e){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('Erro ao montar PDF: ' + e.message); return; }
+  }catch(e){ _liberarBtn(); toast('Erro ao montar PDF: ' + e.message); return; }
 
   var m = state.maquina || {}, os = state.os || {};
   var cliente = os.cliente_nome || os.cliente || _clienteUrl || 'SemCliente';
@@ -302,6 +450,7 @@ async function gerar(){
   // Salva na OS/Drive (se vier do pipeline) + fecha a tarefa
   if (_osId){
     try{
+      pgpEsperaLonga('📤 Enviando o termo ao Drive…');   // 13/08 (perf)
       var base64 = _pdfDoc.output('datauristring').split(',')[1];
       var pdfPayload = { action:'salvarPdfDrive', os_id:_osId, os_numero:_osNumero, cliente:cliente,
         maquina_id: m.id || '', maquina_label: (equipStr(m) || m.tag || ''),
@@ -309,7 +458,7 @@ async function gerar(){
         pdf_uid: _pdfUid };                                  // 29/07 (F-01b)
       var d1 = await gasPostJson(pdfPayload);                // 29/07 (F-12): parse seguro + retry
       if (!d1 || d1.status !== 'ok') throw new Error((d1 && d1.error) || 'falha ao salvar PDF');
-    }catch(e){ btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('Erro ao salvar no Drive: ' + e.message); return; }
+    }catch(e){ _liberarBtn(); toast('Erro ao salvar no Drive: ' + e.message); return; }   // 13/08 (perf)
 
     if (!_sent){
       _sent = true;
@@ -320,12 +469,15 @@ async function gerar(){
           tecnico_id: (_sess && _sess.tecnico && _sess.tecnico.id) || '',
           campos_json: { dias_uteis_entrega: dias, valor_diagnostico: valor, responsavel_recebimento: resp } };
         if (_origem) formPayload.origem = _origem;           // 29/07 (F-14)
+        pgpEsperaLonga('📤 Fechando a tarefa no pipeline…');   // 13/08 (perf)
         var d2 = await gasPostJson(formPayload);             // 29/07 (F-12): parse seguro + retry
         if (d2.status !== 'ok') throw new Error(d2.message || d2.error || 'Erro do servidor');
-      }catch(e){ _sent=false; btn.disabled=false; btn.textContent='📄 Gerar termo e salvar na OS'; toast('PDF salvo, mas falhou ao fechar a tarefa: ' + e.message); return; }
+      }catch(e){ _sent=false; _liberarBtn(); toast('PDF salvo, mas falhou ao fechar a tarefa: ' + e.message); return; }   // 13/08 (perf)
     }
   }
 
+  pgpEsperaLonga(null);   // 13/08 (perf): terminou — a tela de sucesso assume
+  if (btn) { btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; }
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
   document.getElementById('okSub').textContent = _osId ? 'Salvo na pasta da OS no Drive e tarefa concluída.' : 'PDF gerado. Sem OS vinculada, nada foi salvo no sistema.';
