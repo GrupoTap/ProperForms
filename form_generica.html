@@ -358,6 +358,24 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
    <script> parser-blocking no <head> (~562 KB) em TODA abertura do form, mesmo
    quando o tecnico so ia preencher e sair. Local primeiro (mesmo repo), CDN so
    se o local falhar. A promessa e' memoizada: chamar N vezes baixa 1 vez. */
+/* 15/08: so quem realmente for rasterizar o DOM baixa os 198 KB. */
+function pgpEnsureHtml2Canvas(){
+  if (window.html2canvas) return Promise.resolve();
+  if (window._pgpH2cPromise) return window._pgpH2cPromise;
+  window._pgpH2cPromise = new Promise(function(ok, falha){
+    var s=document.createElement('script'); s.src='./html2canvas.min.js';
+    s.onload=function(){ ok(); };
+    s.onerror=function(){
+      var c=document.createElement('script');
+      c.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      c.onload=function(){ ok(); };
+      c.onerror=function(){ window._pgpH2cPromise=null; falha(new Error('lib')); };
+      document.head.appendChild(c);
+    };
+    document.head.appendChild(s);
+  });
+  return window._pgpH2cPromise;
+}
 function pgpEnsureLibsPDF(){
   if (window._pgpLibsPdfPromise) return window._pgpLibsPdfPromise;
   function carregar(local, cdn, jaExiste){
@@ -374,9 +392,15 @@ function pgpEnsureLibsPDF(){
       document.head.appendChild(s);
     });
   }
+  /* ══ 15/08 — O html2canvas SAI DO CAMINHO QUENTE (-198 KB) ═════════════════
+     Nenhum laudo deste arquivo rasteriza mais o DOM: todos sao desenhados no
+     jsPDF. O html2canvas NAO foi removido do arquivo (o `pgpPaginarPdf`
+     continua definido, por aditividade) — ele so deixou de ser BAIXADO junto
+     com o jsPDF. Quem precisar dele pede por `pgpEnsureHtml2Canvas()`, e o
+     proprio `pgpPaginarPdf` ja faz isso na guarda dele.
+     ═══════════════════════════════════════════════════════════════════════ */
   window._pgpLibsPdfPromise = Promise.all([
-    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; }),
-    carregar('./html2canvas.min.js','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', function(){ return !!window.html2canvas; })
+    carregar('./jspdf.umd.min.js','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function(){ return !!window.jspdf; })
   ]).catch(function(e){ window._pgpLibsPdfPromise=null; throw e; });
   return window._pgpLibsPdfPromise;
 }
@@ -2106,28 +2130,16 @@ async function buildPdfBase64(){
   // continua valendo exatamente como antes — quem chama (enfileirarPdf) marca
   // _pdfPendente e o PDF e' gerado na proxima abertura com internet.
   try{ await pgpEnsureLibsPDF(); }catch(eLib){ /* o throw abaixo cuida da mensagem */ }
-  if(!window.jspdf || !window.html2canvas) throw new Error('bibliotecas de PDF ausentes');
-  var host=document.getElementById('pdf-layout');
+  if(!window.jspdf) throw new Error('bibliotecas de PDF ausentes');
   var photosByKey=await loadPhotosByKey();
   captura();
-  var folhas=await tpRenderizarPaginas(photosByKey);
-  try{
-    var jsPDF=window.jspdf.jsPDF;
-    var pdf=new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    var escala=_tpScale();
-    for(var p=0;p<folhas.length;p++){
-      pgpEsperaLonga('📄 Gerando o PDF (folha '+(p+1)+' de '+folhas.length+')…');   // 13/08 (perf)
-      var canvas=await html2canvas(folhas[p], { scale:escala, backgroundColor:'#ffffff', useCORS:true,
-        logging:false, width:TP_W, height:TP_H, windowWidth:TP_W });
-      var imgData=canvas.toDataURL('image/jpeg',0.92);
-      _pdfChecarCanvas(canvas, imgData);
-      if(p>0) pdf.addPage();
-      pdf.addImage(imgData,'JPEG',0,0,210,297);
-    }
-    return pdf.output('datauristring').split(',')[1];
-  } finally {
-    host.className=''; host.style.cssText='display:none'; host.innerHTML='';
-  }
+  pgpEsperaLonga('📄 Montando o PDF…');   // 15/08
+  // 15/08: o motor `tp-*` media o layout no DOM e fotografava folha a folha.
+  // Agora o documento e' DESENHADO. Some a dependencia de getBoundingClientRect
+  // (o mesmo state passa a gerar o mesmo PDF em qualquer aparelho), some o
+  // clipe silencioso de bloco maior que a folha, e o arquivo encolhe ~99%.
+  var pdf = lvDocGenerica(photosByKey);
+  return pdf.output('datauristring').split(',')[1];
 }
 async function enfileirarPdf(){
   if(!_osId) return;
@@ -2286,5 +2298,921 @@ function wireInputs(){
   PS.pump();
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MOTOR DE PDF VETORIAL (Gen 4) — injetado em 15/08/2026.
+
+     Substitui o par `buildPdfLayout()` + html2canvas. O laudo passa a ser
+     DESENHADO no jsPDF: texto selecionável e pesquisável, arquivo pequeno,
+     cabeçalho e rodapé em todas as folhas, foto que não é cortada ao meio e
+     -198 KB de carregamento (o html2canvas deixa de ser necessário).
+     O cabeçalho deste formulário foi PRESERVADO — o que é compartilhado é o
+     motor, não a identidade visual.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   LAUDO VETORIAL — motor de PDF compartilhado (Gen 4)          15/08/2026
+
+   De onde veio: este arquivo é a GENERALIZAÇÃO do motor que nasceu dentro do
+   `form_diagnostico.html` em 13/08. Lá ele era uma classe `Laudo` acoplada a um
+   único documento — cabeçalho fixo, margens fixas, uma paleta. Aqui ele vira
+   motor: o cabeçalho é injetado por quem usa, as margens e a paleta são
+   parâmetros, e as primitivas cobrem o que os OITO formulários precisam.
+
+   Por que existe: os outros forms desenhavam o laudo em HTML e fotografavam com
+   html2canvas. Isso significa (a) texto que é imagem — não seleciona, não
+   pesquisa, borra a 8 pt; (b) arquivo grande; (c) `page-break-inside:avoid` que
+   nunca foi avaliado, porque html2canvas rasteriza, não pagina; (d) PDF BRANCO
+   no iPhone quando o canvas passa do orçamento de pixels; (e) -198 KB de
+   biblioteca carregada em campo, para nada.
+
+   Regra de ouro do motor: NADA é medido no DOM. Toda altura sai de
+   `splitTextToSize` + aritmética, então o mesmo state gera o mesmo PDF em
+   qualquer aparelho — que é exatamente o que a paginação por
+   `getBoundingClientRect()` nunca conseguiu prometer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+var LV_PW = 210, LV_PH = 297;
+
+var LV_COR = {
+  preto:'#1a1a1a', texto:'#222222', suave:'#666666', linha:'#d9d9d9',
+  fundoK:'#f4f4f4', zebra:'#fafafa', laranja:'#f58220', laranja2:'#e85d1f',
+  ok:'#177245', at:'#b8860b', cr:'#b3261e', th:'#2b2b2b',
+  ambar:'#E07B2E', azul:'#2E4057', escuro:'#3D3D3D', vermelho:'#C0392B'
+};
+
+function lvHx(h){
+  if (Array.isArray(h)) return h;
+  return [parseInt(h.substr(1,2),16), parseInt(h.substr(3,2),16), parseInt(h.substr(5,2),16)];
+}
+
+/* As fontes padrão do jsPDF são WinAnsi (cp1252). Qualquer caractere fora disso
+   sai como lixo no PDF — foi o que aconteceu com "ΔT", que virou "”T" na
+   primeira bancada do diagnóstico. lvS() traduz o que dá para traduzir e
+   descarta o resto. Acentuação do português, °, ×, µ, ³ e · passam.
+   ⚠ ☐ ☑ ✓ ◆ NÃO entram aqui de propósito: quadradinho de marcação é DESENHO
+   (lv.check), não caractere — ver §"checkbox vetorial" abaixo. */
+var LV_MAPA = {'Δ':'Delta ','δ':'delta ','≤':'<=','≥':'>=','−':'-','–':'-','≈':'~',
+  'Ω':'ohm','→':'->','⚠':'!','✓':'v','★':'*','●':'-','↑':'^','↓':'v','⌀':'D','Ø':'D',
+  '☐':'','☑':'','☒':'','◆':'','⚡':'*','📷':'','📋':'','📝':'','📏':'','❓':'','✍':'','🏁':''};
+function lvS(t){
+  t = String(t == null ? '' : t);
+  var out = '';
+  for (var i = 0; i < t.length; i++){
+    var c = t[i], cp = t.codePointAt(i);
+    if (cp > 0xFFFF){ i++; continue; }                  // emoji / pares substitutos
+    if (LV_MAPA[c] !== undefined){ out += LV_MAPA[c]; continue; }
+    if (cp < 32){ out += ' '; continue; }
+    if (cp < 256){ out += c; continue; }
+    if (c === '‘' || c === '’'){ out += "'"; continue; }
+    if (c === '“' || c === '”'){ out += '"'; continue; }
+    if (c === '—'){ out += '-'; continue; }
+    if (c === '…'){ out += '...'; continue; }
+    if (c === '€' || c === '•' || c === '‰'){ out += c; continue; }
+    /* fora do WinAnsi e sem tradução: descarta em vez de imprimir lixo */
+  }
+  return out.replace(/\s+$/,'');
+}
+
+/* Desescapa entidades HTML. Os forms guardam texto já escapado em alguns
+   caminhos (esc/escHtml); no vetorial isso apareceria literalmente como
+   "&amp;" dentro do PDF. */
+function lvDesesc(t){
+  return String(t == null ? '' : t)
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"')
+    .replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&amp;/g,'&');
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Laudo(doc, meta, opts)
+
+   opts.ml / opts.mr / opts.mbot   margens em mm (padrão 15/15/18)
+   opts.cabecalho(L, primeira)     desenha o cabeçalho e DEVOLVE a altura usada
+                                   em mm. Recebe `primeira=false` nas folhas 2+,
+                                   para o form decidir se repete o cabeçalho
+                                   inteiro ou uma faixa de continuação enxuta.
+   opts.rodape(L, pagina, total)   opcional; sobrescreve o rodapé padrão
+   opts.rodapeEsq                  texto da esquerda do rodapé padrão
+   ───────────────────────────────────────────────────────────────────────── */
+function Laudo(doc, meta, opts){
+  opts = opts || {};
+  this.d = doc; this.meta = meta || {}; this.opt = opts;
+  this.ML   = opts.ml   != null ? opts.ml   : 15;
+  this.MR   = opts.mr   != null ? opts.mr   : 15;
+  this.MBOT = opts.mbot != null ? opts.mbot : 18;
+  this.C = Object.assign({}, LV_COR, opts.cor || {});
+  this.figN = 0;
+  this.y = 0;
+  this._pend = null;
+  this._abrir(true);
+}
+Laudo.prototype.larg = function(){ return LV_PW - this.ML - this.MR; };
+Laudo.prototype.fim  = function(){ return LV_PH - this.MBOT; };
+Laudo.prototype._abrir = function(primeira){
+  this.y = this.opt.cabecalho ? this.opt.cabecalho(this, !!primeira) : this.ML + 11;
+};
+Laudo.prototype.novaPagina = function(){ this.d.addPage(); this._abrir(false); };
+
+/* Reserva: se o bloco não cabe INTEIRO, vai para a próxima folha.
+   É o `break-inside: avoid` que o html2canvas nunca soube respeitar. */
+Laudo.prototype.reserva = function(h){
+  if (this.y + h > this.fim()){ this.novaPagina(); return true; }
+  return false;
+};
+Laudo.prototype.espaco = function(h){ this.y += (h == null ? 3 : h); };
+
+/* ── cor / fonte (atalhos internos) ───────────────────────────────────── */
+Laudo.prototype._tc = function(c){ var k = lvHx(c); this.d.setTextColor(k[0],k[1],k[2]); return this; };
+Laudo.prototype._fc = function(c){ var k = lvHx(c); this.d.setFillColor(k[0],k[1],k[2]); return this; };
+Laudo.prototype._dc = function(c){ var k = lvHx(c); this.d.setDrawColor(k[0],k[1],k[2]); return this; };
+Laudo.prototype._f  = function(estilo, tam){ this.d.setFont('helvetica', estilo || 'normal'); this.d.setFontSize(tam || 8); return this; };
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CHECKBOX VETORIAL — o motivo de ☐/☑ não estarem no mapa de caracteres.
+
+   Nas fontes padrão do jsPDF esses glifos simplesmente não existem: sairiam
+   como lixo ou nada. Embutir uma fonte TTF resolveria, mas custa centenas de
+   KB por form — contra a rodada de performance de 13/08, que tirou 562 KB do
+   caminho de abertura justamente para o técnico não esperar em campo.
+   Desenhar é mais barato E mais nítido: um `rect` + duas `line` são vetor puro,
+   legíveis em qualquer zoom, e não dependem de fonte nenhuma.
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.check = function(x, y, marcado, tam){
+  var d = this.d, s = tam || 2.6;
+  this._dc(marcado ? this.C.preto : '#9a9a9a');
+  d.setLineWidth(marcado ? 0.32 : 0.2);
+  d.rect(x, y, s, s, 'D');
+  if (marcado){
+    this._dc(this.C.preto); d.setLineWidth(0.42);
+    d.line(x + s*0.20, y + s*0.52, x + s*0.42, y + s*0.78);
+    d.line(x + s*0.42, y + s*0.78, x + s*0.82, y + s*0.22);
+  }
+  d.setLineWidth(0.2);
+  return x + s;
+};
+
+/* Linha de opções: "Estado físico:  [x] Bom   [ ] Regular   [ ] Ruim"
+   opcoes = [{v:'boa', lab:'Bom'}, …]   valor = a opção marcada */
+Laudo.prototype.opcoes = function(rotulo, opcoes, valor, opt){
+  opt = opt || {};
+  this._flush(5.6);
+  var d = this.d, alt = 5.6;
+  this.reserva(alt);
+  var x = this.ML;
+  if (rotulo){
+    this._f('bold', opt.size || 7.5)._tc(this.C.texto);
+    d.text(lvS(rotulo), x, this.y + 3.6);
+    x += d.getTextWidth(lvS(rotulo)) + 3;
+  }
+  this._f('normal', opt.size || 7.5);
+  for (var i = 0; i < opcoes.length; i++){
+    var o = opcoes[i], marc = (o.v === valor);
+    this.check(x, this.y + 1.3, marc, 2.6);
+    x += 3.6;
+    this._tc(marc ? this.C.preto : this.C.texto);
+    this._f(marc ? 'bold' : 'normal', opt.size || 7.5);
+    d.text(lvS(o.lab), x, this.y + 3.6);
+    x += d.getTextWidth(lvS(o.lab)) + 5;
+  }
+  this.y += alt;
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   BARRA DE SEÇÃO — e o conserto do CABEÇALHO ÓRFÃO.
+
+   ⚠ A barra NÃO é desenhada na hora. Ela fica PENDENTE e só é impressa quando
+   o primeiro bloco de conteúdo dela chega — aí as duas coisas são reservadas
+   JUNTAS. Sem isso acontece o que a bancada de 13/08 já tinha pego uma vez:
+   "REGISTRO FOTOGRÁFICO" sozinho no pé da folha, com 650 px de papel branco
+   embaixo e as fotos na folha seguinte. Aqui a correção é do MOTOR, então vale
+   para os oito forms de uma vez e não depende de ninguém lembrar.
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.banda = function(txt, opt){
+  this._flush(4);                       // se havia outra barra pendente sem conteúdo, imprime
+  this._pend = { txt:txt, opt:opt || {}, tipo:'banda' };
+  return this;
+};
+Laudo.prototype._flush = function(hSeguinte){
+  if (!this._pend) return;
+  var p = this._pend; this._pend = null;
+  var opt = p.opt, d = this.d;
+  if (p.tipo === 'banda'){
+    var alt = opt.alt || 6.6;
+    /* exige a barra MAIS o começo do bloco seguinte, limitado ao que cabe numa
+       folha inteira (bloco gigante não deve empurrar a barra para sempre) */
+    var precisa = alt + 3 + Math.min(hSeguinte || 6, this.fim() - (this.opt.cabecalho ? 30 : 26));
+    this.reserva(precisa);
+    this._fc(opt.cor || this.C.preto);
+    d.rect(this.ML, this.y, this.larg(), alt, 'F');
+    this._tc(opt.corTexto || '#ffffff')._f('bold', opt.size || 8.6);
+    d.text(lvS(String(p.txt).toUpperCase()), this.ML + 2.5, this.y + alt*0.72);
+    this.y += alt + 3;
+  } else {                              // subtítulo (h2)
+    this.reserva(6 + Math.min(hSeguinte || 6, 60));
+    this._tc(opt.cor || this.C.laranja2)._f('bold', opt.size || 8);
+    d.text(lvS(p.txt), this.ML, this.y + 3);
+    this.y += 6;
+  }
+};
+/* h1 numerado — o formato do laudo de diagnóstico */
+Laudo.prototype.h1 = function(n, txt, opt){
+  return this.banda((n ? n + '. ' : '') + txt, opt);
+};
+Laudo.prototype.h2 = function(txt, opt){
+  this._flush(4);
+  this._pend = { txt:txt, opt:opt || {}, tipo:'h2' };
+  return this;
+};
+
+/* ── parágrafo ─────────────────────────────────────────────────────────── */
+Laudo.prototype.p = function(txt, opt){
+  opt = opt || {};
+  this._flush((opt.size || 8) >= 9 ? 4.6 : 4.2);
+  var d = this.d, larg = (opt.larg || this.larg()) - (opt.recuo || 0);
+  var x = this.ML + (opt.recuo || 0);
+  var tam = opt.size || 8, passo = opt.passo || (tam >= 9 ? 4.6 : 4.2);
+  this._f(opt.bold ? 'bold' : (opt.italico ? 'italic' : 'normal'), tam);
+  var linhas = d.splitTextToSize(lvS(lvDesesc(txt)), larg);
+  if (!linhas.length) linhas = [''];
+  for (var i = 0; i < linhas.length; i++){
+    this.reserva(passo + 1);
+    this._tc(opt.cor || this.C.texto)._f(opt.bold ? 'bold' : (opt.italico ? 'italic' : 'normal'), tam);
+    d.text(lvS(linhas[i]), x, this.y + 3.2);
+    this.y += passo;
+  }
+  this.y += (opt.gap == null ? 2 : opt.gap);
+  return this;
+};
+
+/* Item numerado — "1. texto…" com o número fora do recuo (form05) */
+Laudo.prototype.item = function(n, txt, opt){
+  opt = opt || {};
+  this._flush(4.2);
+  var d = this.d, rec = opt.recuo || 6, tam = opt.size || 8;
+  this._f('normal', tam);
+  var linhas = d.splitTextToSize(lvS(lvDesesc(txt)), this.larg() - rec);
+  for (var i = 0; i < linhas.length; i++){
+    this.reserva(5);
+    this._tc(opt.cor || this.C.texto)._f('normal', tam);
+    if (i === 0) d.text(lvS(String(n) + '.'), this.ML, this.y + 3.2);
+    d.text(lvS(linhas[i]), this.ML + rec, this.y + 3.2);
+    this.y += 4.2;
+  }
+  this.y += (opt.gap == null ? 1.6 : opt.gap);
+  return this;
+};
+
+/* ── caixa de texto livre (o antigo .pdf-obs: pre-wrap + altura mínima) ── */
+Laudo.prototype.caixa = function(txt, opt){
+  opt = opt || {};
+  this._flush(Math.max(opt.altMin || 8, 10));
+  var d = this.d, larg = this.larg(), tam = opt.size || 8;
+  var texto = lvS(lvDesesc(txt)) || '—';
+  this._f('normal', tam);
+  /* pre-wrap: as quebras que o técnico digitou são preservadas */
+  var brutas = texto.split('\n'), linhas = [];
+  for (var i = 0; i < brutas.length; i++){
+    var ls = d.splitTextToSize(brutas[i] === '' ? ' ' : brutas[i], larg - 5);
+    for (var j = 0; j < ls.length; j++) linhas.push(ls[j]);
+  }
+  var passo = 4;
+  /* Fatiar por FOLHA em vez de reservar o bloco inteiro: uma observação de
+     3 000 caracteres não cabe em folha nenhuma, e reservar faria a caixa
+     entrar mesmo assim e ser clipada em silêncio — o defeito G5. */
+  var k = 0;
+  while (k < linhas.length){
+    var livre = this.fim() - this.y - 4;
+    if (livre < passo*2 + 4){ this.novaPagina(); livre = this.fim() - this.y - 4; }
+    var cabem = Math.max(1, Math.floor((livre - 3) / passo));
+    var lote = linhas.slice(k, k + cabem);
+    var alt = Math.max(opt.altMin || 8, lote.length*passo + 3);
+    this._fc(opt.fundo || '#fbfbfb')._dc(this.C.linha);
+    d.setLineWidth(0.2);
+    d.rect(this.ML, this.y, larg, alt, 'FD');
+    if (opt.barra){ this._fc(opt.barra); d.rect(this.ML, this.y, 1.4, alt, 'F'); }
+    this._tc(opt.cor || this.C.texto)._f('normal', tam);
+    for (var m = 0; m < lote.length; m++) d.text(lvS(lote[m]), this.ML + 2.5, this.y + 4.2 + m*passo);
+    this.y += alt;
+    k += cabem;
+    if (k < linhas.length) this.y += 1;
+  }
+  this.y += (opt.gap == null ? 3 : opt.gap);
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MEDIDAS — para agrupar blocos que NÃO PODEM se separar.
+
+   O caso que obrigou a existir: no Termo de Entrega em Locação, o parágrafo do
+   termo e as assinaturas são um documento jurídico só. O motor de hoje (`tp-*`)
+   garantia isso com um id de grupo; sem equivalente, a bancada de 15/08 pôs o
+   termo na folha 2 e a assinatura na 3 — um termo assinado em folha separada
+   do que se está aceitando. `medirCaixa` + `medirAssinaturas` + `junto()`
+   devolvem esse contrato.
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.medirCaixa = function(txt, opt){
+  opt = opt || {};
+  var d = this.d, larg = this.larg();
+  this._f('normal', opt.size || 8);
+  var brutas = (lvS(lvDesesc(txt)) || '—').split('\n'), n = 0;
+  for (var i = 0; i < brutas.length; i++) n += d.splitTextToSize(brutas[i] === '' ? ' ' : brutas[i], larg - 5).length;
+  return Math.max(opt.altMin || 8, n*4 + 3) + (opt.gap == null ? 3 : opt.gap);
+};
+Laudo.prototype.medirAssinaturas = function(n, opt){
+  opt = opt || {};
+  return Math.ceil((n || 0)/2) * (opt.alt || 30);
+};
+Laudo.prototype.medirParagrafo = function(txt, opt){
+  opt = opt || {};
+  var tam = opt.size || 8, passo = opt.passo || (tam >= 9 ? 4.6 : 4.2);
+  this._f(opt.bold ? 'bold' : 'normal', tam);
+  return this.d.splitTextToSize(lvS(lvDesesc(txt)), this.larg()).length * passo + (opt.gap == null ? 2 : opt.gap);
+};
+/* Reserva um GRUPO inteiro: se o conjunto não cabe no que resta, mas cabe numa
+   folha, abre folha nova. Grupo maior que uma folha segue em frente (senão a
+   quebra viraria laço infinito). */
+Laudo.prototype.junto = function(h){
+  var folha = this.fim() - 26;
+  if (h <= folha) this.reserva(h);
+  return this;
+};
+
+/* ── caixa de destaque (sumário executivo) ─────────────────────────────── */
+Laudo.prototype.destaque = function(titulo, txt, cor){
+  this._flush(16);
+  var d = this.d, larg = this.larg();
+  this._f('normal', 9);
+  var linhas = d.splitTextToSize(lvS(lvDesesc(txt)) || '—', larg - 8);
+  var h = 9 + linhas.length*4.6 + 3;
+  this.reserva(h + 2);
+  var cc = lvHx(cor || this.C.laranja);
+  d.setFillColor(250,250,250); d.setDrawColor(cc[0],cc[1],cc[2]); d.setLineWidth(0.4);
+  d.rect(this.ML, this.y, larg, h, 'FD');
+  d.setFillColor(cc[0],cc[1],cc[2]); d.rect(this.ML, this.y, 1.6, h, 'F');
+  d.setTextColor(cc[0],cc[1],cc[2]); this._f('bold', 7);
+  d.text(lvS(String(titulo||'').toUpperCase()), this.ML + 5, this.y + 5);
+  this._tc(this.C.preto)._f('normal', 9);
+  for (var i = 0; i < linhas.length; i++) d.text(lvS(linhas[i]), this.ML + 5, this.y + 10.5 + i*4.6);
+  d.setLineWidth(0.2);
+  this.y += h + 4;
+  return this;
+};
+
+/* ── tabela chave/valor ────────────────────────────────────────────────── */
+Laudo.prototype.kv = function(pares, opt){
+  opt = opt || {};
+  this._flush(5.4);
+  var d = this.d, larg = this.larg(), kw = opt.kw || 46;
+  var pularVazio = opt.pularVazio !== false;
+  for (var i = 0; i < pares.length; i++){
+    var v = pares[i][1];
+    if (pularVazio && (v === undefined || v === null || v === '')) continue;
+    if (v === undefined || v === null || v === '') v = '—';
+    this._f('normal', opt.size || 7.5);
+    var vs = d.splitTextToSize(lvS(lvDesesc(v)), larg - kw - 4);
+    var alt = Math.max(5.4, vs.length*4 + 1.6);
+    this.reserva(alt);
+    this._fc(this.C.fundoK)._dc(this.C.linha);
+    d.rect(this.ML, this.y, kw, alt, 'FD');
+    d.rect(this.ML + kw, this.y, larg - kw, alt, 'D');
+    this._tc(this.C.texto)._f('bold', opt.size || 7.5);
+    d.text(lvS(String(pares[i][0])), this.ML + 2, this.y + 3.8);
+    this._f('normal', opt.size || 7.5);
+    for (var j = 0; j < vs.length; j++) d.text(lvS(vs[j]), this.ML + kw + 2, this.y + 3.8 + j*4);
+    this.y += alt;
+  }
+  this.y += (opt.gap == null ? 3 : opt.gap);
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   TABELA
+
+   cols      : ['Verificação','Valor', …]  (string ou {t, align})
+   larguras  : em mm, somando a largura útil
+   linhas    : array de arrays de células. Uma célula pode ser:
+                 string|number             → texto
+                 {cb:true|false}           → checkbox VETORIAL centrado
+                 {txt, bold, cor, align}   → texto com estilo
+                 {colspan:n, txt:…}        → mescla n colunas a partir dali
+   opt.statusCol  : índice cuja cor sai do conteúdo (crítico/atenção/ok)
+   opt.boldCol    : índice em negrito
+   opt.thCor      : cor do cabeçalho
+   opt.semZebra   : desliga a faixa alternada
+
+   O cabeçalho é REEMITIDO em toda folha, marcado "(continuação)" — na coluna
+   mais larga, nunca na primeira (numa coluna de 8 mm a marca invadia a vizinha).
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.tabela = function(cols, larguras, linhas, opt){
+  opt = opt || {};
+  this._flush((opt.altTh || 6) + (opt.altMin || 5.4)*Math.min(2, linhas.length || 1));
+  var d = this.d, self = this, cont = false;
+  var tamTh = opt.sizeTh || 6.8, tamTd = opt.size || 7.2;
+  var colCont = larguras.indexOf(Math.max.apply(null, larguras));
+  var altTh = opt.altTh || 6;
+
+  function head(){
+    self._fc(opt.thCor || self.C.th);
+    d.rect(self.ML, self.y, self.larg(), altTh, 'F');
+    self._tc('#ffffff')._f('bold', tamTh);
+    var x = self.ML;
+    for (var i = 0; i < cols.length; i++){
+      var c = cols[i], t = (c && c.t != null) ? c.t : c;
+      var marca = (cont && i === colCont) ? ' (continuação)' : '';
+      var al = (c && c.align) || 'left';
+      var tx = al === 'right' ? x + larguras[i] - 2 : (al === 'center' ? x + larguras[i]/2 : x + 2);
+      d.text(lvS(t + marca), tx, self.y + altTh*0.68, al === 'left' ? undefined : {align: al});
+      x += larguras[i];
+    }
+    self.y += altTh;
+  }
+
+  this.reserva(altTh + 8); head();
+
+  for (var r = 0; r < linhas.length; r++){
+    var cel = linhas[r], partes = [], alturas = [], k;
+    this._f('normal', tamTd);
+    for (k = 0; k < cel.length; k++){
+      var c = cel[k];
+      if (c && typeof c === 'object' && c.cb !== undefined){ partes.push(null); alturas.push(1); continue; }
+      var txt = (c && typeof c === 'object') ? c.txt : c;
+      txt = (txt === null || txt === undefined) ? '' : String(txt);
+      var lw = larguras[k] - 4;
+      if (c && typeof c === 'object' && c.colspan){
+        for (var q = 1; q < c.colspan; q++) lw += larguras[k+q];
+      }
+      var ls = d.splitTextToSize(lvS(lvDesesc(txt)), Math.max(6, lw));
+      partes.push(ls); alturas.push(ls.length || 1);
+    }
+    var alt = Math.max(opt.altMin || 5.4, Math.max.apply(null, alturas)*3.7 + 2);
+    if (this.y + alt > this.fim()){ this.novaPagina(); cont = true; head(); }
+    this._dc(this.C.linha); d.setLineWidth(0.2);
+    if (!opt.semZebra && r % 2 === 1){ this._fc(this.C.zebra); d.rect(this.ML, this.y, this.larg(), alt, 'F'); }
+    var x2 = this.ML, pulos = 0;
+    for (k = 0; k < cel.length; k++){
+      if (pulos > 0){ pulos--; x2 += larguras[k]; continue; }
+      var cc = cel[k], span = (cc && typeof cc === 'object' && cc.colspan) ? cc.colspan : 1;
+      var wCel = larguras[k];
+      for (var q2 = 1; q2 < span; q2++) wCel += larguras[k+q2];
+      pulos = span - 1;
+      this._dc(this.C.linha);
+      d.rect(x2, this.y, wCel, alt, 'D');
+
+      if (cc && typeof cc === 'object' && cc.cb !== undefined){
+        this.check(x2 + wCel/2 - 1.3, this.y + alt/2 - 1.3, !!cc.cb, 2.6);
+        x2 += wCel; continue;
+      }
+      var cor = (cc && typeof cc === 'object' && cc.cor) ? cc.cor : this.C.texto;
+      if (opt.statusCol === k){
+        var v = String((cc && typeof cc === 'object') ? cc.txt : cc || '');
+        if (/cr[íi]tic|reprov|n[ãa]o conforme|^n[ãa]o$/i.test(v)) cor = this.C.cr;
+        else if (/aten|parcial|ressalva|regular/i.test(v)) cor = this.C.at;
+        else if (/^ok|conforme|^sim$|aprovad|resolvid|^bom$/i.test(v)) cor = this.C.ok;
+      }
+      var bold = (opt.statusCol === k) || (opt.boldCol === k) || (cc && typeof cc === 'object' && cc.bold);
+      var alin = (cc && typeof cc === 'object' && cc.align) || (cols[k] && cols[k].align) || 'left';
+      this._tc(cor)._f(bold ? 'bold' : ((cc && cc.italico) ? 'italic' : 'normal'), tamTd);
+      var px = alin === 'right' ? x2 + wCel - 2 : (alin === 'center' ? x2 + wCel/2 : x2 + 2);
+      for (var j2 = 0; j2 < (partes[k] || []).length; j2++){
+        d.text(lvS(partes[k][j2]), px, this.y + 3.4 + j2*3.7, alin === 'left' ? undefined : {align: alin});
+      }
+      x2 += wCel;
+    }
+    this.y += alt;
+  }
+  this.y += (opt.gap == null ? 4 : opt.gap);
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   FIGURAS — foto + legenda como bloco indivisível.
+
+   Este é o conserto que mais vale para o cliente: era aqui que a guilhotina
+   cortava meia foto no pé de uma página e meia no topo da outra (o defeito da
+   OS PGP-2026-0033). A legenda nunca se separa da figura porque as duas são
+   reservadas juntas.
+   Sobrando foto ímpar, ela ocupa a linha inteira em vez de deixar meia folha
+   branca (G4).
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.figuras = function(fotos, opt){
+  opt = opt || {};
+  this._flush((fotos && fotos.length) ? ((opt.imgH || 52) + 7) : 5);
+  var d = this.d, larg = this.larg(), imgH = opt.imgH || 52, gap = 6;
+  var numerar = opt.numerar !== false;
+  if (!fotos || !fotos.length){
+    return this.p(opt.vazio || 'Sem fotos anexadas.', {size:7.5, cor:this.C.suave});
+  }
+  for (var i = 0; i < fotos.length; i += 2){
+    var par = fotos.slice(i, i + 2);
+    /* G4: foto ímpar SOBRANDO de uma grade ocupa a linha toda, em vez de deixar
+       meia folha branca. Mas uma seção que tem UMA foto só não é sobra — essa
+       fica em meia largura, senão vira um letterbox de 180 mm com a máquina
+       minúscula no meio (visto na bancada de 15/08). */
+    var sobra = (par.length === 1 && fotos.length > 1 && opt.larguraCheia !== false);
+    var colW = sobra ? larg : (larg - gap)/2;
+    var altImg = sobra ? imgH * 1.35 : imgH;
+    var legAlt = 0, legs = [];
+    this._f('normal', 6.6);
+    for (var k = 0; k < par.length; k++){
+      var base = par[k].legenda || par[k].caption || 'Registro fotográfico';
+      var rot = numerar ? ('Figura ' + (this.figN + k + 1) + ' — ' + base) : base;
+      var ls = d.splitTextToSize(lvS(lvDesesc(rot)), colW - 2);
+      legs.push(ls); legAlt = Math.max(legAlt, ls.length*3.1);
+    }
+    var alt = altImg + legAlt + 4;
+    this.reserva(alt);
+    var x = this.ML;
+    for (var j = 0; j < par.length; j++){
+      this._dc(this.C.linha); d.setLineWidth(0.2);
+      d.rect(x, this.y, colW, altImg, 'D');
+      var src = par[j].dataUrl || par[j].src || '';
+      if (src){
+        try{ lvImagemContida(this, src, x + 0.7, this.y + 0.7, colW - 1.4, altImg - 1.4); }
+        catch(e){ this._tc(this.C.suave)._f('italic', 6.5);
+                  d.text(lvS('imagem não pôde ser embutida'), x + colW/2, this.y + altImg/2, {align:'center'}); }
+      } else {
+        this._fc('#fafafa'); d.rect(x + 0.5, this.y + 0.5, colW - 1, altImg - 1, 'F');
+        this._tc(this.C.suave)._f('italic', 6.5);
+        d.text(lvS('foto no Drive — não embutida neste aparelho'), x + colW/2, this.y + altImg/2, {align:'center'});
+      }
+      this.figN++;
+      this._tc(this.C.suave)._f('normal', 6.6);
+      for (var l = 0; l < legs[j].length; l++) d.text(lvS(legs[j][l]), x, this.y + altImg + 3.2 + l*3.1);
+      x += colW + gap;
+    }
+    this.y += alt;
+  }
+  this.y += 2;
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   `object-fit: contain` em jsPDF.
+
+   ⚠ Achado de bancada (15/08): `addImage(src, fmt, x, y, w, h)` ESTICA a
+   imagem para preencher a caixa — não existe "contain" nativo. O layout antigo
+   dependia de `object-fit:contain` no CSS, então portar direto entregaria TODA
+   foto de campo deformada: retrato virando paisagem, máquina achatada. Foi o
+   pior defeito visual do porte e não aparece em nenhum teste de contagem.
+   Aqui a proporção natural sai de `getImageProperties` e a foto é centralizada
+   na caixa, com o vazio pintado de branco — igualzinho ao contain do CSS.
+   ───────────────────────────────────────────────────────────────────────── */
+function lvImagemContida(L, src, x, y, w, h){
+  var d = L.d, fmt = (String(src).indexOf('image/png') > 0) ? 'PNG' : 'JPEG';
+  var pw = 0, ph = 0;
+  try{ var pr = d.getImageProperties(src); pw = pr.width; ph = pr.height; }catch(e){}
+  if (!pw || !ph){ d.addImage(src, fmt, x, y, w, h); return; }
+  var k = Math.min(w/pw, h/ph), iw = pw*k, ih = ph*k;
+  d.addImage(src, fmt, x + (w - iw)/2, y + (h - ih)/2, iw, ih);
+}
+
+/* ── assinaturas ───────────────────────────────────────────────────────── */
+Laudo.prototype.assinaturas = function(sigs, opt){
+  opt = opt || {};
+  this._flush(opt.alt || 30);
+  var d = this.d, larg = this.larg(), colW = (larg - 8)/2;
+  if (!sigs || !sigs.length) return this;
+  for (var i = 0; i < sigs.length; i += 2){
+    var par = sigs.slice(i, i + 2), alt = opt.alt || 30;
+    this.reserva(alt + 4);
+    var x = this.ML;
+    for (var j = 0; j < par.length; j++){
+      var s = par[j] || {};
+      if (s.dataUrl){
+        try{ lvImagemContida(this, s.dataUrl, x + 4, this.y + 2, colW - 8, 16); }catch(e){}
+      }
+      this._dc(this.C.suave); d.setLineWidth(0.2);
+      d.line(x, this.y + 20, x + colW, this.y + 20);
+      this._tc(this.C.texto)._f('bold', 7.5);
+      d.text(lvS(String(s.nome || '')), x, this.y + 24);
+      this._tc(this.C.suave)._f('normal', 6.8);
+      var papel = String(s.papel || '');
+      if (s.ts){ try{ papel += ' — ' + new Date(s.ts).toLocaleString('pt-BR'); }catch(e){} }
+      d.text(lvS(papel), x, this.y + 27.5);
+      x += colW + 8;
+    }
+    this.y += alt;
+  }
+  return this;
+};
+
+/* Linha de assinatura em branco no estilo "rótulo ____________" (form05) */
+Laudo.prototype.linhaAssinatura = function(rotulo, valor, opt){
+  opt = opt || {};
+  this._flush(9.5);
+  var d = this.d;
+  this.reserva(11);
+  this._f('normal', opt.size || 8.5)._tc(this.C.texto);
+  d.text(lvS(rotulo), this.ML, this.y + 3.5);
+  var lx = Math.max(this.ML + 58, this.ML + d.getTextWidth(lvS(rotulo)) + 3);
+  this._dc('#787878'); d.setLineWidth(0.25);
+  d.line(lx, this.y + 4, LV_PW - this.MR, this.y + 4);
+  if (valor){ this._f('bold', opt.size || 8.5); d.text(lvS(String(valor)), lx + 2, this.y + 3); }
+  this.y += 9.5;
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   RODAPÉ — só no fim, quando o total de páginas é conhecido.
+
+   Antes (Gen 2) o rodapé existia UMA vez, no fim do bitmap: 4 de 5 páginas
+   saíam sem identificação nenhuma. Agora sai em todas, com "Página X de Y".
+   ───────────────────────────────────────────────────────────────────────── */
+Laudo.prototype.fecharRodapes = function(){
+  this._flush(0);
+  var d = this.d, total = d.getNumberOfPages(), m = this.meta, o = this.opt;
+  for (var p = 1; p <= total; p++){
+    d.setPage(p);
+    if (o.rodape){ o.rodape(this, p, total); continue; }
+    this._dc(this.C.linha); d.setLineWidth(0.2);
+    d.line(this.ML, LV_PH - this.MBOT + 6, LV_PW - this.MR, LV_PH - this.MBOT + 6);
+    this._tc(this.C.suave)._f('normal', 6.5);
+    var esq = o.rodapeEsq || ('propercompressores.com.br · ' + (m.titulo || '') + (m.data ? ' · ' + m.data : ''));
+    d.text(lvS(esq), this.ML, LV_PH - this.MBOT + 10);
+    if (o.rodapeEsq2 || m.tecnico) d.text(lvS(o.rodapeEsq2 || ('Responsável técnico: ' + (m.tecnico || '—'))), this.ML, LV_PH - this.MBOT + 13);
+    d.text(lvS('Página ' + p + ' de ' + total), LV_PW - this.MR, LV_PH - this.MBOT + 10, {align:'right'});
+    if (o.rodapeDir2) d.text(lvS(o.rodapeDir2), LV_PW - this.MR, LV_PH - this.MBOT + 13, {align:'right'});
+  }
+  d.setPage(total);
+  return this;
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   CABEÇALHOS PRONTOS
+
+   Decisão de 15/08: cada form MANTÉM o cabeçalho que já tem hoje. O motor é
+   que é compartilhado, não a identidade visual. `lvCabDuasFaixas` reproduz o
+   cabeçalho de 3 células (logo laranja | título escuro | campos) da corretiva;
+   `lvCabBarra` reproduz o cabeçalho de faixa dos form01/03/04; `lvCabMarca`
+   reproduz o do diagnóstico e o masthead da genérica/locação.
+   Todos aceitam `campos` = [[rótulo, valor], …] e cuidam sozinhos da versão
+   ENXUTA das folhas 2+ (faixa de continuação).
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Logo desenhada: círculo laranja com "P" branco — é o `.p1-logo-circle` de
+   hoje, agora em vetor. Se o form tiver LOGO_DATAURL, passe `img`. */
+function lvLogo(L, x, y, tam, img){
+  var d = L.d, s = tam || 11;
+  if (img){ try{ d.addImage(img, 'PNG', x, y, s, s); return; }catch(e){} }
+  var c = lvHx(L.C.laranja);
+  d.setFillColor(c[0],c[1],c[2]);
+  d.circle(x + s/2, y + s/2, s/2, 'F');
+  d.setTextColor(255,255,255); d.setFont('helvetica','bold'); d.setFontSize(s*0.72);
+  d.text('P', x + s/2, y + s/2 + s*0.26, {align:'center'});
+}
+
+/* Faixa de continuação padrão (folhas 2+): logo pequena + título + OS · cliente */
+function lvFaixaCont(L, titulo, dir, img){
+  var d = L.d;
+  lvLogo(L, L.ML, 8, 7, img);
+  L._tc(L.C.preto)._f('bold', 8);
+  d.text(lvS(titulo), L.ML + 9.5, 12.6);
+  L._tc(L.C.suave)._f('normal', 7);
+  d.text(lvS(d.splitTextToSize(lvS(dir || ''), 92)[0] || ''), LV_PW - L.MR, 12.6, {align:'right'});
+  var c = lvHx(L.C.laranja);
+  d.setDrawColor(c[0],c[1],c[2]); d.setLineWidth(0.7);
+  d.line(L.ML, 15.5, LV_PW - L.MR, 15.5);
+  d.setLineWidth(0.2);
+  return 20;
+}
+
+/* Cabeçalho "marca" — o do laudo de diagnóstico. */
+function lvCabMarca(L, primeira, cfg){
+  var d = L.d, m = L.meta;
+  if (!primeira) return lvFaixaCont(L, cfg.titulo, cfg.dir, cfg.img);
+  lvLogo(L, L.ML, 8, 11, cfg.img);
+  L._tc(L.C.preto)._f('bold', 10);
+  d.text(lvS(cfg.marca || 'PROPER COMPRESSORES'), L.ML + 14, 12.5);
+  L._tc(L.C.suave)._f('normal', 7);
+  d.text(lvS(cfg.subtitulo || ''), L.ML + 14, 16.5);
+  L._tc(L.C.texto)._f('normal', 7.5);
+  d.text(lvS(cfg.ref || ''), LV_PW - L.MR, 12.5, {align:'right'});
+  L._tc(L.C.suave)._f('normal', 7);
+  d.text(lvS(d.splitTextToSize(lvS(cfg.dir || ''), 90)[0] || ''), LV_PW - L.MR, 16.5, {align:'right'});
+  var c = lvHx(L.C.laranja);
+  d.setDrawColor(c[0],c[1],c[2]); d.setLineWidth(0.9);
+  d.line(L.ML, 20.5, LV_PW - L.MR, 20.5);
+  d.setLineWidth(0.2);
+  return 26;
+}
+
+/* Cabeçalho "barra" — logo + título/subtítulo + N linhas de campos à direita.
+   É o cabeçalho de hoje do form01, form03 e form04. */
+function lvCabBarra(L, primeira, cfg){
+  var d = L.d;
+  if (!primeira) return lvFaixaCont(L, cfg.titulo, cfg.dir, cfg.img);
+  var y0 = 8;
+  lvLogo(L, L.ML, y0, 12, cfg.img);
+  L._tc(L.C.preto)._f('bold', 10.5);
+  d.text(lvS(String(cfg.titulo || '').toUpperCase()), L.ML + 15, y0 + 5);
+  L._tc(L.C.suave)._f('normal', 6.8);
+  var sub = d.splitTextToSize(lvS(cfg.subtitulo || ''), 88);
+  d.text(lvS(sub[0] || ''), L.ML + 15, y0 + 9.4);
+  if (sub[1]) d.text(lvS(sub[1]), L.ML + 15, y0 + 12.4);
+
+  /* campos à direita, 2 por linha quando couberem */
+  var campos = cfg.campos || [], xr = LV_PW - L.MR, yy = y0 + 2.4;
+  var larguraCampos = 78, xIni = xr - larguraCampos;
+  for (var i = 0; i < campos.length; i++){
+    var lab = campos[i][0], val = campos[i][1];
+    if (val === undefined || val === null || val === '') val = '—';
+    L._tc(L.C.suave)._f('bold', 6.4);
+    d.text(lvS(lab), xIni, yy);
+    var lw = d.getTextWidth(lvS(lab)) + 1.5;
+    L._tc(L.C.preto)._f('normal', 7);
+    var vs = d.splitTextToSize(lvS(lvDesesc(val)), larguraCampos - lw);
+    d.text(lvS(vs[0] || ''), xIni + lw, yy);
+    yy += 3.6;
+  }
+  var base = Math.max(y0 + 15, yy) + 1.5;
+  var c = lvHx(cfg.corRegua || L.C.laranja);
+  d.setDrawColor(c[0],c[1],c[2]); d.setLineWidth(0.9);
+  d.line(L.ML, base, LV_PW - L.MR, base);
+  d.setLineWidth(0.2);
+  return base + 5;
+}
+
+/* Cabeçalho "3 células" — a tabela laranja/escura da corretiva. */
+function lvCabTresCelulas(L, primeira, cfg){
+  var d = L.d;
+  if (!primeira) return lvFaixaCont(L, cfg.titulo, cfg.dir, cfg.img);
+  var y0 = 10, h = 20, larg = L.larg();
+  var wLogo = 16, wTit = larg*0.44, wCampos = larg - wLogo - wTit;
+  L._fc(cfg.corLogo || '#F26522'); d.rect(L.ML, y0, wLogo, h, 'F');
+  lvLogo(L, L.ML + 2.6, y0 + 4.2, 10.8, cfg.img);
+  L._fc(cfg.corTitulo || L.C.escuro); d.rect(L.ML + wLogo, y0, wTit, h, 'F');
+  L._tc('#ffffff')._f('bold', 10);
+  d.text(lvS(String(cfg.titulo || '').toUpperCase()), L.ML + wLogo + 3, y0 + 7.6);
+  L._f('normal', 6.6);
+  d.text(lvS(cfg.subtitulo || ''), L.ML + wLogo + 3, y0 + 12);
+  L._f('normal', 6);
+  d.text(lvS(cfg.marca || 'ProperCare · Proper Compressores'), L.ML + wLogo + 3, y0 + 15.8);
+
+  var xc = L.ML + wLogo + wTit;
+  L._dc(L.C.linha); d.setLineWidth(0.2); d.rect(xc, y0, wCampos, h, 'D');
+  var campos = cfg.campos || [], yy = y0 + 4.4;
+  for (var i = 0; i < campos.length && i < 5; i++){
+    var lab = campos[i][0], val = campos[i][1];
+    if (val === undefined || val === null || val === '') val = '—';
+    L._tc(L.C.suave)._f('bold', 6.2);
+    d.text(lvS(lab), xc + 2, yy);
+    var lw = d.getTextWidth(lvS(lab)) + 1.4;
+    L._tc(L.C.preto)._f('normal', 6.8);
+    d.text(lvS(d.splitTextToSize(lvS(lvDesesc(val)), wCampos - lw - 3)[0] || ''), xc + 2 + lw, yy);
+    yy += 3.6;
+  }
+  return y0 + h + 4;
+}
+
+
+
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   LAUDOS POR FORM — os 8 documentos desenhados sobre o motor `Laudo`.
+
+   Cada função abaixo é o CORPO do laudo de um formulário: ela lê o `state` que
+   o form já mantém (nada de DOM, nada de `#pdf-layout`) e devolve o documento
+   jsPDF pronto. É o que substitui o par `buildPdfLayout()` + `html2canvas`.
+
+   Decisão de 15/08: **cada form mantém o cabeçalho que já tem hoje.** O que é
+   compartilhado é o motor — paginação, quebra indivisível, rodapé em toda
+   folha, tabela com cabeçalho repetido, foto que não é cortada ao meio.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── utilidades comuns aos laudos ──────────────────────────────────────── */
+function lvData(d){
+  var s = String(d == null ? '' : d).trim();
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m ? (m[3] + '/' + m[2] + '/' + m[1]) : s;
+}
+function lvNovoDoc(titulo, assunto){
+  var ctor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  var doc = new ctor({ orientation:'portrait', unit:'mm', format:'a4', compress:true });
+  try{ doc.setProperties({ title:titulo, subject:assunto || titulo, creator:'ProperCare' }); }catch(e){}
+  return doc;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORM_GENERICA — OS genérica, registro de campo
+
+   O reparticionamento por tipo (G1/G2) é PRESERVADO: narrativa na ordem de
+   execução, cada tipo tabular como UMA tabela no documento inteiro, cada
+   subtítulo no máximo uma vez, sem "Etapa N".
+   ═══════════════════════════════════════════════════════════════════════════ */
+function lvDocGenerica(photosByKey){
+  var i = state.identificacao || {}, at = state.atendimento || {};
+  var dataHora = lvData(at.data) + (at.hora ? ' · ' + at.hora : '');
+  var blocos = (state.blocos || []).filter(function(b){ return b.tipo !== 'sig' && tpTemConteudo(b); });
+  var sigs   = (state.assinaturas || []).filter(function(a){ return a && (a.nome || a.dataUrl); });
+  var narr = blocos.filter(function(b){ return b.tipo === 'foto' || b.tipo === 'obs'; });
+  var meds = blocos.filter(function(b){ return b.tipo === 'med'; });
+  var prs  = blocos.filter(function(b){ return b.tipo === 'pr'; });
+  var fms  = blocos.filter(function(b){ return b.tipo === 'form'; });
+
+  var doc = lvNovoDoc('Ordem de Serviço — Registro de Campo', 'Serviço documentado em campo, na ordem de execução');
+  var L = new Laudo(doc, { titulo:'Ordem de Serviço', tecnico:i.tecnico || '—', data:lvData(at.data) }, {
+    cabecalho: function(L, primeira){
+      return lvCabMarca(L, primeira, {
+        marca:'PROPERCARE · PROPER COMPRESSORES',
+        subtitulo:'Ordem de Serviço — Registro de Campo',
+        titulo:'Ordem de Serviço — Registro de Campo',
+        ref:'OS ' + (i.os || '—'),
+        dir:(i.cliente || '—'),
+        img:(typeof LOGO_DATAURL !== 'undefined') ? LOGO_DATAURL : null
+      });
+    },
+    rodapeEsq:'Ordem de Serviço ' + (i.os || '') + (i.cliente ? ' · ' + i.cliente : '') + (at.data ? ' · ' + lvData(at.data) : ''),
+    rodapeEsq2:'Proper Compressores · Divinópolis/MG'
+  });
+  var n = 0;
+
+  L.h1(++n, 'Identificação do atendimento');
+  L.kv([
+    ['Nº da OS', i.os], ['Data / hora', dataHora],
+    ['Cliente', i.cliente], ['Técnico responsável', i.tecnico],
+    ['Equipamento / TAG', i.equipamento], ['Modelo / Série', i.modelo],
+    ['Conteúdo registrado', tpResumoConteudo(blocos, photosByKey, sigs.length)]
+  ], { pularVazio:false, kw:44 });
+
+  if (!blocos.length){
+    L.h1(++n, 'Registro do serviço');
+    L.p('— nenhum item registrado nesta OS —', { size:8, cor:LV_COR.suave, italico:true });
+  }
+
+  if (narr.length){
+    L.h1(++n, 'Registro do serviço — na ordem de execução');
+    var fila = [];
+    var descarrega = function(){ if (fila.length){ L.figuras(fila, { numerar:true }); fila = []; } };
+    for (var b = 0; b < narr.length; b++){
+      var bl = narr[b];
+      if (bl.tipo === 'foto'){
+        var leg = String(bl.legenda || '').trim() || 'Foto do serviço';
+        var shots = (photosByKey && photosByKey[bl.uid]) || [];
+        if (!shots.length){ fila.push({ dataUrl:'', legenda:leg }); continue; }
+        for (var s = 0; s < shots.length; s++){
+          fila.push({ dataUrl:shots[s].dataUrl, legenda:leg + (shots.length > 1 ? (' (' + (s+1) + '/' + shots.length + ')') : '') });
+        }
+      } else {
+        descarrega();
+        L.caixa(bl.texto || '', { altMin:9 });
+      }
+    }
+    descarrega();
+  }
+
+  if (prs.length){
+    L.h1(++n, 'Perguntas e respostas');
+    var longas = [];
+    L.tabela([{t:'Pergunta / verificação'}, {t:'Resposta'}], [80, 100], prs.map(function(b){
+      var r = String(b.resposta || '');
+      if (r.length > 600){ longas.push(b); return [b.pergunta || '—', {txt:'resposta completa logo abaixo', italico:true, cor:LV_COR.suave}]; }
+      var up = r.trim().toLowerCase();
+      if (up === 'sim') return [b.pergunta || '—', {txt:'SIM', bold:true, cor:LV_COR.ok}];
+      if (up === 'nao' || up === 'não') return [b.pergunta || '—', {txt:'NÃO', bold:true, cor:LV_COR.cr}];
+      if (up === 'na' || up === 'n.a.' || up === 'n/a') return [b.pergunta || '—', {txt:'N.A.', cor:LV_COR.suave}];
+      return [b.pergunta || '—', r || '—'];
+    }));
+    for (var q = 0; q < longas.length; q++){
+      L.h2(longas[q].pergunta || 'Resposta');
+      L.caixa(longas[q].resposta || '', { altMin:10 });
+    }
+  }
+
+  if (meds.length){
+    L.h1(++n, 'Medições');
+    L.tabela([{t:'Parâmetro'}, {t:'Valor', align:'right'}, {t:'Unidade', align:'center'}], [110, 40, 30],
+      meds.map(function(b){
+        var v = b.valor;
+        if (v === '' || v == null) return [b.grandeza || '—', {txt:'não medido', italico:true, cor:LV_COR.suave, align:'right'}, {txt:'', align:'center'}];
+        return [b.grandeza || '—', {txt:String(v), bold:true, align:'right'}, {txt:unidLabel(b), align:'center'}];
+      }));
+  }
+
+  if (fms.length){
+    L.h1(++n, fms.length > 1 ? 'Formulários aplicados' : 'Formulário aplicado');
+    for (var f = 0; f < fms.length; f++){
+      L.kv([[fms[f].formNome || 'Formulário', fms[f].obs || '—']], { pularVazio:false, kw:52 });
+      L.p('Aberto em campo em ' + (fms[f].aberto || '—') + ' · conteúdo salvo pelo próprio formulário — ver Gestão de Documentos desta OS',
+          { size:6.6, cor:LV_COR.suave });
+    }
+  }
+
+  if (sigs.length){
+    L.h1(++n, 'Assinaturas');
+    L.assinaturas(sigs.map(function(a){
+      return { nome:a.nome, dataUrl:a.dataUrl, ts:a.ts, papel:(a.papel === 'Outro' ? (a.papelOutro || 'Outro') : a.papel) };
+    }));
+  }
+
+  L.fecharRodapes();
+  return doc;
+}
+
+
+</script>
+
 </body>
 </html>
