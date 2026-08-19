@@ -128,9 +128,9 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   .blk .grab{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#556577;cursor:grab;
     font-size:18px;border-right:1px solid var(--border);border-radius:var(--radius) 0 0 var(--radius);touch-action:none;user-select:none}
   .blk .grab:active{cursor:grabbing;color:var(--brand)}
-  .blk .cbody{flex:1;padding:10px 30px 12px 10px;min-width:0}
+  .blk .cbody{flex:1;padding:10px 46px 12px 10px;min-width:0}
   .blk .ctitle{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--muted);text-transform:uppercase;margin-bottom:7px}
-  .blk .xdel{position:absolute;top:8px;right:9px;width:24px;height:24px;border:none;background:transparent;color:#556577;font-size:15px;cursor:pointer;line-height:1;border-radius:50%}
+  .blk .xdel{position:absolute;top:6px;right:6px;width:40px;height:40px;border:none;background:transparent;color:#556577;font-size:16px;cursor:pointer;line-height:1;border-radius:50%}
   .blk .xdel:active{color:var(--red)}
   .blk label{margin:6px 0 3px;font-size:11px}
   .med-row{display:flex;gap:7px}
@@ -138,9 +138,10 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   .b-unid-outra{margin-top:6px;display:none}
   .b-unid-outra.show{display:block}
   /* foto */
-  .btn-foto-mini{background:var(--bg);border:1px dashed var(--brand);color:var(--brand);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .btn-foto-mini{background:var(--bg);border:1px dashed var(--brand);color:var(--brand);border-radius:8px;
+    padding:8px 14px;min-height:44px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border);cursor:pointer}
+  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
   .thumb.ok{border-color:var(--green)}
   .thumb.pending{border-color:var(--amber);opacity:.75}
   .thumb.erro{border-color:var(--red)}
@@ -163,6 +164,85 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   /* estado vazio */
   #emptyHint{border:2px dashed #46586d;border-radius:12px;background:var(--surface);padding:22px 14px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.5;margin-bottom:10px}
   #emptyHint b{color:var(--text)}
+
+  /* ══ 19/08 — BLOCOS NOVOS (Camada 1 + N6/N7/N8) ══════════════════════════ */
+  /* P2: o título deixou de ser fixo (BLK_TITLE) e virou campo. */
+  .blk .b-tit{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:8px 10px;font-size:13.5px;font-weight:700;font-family:inherit;margin-bottom:8px;min-height:42px}
+  .blk .b-tit::placeholder{font-weight:500;color:#64748b}
+  .blk.oculto{display:none}
+  .gwtag{font-size:10.5px;color:var(--purple,#a78bfa);margin:-4px 0 7px;line-height:1.3}
+  .blk-acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .mini{background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:8px;
+    padding:9px 11px;font-size:12px;cursor:pointer;font-family:inherit;min-height:44px;min-width:44px;font-weight:600}
+  .mini.on{border-color:var(--brand);color:var(--brand)}
+  .blk-selo{display:inline-flex;align-items:center;justify-content:center;min-width:42px;min-height:42px;
+    border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:15px}
+  .mini.gw{border-color:var(--purple,#a78bfa);color:var(--purple,#a78bfa)}
+  /* seção (N6) */
+  .blk.secao{border-color:var(--accent,#3b82f6)}
+  .blk.secao > .cbody{padding-right:10px}
+  .blk.secao > .cbody > .b-tit{width:calc(100% - 40px)}
+  .sec-stack{margin-top:8px}
+  .sec-stack .blk{background:var(--surface);margin-bottom:8px}
+  .sec-stack .blk .grab{width:22px;font-size:15px}
+  .sec-stack .blk .cbody{padding:9px 40px 10px 8px}
+  .sec-stack .blk .xdel{width:34px;height:34px;top:5px;right:4px}
+  .sec-vazia{border:1px dashed var(--border);border-radius:9px;padding:14px;text-align:center;color:var(--muted);font-size:12.5px;margin-bottom:8px}
+  .sec-fold{display:none}
+  /* pills (escolha, colunas da lista) — layout escolhido pelo RÓTULO */
+  .pills{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px;margin-top:6px}
+  .pills.q3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .pills.q4{grid-template-columns:1fr 1fr}
+  .pills.col{grid-template-columns:1fr}
+  .pill{min-height:44px;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:9px;
+    font-size:13.5px;font-weight:600;padding:8px 6px;display:flex;align-items:center;justify-content:center;
+    gap:6px;text-align:center;line-height:1.15;cursor:pointer;font-family:inherit}
+  .pills.col .pill{justify-content:flex-start;text-align:left;padding-left:11px}
+  .pills.col .pill::before{content:"";width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);flex-shrink:0}
+  .pills.col .pill.on::before{border-color:var(--brand);background:radial-gradient(circle,var(--brand) 0 4px,transparent 5px)}
+  .pill.on{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+  .pill.on.danger{border-color:var(--red);box-shadow:inset 0 0 0 1px var(--red)}
+  /* medição com unidade fixa + faixa (N4) */
+  .unitfix{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0 11px;
+    min-height:42px;display:flex;align-items:center;font-size:13px;color:var(--muted);font-weight:700;white-space:nowrap}
+  .stbadge{margin-top:8px;font-size:12px;font-weight:700;border-radius:20px;padding:5px 11px;display:inline-block;border:1px solid}
+  .st-ok{color:#86efac;border-color:var(--green)}
+  .st-at{color:#fcd34d;border-color:var(--amber)}
+  .st-cr{color:#fca5a5;border-color:var(--red)}
+  /* texto fixo (N3) */
+  .txtfixo{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--purple,#a78bfa);
+    border-radius:9px;padding:11px;font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5}
+  /* lista (bloco novo) — CARTÕES, nunca <table> */
+  .lst-colbar{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:9px}
+  .colchip{font-size:11px;border:1px solid var(--border);background:var(--bg);color:var(--muted);border-radius:20px;
+    padding:3px 9px;display:inline-flex;align-items:center;gap:4px}
+  .colchip.interv{border-color:var(--red);color:#fca5a5}
+  .colchip .dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .colchip.interv .dot{background:var(--red)}
+  .setname{font-size:10.5px;color:var(--purple,#a78bfa);margin-right:2px}
+  .lit{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:9px}
+  .lit.sub{margin-left:12px;border-left:3px solid var(--purple,#a78bfa);background:var(--surface)}
+  .lit.flag{border-color:#7f1d1d;box-shadow:inset 0 0 0 1px rgba(239,68,68,.18)}
+  .lit-top{display:flex;gap:6px;align-items:center}
+  .lit-nome{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);
+    font-size:14px;font-weight:600;padding:9px 10px;border-radius:8px;font-family:inherit;min-height:44px}
+  .lit-nome::placeholder{font-weight:500;color:#64748b}
+  .ib{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;
+    width:44px;height:44px;font-size:15px;flex-shrink:0;cursor:pointer;font-family:inherit;line-height:1}
+  .ib.on{border-color:var(--brand);color:var(--brand)}
+  .classe-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
+  .cl{min-height:44px;border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:9px;
+    font-size:12px;font-weight:600;padding:6px 3px;line-height:1.15;cursor:pointer;font-family:inherit}
+  .cl.on{color:var(--text);border-color:var(--accent,#3b82f6);box-shadow:inset 0 0 0 1px var(--accent,#3b82f6)}
+  .fbox{margin-top:9px;padding:9px;border:1px dashed var(--border);border-radius:9px;background:var(--surface)}
+  .fbox.req{border-color:#7f1d1d}
+  .fbox.okf{border-color:var(--green);border-style:solid}
+  .fbox.esc{border-color:var(--amber);border-style:solid}
+  .fbox .ft{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:7px}
+  .fbox.req .ft{color:#fca5a5}.fbox.okf .ft{color:#86efac}.fbox.esc .ft{color:#fcd34d}
+  .subtag{font-size:10px;color:var(--purple,#a78bfa);margin-left:6px}
+  .opt.opt-novo{border-color:var(--green)}
 
   /* ══ DOCK (fixo na base) ══ */
   .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:640px;z-index:60;
@@ -452,8 +532,8 @@ function pgpBootAviso(msg){
 </head>
 <body>
 <div id="app">
-  <h1>🧱 OS Genérica</h1>
-  <div class="sub">Serviço fora do padrão — construa a OS na ordem real do serviço. Cada ação vira um bloco.</div>
+  <h1>🔧 Diagnóstico de Oficina</h1>
+  <div class="sub">Monte o diagnóstico na ordem real da desmontagem. Tudo marcado como intervenção vira a lista de apoio ao orçamento.</div>
   <div id="osPill" class="pill-info" style="display:none"></div>
 
   <div class="card">
@@ -461,6 +541,7 @@ function pgpBootAviso(msg){
     <div id="maqSelWrap" style="display:none">
       <label>Máquina desta OS</label>
       <select id="f_maqSel" onchange="selMaquina()"></select>
+      <div class="field-hint" id="maqHint"></div>
     </div>
     <div class="row2">
       <div><label>Técnico responsável</label><input type="text" id="f_tecnico"></div>
@@ -478,9 +559,10 @@ function pgpBootAviso(msg){
   </div>
 
   <div id="emptyHint">
-    <b>A OS está vazia.</b><br>
-    Toque em <b>＋ Adicionar item</b> e monte o serviço com blocos de
-    📷 Foto · 📝 Observação · ❓ Pergunta e Resposta · 📏 Medição · ✍️ Assinaturas.<br>
+    <b>O diagnóstico está vazio.</b><br>
+    Toque em <b>＋ Adicionar item</b> e monte o laudo com blocos de
+    🧾 Lista · 🗂 Seção · 🔘 Escolha · 📅 Data · 📄 Texto ·
+    📷 Foto · 📝 Observação · ❓ P&amp;R · 📏 Medição · ✍️ Assinaturas.<br>
     Tudo fica salvo no aparelho enquanto você trabalha.
   </div>
   <div id="stack"></div>
@@ -520,6 +602,11 @@ function pgpBootAviso(msg){
     <h3>Adicionar item</h3>
     <div class="sub">O bloco entra no fim da pilha — arraste pela alça ≡ para reordenar.</div>
     <div class="opt-grid">
+      <div class="opt opt-novo" onclick="novoBloco('lista')"><span class="i">🧾</span>Lista</div>
+      <div class="opt opt-novo" onclick="novoBloco('secao')"><span class="i">🗂</span>Seção</div>
+      <div class="opt opt-novo" onclick="novoBloco('escolha')"><span class="i">🔘</span>Escolha única</div>
+      <div class="opt opt-novo" onclick="novoBloco('data')"><span class="i">📅</span>Data / Hora</div>
+      <div class="opt opt-novo" onclick="novoBloco('texto')"><span class="i">📄</span>Texto fixo</div>
       <div class="opt" onclick="novoBloco('foto')"><span class="i">📷</span>Foto</div>
       <div class="opt" onclick="novoBloco('obs')"><span class="i">📝</span>Observação</div>
       <div class="opt" onclick="novoBloco('pr')"><span class="i">❓</span>Pergunta e Resposta</div>
@@ -527,6 +614,17 @@ function pgpBootAviso(msg){
       <div class="opt" onclick="novoBloco('form')"><span class="i">📋</span>Formulário cadastrado</div>
       <div class="opt opt-sig" style="grid-column:1 / -1" onclick="novoBloco('sig')"><span class="i">✍️</span>Assinaturas</div>
     </div>
+  </div>
+</div>
+
+<!-- GAVETA GENÉRICA: configurar bloco / condição de visibilidade -->
+<div class="add-overlay" id="cfgOverlay" onclick="if(event.target===this)fecharCfg()">
+  <div class="add-sheet">
+    <div class="pull"></div>
+    <h3 id="cfgTitulo">Configurar</h3>
+    <div class="sub" id="cfgSub"></div>
+    <div id="cfgBody"></div>
+    <button class="btn-sign" style="margin-top:12px" onclick="fecharCfg()">Pronto</button>
   </div>
 </div>
 
@@ -659,7 +757,7 @@ window.PS = (function(){
   function savePhoto(p){ return put('photos',p); }
   function photosOf(draftId){ return all('photos').then(function(a){ return a.filter(function(p){return p.draftId===draftId;}); }); }
   function updatePhoto(id,patch){ return get('photos',id).then(function(p){ if(!p) return; Object.assign(p,patch); return put('photos',p); }); }
-  function dropPhoto(photoId){ return del('photos', photoId); }   // 19/08 (H1) — aditivo
+  function dropPhoto(photoId){ return del('photos', photoId); }   // 19/08 — aditivo
   function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
 
   // ─ Outbox ─
@@ -810,11 +908,42 @@ const _formUid = pgpUid();
 let _sending = false;       // true depois de "Concluir": a fila cuida do envio
 let _pdfPendente = false;   // PDF não pôde ser gerado (libs ausentes) → gera ao reabrir
 let _psHasPending = false;  // há jobs pendentes → guard de beforeunload
-const AVULSA_UID_KEY = 'proper_generica_avulsa_uid';
+const AVULSA_UID_KEY = 'proper_diagoficina_avulsa_uid';
 
 const PAPEIS = ['Técnico','Responsável do Cliente','Supervisor','Perito','Qualidade','Outro'];
 const UNIDADES = ['A','V','bar','psi','°C','h','mm','µm','rpm','%','L','kW','Hz','outra'];
-const BLK_TITLE = { foto:'📷 Foto', obs:'📝 Observação', pr:'❓ Pergunta e Resposta', med:'📏 Medição', sig:'✍️ Assinaturas', form:'📋 Formulário cadastrado' };
+const BLK_TITLE = { foto:'📷 Foto', obs:'📝 Observação', pr:'❓ Pergunta e Resposta', med:'📏 Medição',
+  sig:'✍️ Assinaturas', form:'📋 Formulário cadastrado',
+  lista:'Nova lista', secao:'Nova seção', escolha:'Nova pergunta', data:'Data', texto:'Aviso' };
+const BLK_ICO = { foto:'📷', obs:'📝', pr:'❓', med:'📏', sig:'✍️', form:'📋',
+  lista:'🧾', secao:'🗂', escolha:'🔘', data:'📅', texto:'📄' };
+// Blocos que agrupam outros — a varredura deixa de ser plana.
+const BLK_CONTAINER = { secao:1 };
+
+// ── Conjuntos de colunas reutilizáveis (o carimbo ⚠ é o que alimenta o orçamento) ──
+const CONJUNTOS = [
+  { id:'c1', nome:'Ok / NOK / N.A.', cols:[{nome:'Ok'},{nome:'NOK',interv:true,coment:true,foto:true},{nome:'N.A.'}] },
+  { id:'c2', nome:'Aprovado / Reprovado / N.A.', cols:[{nome:'Aprovado'},{nome:'Reprovado',interv:true,coment:true,foto:true},{nome:'N.A.'}] },
+  { id:'c3', nome:'Conforme / Com falha / Não verificado', cols:[{nome:'Conforme'},{nome:'Com falha',interv:true,coment:true,foto:true},{nome:'Não verificado'}] }
+];
+const CLASSES_ORC = [['produto','📦 Produto'],['servico','🔧 Serviço'],['transversal','🗂 Transversal']];
+// Dados estruturados por bloco (o DOM continua sendo a ordem; isto é o conteúdo
+// que não cabe em <input>: colunas, itens, sub-itens, opções, faixa).
+const _blkData = {};
+function bd(uid){ return _blkData[uid] || (_blkData[uid] = {}); }
+function instanciarConjunto(c){
+  return { setId:c.id, setNome:c.nome, cols:c.cols.map(function(x){
+    return { id:pgpUid(), nome:x.nome, interv:!!x.interv, coment:!!x.coment, foto:!!x.foto }; }) };
+}
+// Layout das pills pelo RÓTULO (mesma regra do form_diagnostico): rótulo longo vira
+// uma por linha com marcador de rádio; 3 curtas em 3 colunas fixas (o auto-fit
+// deixava 2 + 1 órfã dentro do cartão de sub-item); 4 em 2x2.
+function pillsCls(rotulos){
+  if(rotulos.some(function(r){ return String(r||'').length > 14; })) return 'pills col';
+  if(rotulos.length===3) return 'pills q3';
+  if(rotulos.length===4) return 'pills q4';
+  return 'pills';
+}
 // Etapa B — catálogo hardcoded v1 dos formulários cadastrados (URLs do repo ProperForms).
 // O form abre SEM tarefa_id (autoCompletarTarefa no-opa) — ele salva o próprio conteúdo
 // (FORMULARIOS/fotos/PDF) vinculado à OS; aqui só fica o registro de que foi usado.
@@ -830,7 +959,7 @@ const FORM_CATALOGO = [
 
 // ── Estado (vira campos_json no saveFormulario e o rascunho local).
 //    Durante a edição o DOM é a fonte da ordem; captura() reconstrói blocos/assinaturas. ──
-const state = { identificacao:{}, atendimento:{}, blocos:[], assinaturas:[] };
+const state = { identificacao:{}, atendimento:{}, maquina_id:'', maquina_label:'', blocos:[], assinaturas:[], orcamento:[] };
 // fotos por bloco (refs leves; os bytes ficam no IndexedDB via ProperSafe)
 const _fotosByBlock = {};
 // assinatura coletada por slot (com dataUrl — vai pro rascunho e pro PDF; NÃO pro campos_json)
@@ -843,7 +972,9 @@ function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ ret
 function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
 
 // ══ GAVETA ══════════════════════════════════════════════════════════════════
-function abrirGaveta(){ if(_sending) return; document.getElementById('addOverlay').classList.add('open'); }
+var _gavetaAlvo = null;
+function abrirGaveta(secUid){ if(_sending) return; _gavetaAlvo = secUid || null;
+  document.getElementById('addOverlay').classList.add('open'); }
 function fecharGaveta(){ document.getElementById('addOverlay').classList.remove('open'); }
 
 // ══ MOTOR DE BLOCOS ═════════════════════════════════════════════════════════
@@ -851,44 +982,68 @@ function refreshEmpty(){
   var has = !!document.querySelector('#stack .blk');
   document.getElementById('emptyHint').style.display = has ? 'none' : '';
 }
-function blkShell(uid, tipo, inner, extraClass){
+// P2 (backlog 18/08) — o título era FIXO em BLK_TITLE e nunca ia para o captura().
+// Agora é campo de verdade, com cara de campo: no celular não existe :hover, então
+// borda invisível revelada no hover lê-se como rótulo travado.
+function blkShell(uid, tipo, inner, extraClass, titulo){
   var el = document.createElement('div');
-  el.className = 'blk' + (extraClass ? (' '+extraClass) : '');
+  el.className = 'blk' + (extraClass ? (' '+extraClass) : '') + (tipo==='secao' ? ' secao' : '');
   el.dataset.uid = uid; el.dataset.tipo = tipo;
+  var tit = (titulo != null && String(titulo).length) ? titulo : BLK_TITLE[tipo];
   el.innerHTML =
     '<div class="grab" title="Arraste para reordenar">≡</div>'
-    + '<div class="cbody"><div class="ctitle">'+BLK_TITLE[tipo]+'</div>'+inner+'</div>'
+    + '<div class="cbody">'
+    +   '<input class="b-tit" value="'+attr(tit)+'" placeholder="Título do bloco (edite)" '
+    +     'aria-label="Título do bloco" oninput="scheduleSave()">'
+    +   '<div class="gwtag" style="display:none"></div>'
+    +   '<div class="blk-acts">'
+    +     '<span class="blk-selo">'+BLK_ICO[tipo]+'</span>'
+    +     (BLK_CFG[tipo] ? ('<button type="button" class="mini b-cfg" title="Configurar este bloco" onclick="abrirCfg(\''+uid+'\')">⚙ opções</button>') : '')
+    +     '<button type="button" class="mini b-cond" title="Quando este bloco aparece" onclick="abrirCond(\''+uid+'\')">⇄ quando</button>'
+    +   '</div>'
+    +   inner
+    + '</div>'
     + '<button type="button" class="xdel" onclick="delBloco(this)">✕</button>';
   return el;
 }
+const BLK_CFG = { med:1, escolha:1, data:1, texto:1, lista:1 };
 // Cria o bloco (novo OU restaurado do rascunho). d = dados do state.blocos.
-function addBlock(tipo, d, restoring){
+function addBlock(tipo, d, restoring, alvo){
   d = d || {};
   var uid = d.uid || pgpUid();
   var el = null;
   if(tipo==='obs'){
     el = blkShell(uid,'obs',
-      '<textarea class="b-obs" placeholder="Descreva o que foi feito / encontrado…">'+esc(d.texto||'')+'</textarea>');
+      '<textarea class="b-obs" placeholder="Descreva o que foi feito / encontrado…">'+esc(d.texto||'')+'</textarea>', null, d.titulo);
   } else if(tipo==='pr'){
     el = blkShell(uid,'pr',
       '<label>Pergunta (criada por você)</label><input type="text" class="b-perg" value="'+attr(d.pergunta||'')+'" placeholder="Ex.: Válvula de admissão apresenta travamento?">'
-      + '<label>Resposta</label><input type="text" class="b-resp" value="'+attr(d.resposta||'')+'" placeholder="Ex.: Sim — travada por resíduo de óleo">');
+      + '<label>Resposta</label><input type="text" class="b-resp" value="'+attr(d.resposta||'')+'" placeholder="Ex.: Sim — travada por resíduo de óleo">', null, d.titulo);
   } else if(tipo==='med'){
-    var opts = UNIDADES.map(function(u){ return '<option'+(u===(d.unidade||'')?' selected':'')+'>'+u+'</option>'; }).join('');
-    var outraShow = (d.unidade==='outra');
+    // N4 — a unidade deixa de ser escolhida EM CAMPO e passa a ser definida ao
+    // montar o bloco (⚙). Nos form03/04/diagnóstico ela é read-only de propósito:
+    // escolher unidade com a peça na mão é fonte de erro. A faixa opcional pinta
+    // OK / Atenção / Crítico na hora, como o `statusMedicao()` do diagnóstico.
+    bd(uid).unidade = d.unidade || 'mm';
+    bd(uid).temFaixa = !!d.temFaixa;
+    bd(uid).at = (d.at!=null?d.at:'');
+    bd(uid).cr = (d.cr!=null?d.cr:'');
+    bd(uid).dir = d.dir || 'acima';
     el = blkShell(uid,'med',
       '<div class="med-row">'
-      + '<div class="g"><label>Grandeza</label><input type="text" class="b-grand" value="'+attr(d.grandeza||'')+'" placeholder="Ex.: Pressão de carga"></div>'
-      + '<div class="v"><label>Valor</label><input type="text" class="b-val" inputmode="decimal" value="'+attr(d.valor||'')+'" placeholder="0,0"></div>'
-      + '<div class="u"><label>Unid.</label><select class="b-unid" onchange="onUnid(this)">'+opts+'</select></div>'
+      + '<div class="g"><label>Grandeza</label><input type="text" class="b-grand" value="'+attr(d.grandeza||'')+'" placeholder="Ex.: Folga axial"></div>'
+      + '<div class="v"><label>Valor</label><input type="text" class="b-val" inputmode="decimal" value="'+attr(d.valor||'')+'" placeholder="0,0" oninput="onMedValor(\''+uid+'\')"></div>'
+      + '<div class="u"><label>Unid.</label><div class="unitfix" id="un-'+uid+'">'+esc(bd(uid).unidade)+'</div></div>'
       + '</div>'
-      + '<input type="text" class="b-unid-outra'+(outraShow?' show':'')+'" value="'+attr(d.unidadeOutra||'')+'" placeholder="Qual unidade?">');
+      + '<div class="field-hint" id="fx-'+uid+'"></div>'
+      + '<div id="stm-'+uid+'"></div>', null, d.titulo);
+    setTimeout(function(){ renderMedStatus(uid); }, 0);
   } else if(tipo==='foto'){
     el = blkShell(uid,'foto',
       '<label>Legenda (o que a foto mostra — entra no PDF e no Drive)</label>'
       + '<input type="text" class="b-leg" value="'+attr(d.legenda||'')+'" placeholder="Ex.: Rotor com desgaste no mancal LA">'
       + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+uid+'\')">📷 Câmera</button><button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\''+uid+'\')">🖼 Galeria</button></div>'
-      + '<div class="thumbs" id="thumbs-'+uid+'"></div>');
+      + '<div class="thumbs" id="thumbs-'+uid+'"></div>', null, d.titulo);
     if(!_fotosByBlock[uid]) _fotosByBlock[uid] = [];
     // refs restauradas do rascunho (miniaturas voltam do IndexedDB em restoreDraft)
     if(restoring && Array.isArray(d.fotos)) _fotosByBlock[uid] = d.fotos.slice();
@@ -900,8 +1055,42 @@ function addBlock(tipo, d, restoring){
       + '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
       + '<button type="button" class="btn-foto-mini" onclick="abrirFormCadastrado(\''+uid+'\')">📋 Abrir formulário</button>'
       + '<span class="b-form-st" style="font-size:11px;color:var(--pgp-ok,#3fbf7f)">'+esc(d.aberto?('aberto em '+d.aberto):'')+'</span></div>'
-      + '<div class="signote">Abre em outra aba, já vinculado a esta OS (sem tarefa própria). O que ele salvar — fotos, PDF, respostas — aparece na Gestão de Documentos da OS; aqui fica registrado no PDF que ele foi usado.</div>');
+      + '<div class="signote">Abre em outra aba, já vinculado a esta OS (sem tarefa própria). ⚠ Ele gera <b>PDF próprio</b> — não entra neste laudo — e <b>não recebe a máquina</b>: vai perguntar de novo.</div>', null, d.titulo);
     if(d.aberto) el.dataset.aberto = d.aberto;
+  } else if(tipo==='lista'){
+    var inst = (d.cols && d.cols.length) ? { setId:d.setId||null, setNome:d.setNome||'próprio',
+                 cols:d.cols.map(function(c){ return {id:c.id||pgpUid(),nome:c.nome,interv:!!c.interv,coment:!!c.coment,foto:!!c.foto}; }) }
+             : instanciarConjunto(CONJUNTOS[0]);
+    bd(uid).setId=inst.setId; bd(uid).setNome=inst.setNome; bd(uid).cols=inst.cols;
+    bd(uid).itens = (d.itens||[]).map(function(it){ return normItem(it); });
+    el = blkShell(uid,'lista','<div class="lst" id="lst-'+uid+'"></div>', null, d.titulo);
+  } else if(tipo==='secao'){
+    bd(uid).aberta = (d.aberta===false) ? false : true;
+    el = blkShell(uid,'secao',
+      '<button type="button" class="mini" style="width:100%" onclick="togSecao(\''+uid+'\')" id="secfold-'+uid+'">▾ recolher</button>'
+      + '<div class="sec-stack" id="sec-'+uid+'"></div>'
+      + '<button type="button" class="mini" style="width:100%" onclick="abrirGaveta(\''+uid+'\')">＋ Bloco nesta seção</button>',
+      null, d.titulo);
+  } else if(tipo==='escolha'){
+    bd(uid).opts = (d.opts && d.opts.length) ? d.opts.slice() : ['Sim','Não'];
+    bd(uid).val = d.val || null;
+    bd(uid).gateway = !!d.gateway;
+    bd(uid).permitirOutro = !!d.permitirOutro;
+    bd(uid).outroTxt = d.outroTxt || '';
+    el = blkShell(uid,'escolha','<div class="esc" id="esc-'+uid+'"></div>', null, d.titulo);
+  } else if(tipo==='data'){
+    bd(uid).modo = d.modo || 'data';
+    var _hoje = new Date().toISOString().slice(0,10);
+    el = blkShell(uid,'data',
+      '<div class="row2">'
+      + '<div class="c-data"><label>Data</label><input type="date" class="b-data" value="'+attr(d.data!=null?d.data:_hoje)+'" onchange="scheduleSave()"></div>'
+      + '<div class="c-hora"><label>Hora</label><input type="time" class="b-hora" value="'+attr(d.hora||'')+'" onchange="scheduleSave()"></div>'
+      + '</div>', null, d.titulo);
+    setTimeout(function(){ aplicarModoData(uid); }, 0);
+  } else if(tipo==='texto'){
+    bd(uid).corpo = d.corpo!=null ? d.corpo : '';
+    el = blkShell(uid,'texto','<div class="txtfixo" id="txt-'+uid+'"></div>', null, d.titulo);
+    setTimeout(function(){ renderTexto(uid); }, 0);
   } else if(tipo==='sig'){
     var existente = document.querySelector('#stack .blk[data-tipo="sig"]');
     if(existente && !restoring){
@@ -913,11 +1102,20 @@ function addBlock(tipo, d, restoring){
     el = blkShell(uid,'sig',
       '<div class="sig-list"></div>'
       + '<button type="button" class="sig-add" onclick="addSigSlot(this.previousElementSibling,null)">＋ Adicionar assinatura</button>'
-      + '<div class="signote">Você define <b>quantas</b> e <b>quais</b> assinaturas esta OS exige. Cada uma entra no PDF com nome, papel e data/hora.</div>',
-      'sig');
+      + '<div class="signote">Você define <b>quantas</b> e <b>quais</b> assinaturas este laudo exige. Cada uma entra no PDF com nome, papel e data/hora.</div>',
+      'sig', d.titulo);
   }
   if(!el) return null;
-  document.getElementById('stack').appendChild(el);
+  if(d.cond && d.cond.gwUid){ bd(uid).cond = { gwUid:d.cond.gwUid, valor:d.cond.valor }; }
+  (alvo || document.getElementById('stack')).appendChild(el);
+  if(tipo==='lista')   renderLista(uid);
+  if(tipo==='escolha') renderEscolha(uid);
+  if(tipo==='secao' && Array.isArray(d.filhos)){
+    var host = q(el,'.sec-stack');
+    d.filhos.forEach(function(fb){ addBlock(fb.tipo, fb, true, host); });
+    renderSecao(uid);
+  }
+  aplicarGateways();
   if(tipo==='sig' && !restoring) addSigSlot(q(el,'.sig-list'), null);
   refreshEmpty();
   if(!restoring){
@@ -927,7 +1125,16 @@ function addBlock(tipo, d, restoring){
   }
   return el;
 }
-function novoBloco(tipo){ addBlock(tipo, null, false); }
+function novoBloco(tipo){
+  var alvo = null;
+  if(_gavetaAlvo){
+    var h = document.getElementById('sec-'+_gavetaAlvo);
+    if(h) alvo = h;
+    if(tipo==='secao'){ toast('Seção dentro de seção não — mantenha um nível só'); return; }
+  }
+  addBlock(tipo, null, false, alvo);
+  _gavetaAlvo = null;
+}
 // Etapa B — abre o formulário cadastrado em outra aba, vinculado à OS (sem tarefa_id)
 function abrirFormCadastrado(uid){
   if(_sending) return;
@@ -964,6 +1171,17 @@ function blocoTemConteudo(el){
   if(tipo==='foto') return (_fotosByBlock[el.dataset.uid]||[]).length>0 || !!q(el,'.b-leg').value.trim();
   if(tipo==='form') return !!q(el,'.b-form').value || !!q(el,'.b-form-obs').value.trim();
   if(tipo==='sig') return !!el.querySelector('.sig-slot');
+  if(tipo==='lista'){
+    var D=bd(el.dataset.uid), achou=false;
+    (function w(a){ (a||[]).forEach(function(it){
+      if(String(it.nome||'').trim() || it.col || (_fotosByBlock[el.dataset.uid+'::'+it.uid]||[]).length) achou=true;
+      w(it.subs); }); })(D.itens);
+    return achou;
+  }
+  if(tipo==='secao') return !!el.querySelector('.sec-stack .blk');
+  if(tipo==='escolha') return !!bd(el.dataset.uid).val;
+  if(tipo==='data') return !!((q(el,'.b-data')&&q(el,'.b-data').value) || (q(el,'.b-hora')&&q(el,'.b-hora').value));
+  if(tipo==='texto') return !!String(bd(el.dataset.uid).corpo||'').trim();
   return false;
 }
 async function delBloco(btn){
@@ -973,16 +1191,8 @@ async function delBloco(btn){
   if(blocoTemConteudo(el) && !confirm('Remover este bloco? O conteúdo dele sai da OS.')) return;
   // fotos do bloco removido: cancela uploads ainda na fila (a foto não deve mais ir ao Drive)
   if(el.dataset.tipo==='foto'){
-    // 19/08 (H1) — limpar `_fotosByBlock` e cancelar o job NÃO bastava: o
-    // `fotos_json` do envio é REMONTADO do store (F-26, 29/07), então a foto de um
-    // bloco apagado continuava viajando — com url e tudo, se já tivesse subido.
-    // É a divergência PDF × fotos_json do P1, pela porta oposta.
     var ids=(_fotosByBlock[uid]||[]).map(function(r){ return r.photoId; }).filter(function(x){ return x!=null; });
     delete _fotosByBlock[uid];
-    try{
-      var doStore=await PS.photosOf(_draftId);
-      doStore.forEach(function(ph){ if(ph.pointKey===uid && ids.indexOf(ph.photoId)<0) ids.push(ph.photoId); });
-    }catch(e){}
     if(ids.length){
       try{
         var jobs=await PS.jobsOf(_draftId);
@@ -991,45 +1201,38 @@ async function delBloco(btn){
           if(j.kind==='salvarFotoForm' && j.status!=='done' && ids.indexOf(j.photoId)>=0){ await PS.dropJob(j.jobId); }
         }
       }catch(e){}
-      for(var kk=0; kk<ids.length; kk++){ try{ await PS.dropPhoto(ids[kk]); }catch(e){} }
+    }
+  }
+  if(el.dataset.tipo==='lista'){
+    var Dl=bd(uid);
+    var pks=[];
+    (function w(a){ (a||[]).forEach(function(it){ pks.push(uid+'::'+it.uid); w(it.subs); }); })(Dl.itens);
+    for(var pi=0; pi<pks.length; pi++){ await descartarFotosDe(pks[pi]); }
+  }
+  if(el.dataset.tipo==='secao'){
+    // a seção leva os filhos junto — cada um precisa da própria limpeza de fotos
+    var filhos=[].slice.call(el.querySelectorAll('.sec-stack .blk'));
+    for(var fi2=0; fi2<filhos.length; fi2++){
+      var f=filhos[fi2], fu=f.dataset.uid;
+      if(f.dataset.tipo==='foto') await descartarFotosDe(fu);
+      if(f.dataset.tipo==='lista'){
+        var Df=bd(fu), fpks=[];
+        (function w(a){ (a||[]).forEach(function(it){ fpks.push(fu+'::'+it.uid); w(it.subs); }); })(Df.itens);
+        for(var fp=0; fp<fpks.length; fp++){ await descartarFotosDe(fpks[fp]); }
+      }
+      if(f.dataset.tipo==='sig') f.querySelectorAll('.sig-slot').forEach(function(sl){ delete _sigBySlot[sl.dataset.slot]; });
+      delete _blkData[fu];
     }
   }
   if(el.dataset.tipo==='sig'){
     el.querySelectorAll('.sig-slot').forEach(function(s){ delete _sigBySlot[s.dataset.slot]; });
   }
-  el.remove(); refreshEmpty(); scheduleSave(); psRefreshBadge();
+  var _paiSec = el.parentElement ? el.parentElement.closest('.blk[data-tipo="secao"]') : null;
+  delete _blkData[uid];
+  el.remove();
+  if(_paiSec) renderSecao(_paiSec.dataset.uid);
+  refreshEmpty(); aplicarGateways(); scheduleSave(); psRefreshBadge();
 }
-
-// ══ 19/08 (H5) — APAGAR UMA FOTO SÓ ═════════════════════════════════════════
-// Antes, foto tremida ou da peça errada custava o BLOCO inteiro (legenda + as
-// outras fotos) — e ainda caía no H1, sobrevivendo no fotos_json. Delegação no
-// #stack para pegar os dois caminhos que criam <img class="thumb">: o addPhoto e
-// o restoreDraft.
-async function removerFotoPonto(pk, photoId){
-  if(_sending) return;
-  if(!confirm('Apagar esta foto?')) return;
-  _fotosByBlock[pk]=(_fotosByBlock[pk]||[]).filter(function(r){ return r.photoId!==photoId; });
-  try{
-    var jobs=await PS.jobsOf(_draftId);
-    for(var j=0;j<jobs.length;j++){
-      if(jobs[j].kind==='salvarFotoForm' && jobs[j].status!=='done' && jobs[j].photoId===photoId) await PS.dropJob(jobs[j].jobId);
-    }
-  }catch(e){}
-  try{ await PS.dropPhoto(photoId); }catch(e){}
-  var cont=document.getElementById('thumbs-'+pk);
-  if(cont){ var im=cont.querySelector('.thumb[data-pid="'+photoId+'"]'); if(im) im.remove(); }
-  scheduleSave(); psRefreshBadge();
-  toast('Foto apagada');
-}
-(function wireApagarFoto(){
-  var stack=document.getElementById('stack'); if(!stack) return;
-  stack.addEventListener('click', function(e){
-    var im=e.target.closest ? e.target.closest('.thumb') : null; if(!im) return;
-    var cont=im.closest('.thumbs'); if(!cont || !cont.id) return;
-    var pid=im.getAttribute('data-pid'); if(pid==null || pid==='') return;
-    removerFotoPonto(cont.id.replace(/^thumbs-/,''), parseInt(pid,10));
-  });
-})();
 
 // ── Reordenação por arrasto (alça ≡; pointer events; a ordem do DOM é a verdade) ──
 (function wireDrag(){
@@ -1048,15 +1251,19 @@ async function removerFotoPonto(pk, photoId){
     if(!drag) return;
     var off = e.clientY - drag.startY;
     drag.card.style.transform = 'translateY('+off+'px)';
-    var cards = [].filter.call(stack.querySelectorAll('.blk'), function(c){ return c!==drag.card; });
+    // N6: a reordenação é entre IRMÃOS. Com seção aninhada, varrer
+    // `stack.querySelectorAll('.blk')` misturaria níveis e o bloco pularia
+    // para dentro/fora de seção sozinho.
+    var host = drag.card.parentElement;
+    var cards = [].filter.call(host.children, function(c){ return c!==drag.card && c.classList && c.classList.contains('blk'); });
     var my = drag.card.getBoundingClientRect();
     for(var i=0;i<cards.length;i++){
       var c = cards[i], r = c.getBoundingClientRect(), mid = r.top + r.height/2;
       if(off<0 && my.top<mid && (c.compareDocumentPosition(drag.card) & Node.DOCUMENT_POSITION_FOLLOWING)){
-        stack.insertBefore(drag.card, c); drag.startY=e.clientY; drag.card.style.transform=''; break;
+        host.insertBefore(drag.card, c); drag.startY=e.clientY; drag.card.style.transform=''; break;
       }
       if(off>0 && my.bottom>mid && (c.compareDocumentPosition(drag.card) & Node.DOCUMENT_POSITION_PRECEDING)){
-        stack.insertBefore(drag.card, c.nextSibling); drag.startY=e.clientY; drag.card.style.transform=''; break;
+        host.insertBefore(drag.card, c.nextSibling); drag.startY=e.clientY; drag.card.style.transform=''; break;
       }
     }
   });
@@ -1067,11 +1274,558 @@ async function removerFotoPonto(pk, photoId){
   });
 })();
 
-// ══ FOTOS (bytes no IndexedDB + fila durável; padrão corretiva V2) ══════════
-function legendaDoBloco(uid){
-  var el = document.querySelector('.blk[data-uid="'+uid+'"]');
-  return el ? (q(el,'.b-leg').value.trim() || 'Foto do serviço') : 'Foto do serviço';
+
+// ══ BLOCOS NOVOS: lista · seção · escolha · data · texto · medição com faixa ══
+//    19/08/2026 — Camada 1 (N1-N5) + Camada 2 (N6 seção, N7 gateway, N8 "Outro").
+//    Regra de ouro herdada do módulo de pistão: no celular a lista é CARTÃO,
+//    nunca <table>. `.pt-table` quebrou três vezes do mesmo jeito.
+
+function normItem(it){
+  it = it || {};
+  return { uid: it.uid || pgpUid(), nome: it.nome || '', col: it.col || null,
+           coment: it.coment || '', classe: it.classe || (it.pai ? 'servico' : 'produto'),
+           semFoto: !!it.semFoto, motivo: it.motivo || '',
+           subs: (it.subs||[]).map(function(x){ x.pai = it.uid; return normItem(x); }) };
 }
+function acharItem(luid, iuid){
+  var D = bd(luid), achado = null;
+  (function w(arr){ arr.forEach(function(x){ if(x.uid===iuid) achado=x; w(x.subs||[]); }); })(D.itens||[]);
+  return achado;
+}
+function colDe(luid, cid){ return (bd(luid).cols||[]).find(function(c){ return c.id===cid; }) || null; }
+
+/* ── LISTA ─────────────────────────────────────────────────────────────── */
+function renderLista(uid){
+  var host = document.getElementById('lst-'+uid); if(!host) return;
+  var D = bd(uid), cols = D.cols||[];
+  var chips = '<span class="setname">'+esc(D.setNome||'próprio')+'</span>'
+    + cols.map(function(c){
+        return '<span class="colchip'+(c.interv?' interv':'')+'"><span class="dot"></span>'
+             + esc(c.nome||'—')+(c.coment?' 💬':'')+(c.foto?' 📷':'')+'</span>'; }).join('');
+  host.innerHTML =
+      '<div class="lst-colbar">'+chips+'<button type="button" class="mini" onclick="abrirCfg(\''+uid+'\')">✎ colunas</button></div>'
+    + ((D.itens&&D.itens.length) ? D.itens.map(function(it){ return htmlLitem(uid,it,null); }).join('')
+                                 : '<div class="sec-vazia">Nenhum item ainda.</div>')
+    + '<button type="button" class="mini" style="width:100%" onclick="addLitem(\''+uid+'\',null)">＋ Item</button>';
+}
+function htmlLitem(luid, it, pai){
+  var D = bd(luid), cols = D.cols||[];
+  var col = colDe(luid, it.col);
+  var precisa = !!(col && col.interv), exige = !!(col && col.foto);
+  var pk = luid+'::'+it.uid;
+  var temFoto = (_fotosByBlock[pk]||[]).length > 0;
+  var mostraFoto = exige || temFoto || !!it.fotoManual;
+  var cls = pillsCls(cols.map(function(c){ return c.nome; }));
+  var pills = cols.map(function(c){
+    var on = it.col===c.id;
+    return '<button type="button" class="pill'+(on?' on':'')+(on&&c.interv?' danger':'')+'" '
+      + 'onclick="marcarItem(\''+luid+'\',\''+it.uid+'\',\''+c.id+'\')">'+esc(c.nome||'—')+'</button>';
+  }).join('');
+  var h = '<div class="lit'+(pai?' sub':'')+(precisa?' flag':'')+'" data-item="'+attr(it.uid)+'">'
+    + '<div class="lit-top">'
+    +   '<input type="text" class="lit-nome" value="'+attr(it.nome)+'" placeholder="Nome do item — toque para trocar" '
+    +     'oninput="setItemNome(\''+luid+'\',\''+it.uid+'\',this.value)">'
+    +   '<button type="button" class="ib'+(mostraFoto?' on':'')+'" title="Foto neste item" onclick="togFotoItem(\''+luid+'\',\''+it.uid+'\')">📷</button>'
+    +   (pai?'':'<button type="button" class="ib" title="Sub-item" onclick="addLitem(\''+luid+'\',\''+it.uid+'\')">⊕</button>')
+    +   '<button type="button" class="ib" title="Remover" onclick="rmLitem(\''+luid+'\',\''+it.uid+'\')">✕</button>'
+    + '</div>'
+    + '<div class="'+cls+'">'+pills+'</div>';
+  if(col && col.coment){
+    h += '<label>Comentário — abre porque a resposta é “'+esc(col.nome)+'”</label>'
+      +  '<textarea oninput="setItemComent(\''+luid+'\',\''+it.uid+'\',this.value)">'+esc(it.coment)+'</textarea>';
+  }
+  if(precisa){
+    h += '<label style="margin-top:8px">Classificação — entra assim na lista do orçamento</label><div class="classe-row">'
+      + CLASSES_ORC.map(function(o){
+          return '<button type="button" class="cl'+(it.classe===o[0]?' on':'')+'" onclick="setClasseItem(\''+luid+'\',\''+it.uid+'\',\''+o[0]+'\')">'+o[1]+'</button>'; }).join('')
+      + '</div>';
+  }
+  if(mostraFoto) h += htmlFotoItem(luid, it, col, exige, temFoto);
+  if(it.subs && it.subs.length){
+    h += '<div style="margin-top:9px"><div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">SUB-ITENS'
+      +  '<span class="subtag">herdam “'+esc(it.nome||'item')+'” na lista do orçamento</span></div>'
+      +  it.subs.map(function(sb){ return htmlLitem(luid, sb, it); }).join('')+'</div>';
+  }
+  return h+'</div>';
+}
+function htmlFotoItem(luid, it, col, exige, temFoto){
+  var pk = luid+'::'+it.uid;
+  var st = temFoto ? 'okf' : (it.semFoto ? 'esc' : (exige ? 'req' : ''));
+  var n = (_fotosByBlock[pk]||[]).length;
+  var ttl = temFoto ? ('✓ Foto anexada ('+n+')')
+          : (it.semFoto ? '⚠ Sem foto — motivo registrado'
+          : (exige ? ('📷 Foto obrigatória — a coluna “'+esc(col?col.nome:'')+'” exige') : '📷 Foto opcional neste item'));
+  var h = '<div class="fbox '+st+'"><div class="ft">'+ttl+'</div>'
+    + '<div class="field-hint" style="margin:0 0 7px">Legenda automática: <b>'+esc(legendaDe(pk))+'</b></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+pk+'\')">📷 Câmera</button>'
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\''+pk+'\')">🖼 Galeria</button>'
+    + (exige && !temFoto ? '<button type="button" class="mini" onclick="escaparFoto(\''+luid+'\',\''+it.uid+'\')">Não consegui fotografar</button>' : '')
+    + '</div>'
+    + '<div class="thumbs" id="thumbs-'+pk+'"></div>'
+    + ((_fotosByBlock[pk]||[]).length ? '<div class="field-hint">Toque numa miniatura para apagar só ela.</div>' : '');
+  if(it.semFoto && !temFoto){
+    h += '<label>Motivo</label><input type="text" value="'+attr(it.motivo)+'" placeholder="Ex.: peça já enviada para a retífica" '
+      +  'oninput="setMotivoFoto(\''+luid+'\',\''+it.uid+'\',this.value)">';
+  }
+  return h+'</div>';
+}
+// NÃO é toggle. Lição do módulo de pistão: `pgpSetEstado` era toggle, o 2º toque
+// desmarcava EM SILÊNCIO e o envio era barrado depois por "item sem estado".
+// Escolha única de verdade; para "não se aplica" existe a coluna N.A.
+function marcarItem(luid, iuid, cid){
+  var it = acharItem(luid, iuid); if(!it) return;
+  if(it.col === cid) return;
+  it.col = cid; it.semFoto = false; it.motivo = '';
+  renderLista(luid); repintarFotos(luid); scheduleSave();
+}
+function setItemNome(luid, iuid, v){ var it=acharItem(luid,iuid); if(it){ it.nome=v; scheduleSave(); } }
+function setItemComent(luid, iuid, v){ var it=acharItem(luid,iuid); if(it){ it.coment=v; scheduleSave(); } }
+function setMotivoFoto(luid, iuid, v){ var it=acharItem(luid,iuid); if(it){ it.motivo=v; scheduleSave(); } }
+function setClasseItem(luid, iuid, c){ var it=acharItem(luid,iuid); if(it){ it.classe=c; renderLista(luid); repintarFotos(luid); scheduleSave(); } }
+function togFotoItem(luid, iuid){
+  var it=acharItem(luid,iuid); if(!it) return;
+  var pk = luid+'::'+it.uid;
+  if((_fotosByBlock[pk]||[]).length){ toast('Já tem foto neste item'); return; }
+  it.fotoManual = !it.fotoManual;
+  if(!it.fotoManual){ it.semFoto=false; it.motivo=''; }
+  renderLista(luid); repintarFotos(luid); scheduleSave();
+}
+function escaparFoto(luid, iuid){
+  var it=acharItem(luid,iuid); if(!it) return;
+  it.semFoto = true; renderLista(luid); repintarFotos(luid); scheduleSave();
+  toast('Registre o motivo — ele fica no laudo');
+}
+function addLitem(luid, paiUid){
+  var D=bd(luid);
+  if(paiUid){ var p=acharItem(luid,paiUid); if(p){ var nv=normItem({pai:paiUid}); nv.classe='servico'; p.subs.push(nv); } }
+  else { D.itens = D.itens||[]; D.itens.push(normItem({})); }
+  renderLista(luid); repintarFotos(luid); scheduleSave();
+  setTimeout(function(){
+    var host=document.getElementById('lst-'+luid); if(!host) return;
+    var cs=host.querySelectorAll('.lit-nome');
+    for(var i=cs.length-1;i>=0;i--){ if(!cs[i].value){ cs[i].focus(); break; } }
+  }, 20);
+}
+async function rmLitem(luid, iuid){
+  var it=acharItem(luid,iuid); if(!it) return;
+  var pk = luid+'::'+iuid;
+  var temConteudo = !!(it.nome||'').trim() || it.col || (_fotosByBlock[pk]||[]).length || (it.subs&&it.subs.length);
+  if(temConteudo && !confirm('Remover este item? O conteúdo dele sai do laudo.')) return;
+  await descartarFotosDe(pk);
+  for(var i=0;i<(it.subs||[]).length;i++){ await descartarFotosDe(luid+'::'+it.subs[i].uid); }
+  var D=bd(luid);
+  D.itens = (D.itens||[]).filter(function(x){ return x.uid!==iuid; });
+  D.itens.forEach(function(x){ x.subs=(x.subs||[]).filter(function(y){ return y.uid!==iuid; }); });
+  renderLista(luid); repintarFotos(luid); scheduleSave();
+}
+// Depois de re-renderizar a lista os <div class="thumbs"> nascem vazios — as
+// miniaturas precisam ser repostas a partir do store (os bytes vivem no IndexedDB).
+async function repintarFotos(luid){
+  var host=document.getElementById('lst-'+luid); if(!host) return;
+  var conts = host.querySelectorAll('.thumbs'); if(!conts.length) return;
+  var byId = {};
+  try{
+    var photos = await PS.photosOf(_draftId);
+    photos.forEach(function(ph){ (byId[ph.pointKey]=byId[ph.pointKey]||[]).push(ph); });
+  }catch(e){}
+  [].forEach.call(conts, function(c){
+    var pk = c.id.replace(/^thumbs-/,'');
+    var arr = (byId[pk]||[]).sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
+    c.innerHTML='';
+    arr.forEach(function(ph){
+      var img=document.createElement('img'); img.src=ph.dataUrl;
+      img.setAttribute('data-pid', String(ph.photoId));
+      img.className='thumb '+(ph.uploadStatus==='ok'?'ok':'pending');
+      img.style.cursor='pointer'; img.title='Toque para apagar esta foto';
+      img.addEventListener('click', function(){ removerFoto(pk, ph.photoId); });
+      c.appendChild(img);
+    });
+  });
+}
+// ⚠ 19/08 — limpar `_fotosByBlock` e cancelar o job NÃO bastava: o `fotos_json`
+// enviado é remontado por `fotosJsonDoStore` a partir do STORE (F-26), então a
+// foto de um item removido continuava viajando — com url e tudo, se já tivesse
+// subido. Era a divergência PDF × fotos_json reentrando por outra porta, do lado
+// oposto à que o P1 fechou. Agora a foto sai do IndexedDB também.
+async function descartarFotosDe(pk){
+  var ids=(_fotosByBlock[pk]||[]).map(function(r){ return r.photoId; }).filter(function(x){ return x!=null; });
+  delete _fotosByBlock[pk];
+  try{
+    var doStore=await PS.photosOf(_draftId);
+    doStore.forEach(function(ph){ if(ph.pointKey===pk && ids.indexOf(ph.photoId)<0) ids.push(ph.photoId); });
+  }catch(e){}
+  if(!ids.length) return;
+  try{
+    var jobs=await PS.jobsOf(_draftId);
+    for(var j=0;j<jobs.length;j++){
+      var job=jobs[j];
+      if(job.kind==='salvarFotoForm' && job.status!=='done' && ids.indexOf(job.photoId)>=0){ await PS.dropJob(job.jobId); }
+    }
+  }catch(e){}
+  for(var k=0;k<ids.length;k++){ try{ await PS.dropPhoto(ids[k]); }catch(e){} }
+}
+// FIX 14 — apagar UMA foto errada sem perder o item inteiro (nome, coluna,
+// comentário e classificação). Antes a única saída era remover o item.
+async function removerFoto(pk, photoId){
+  if(!confirm('Apagar esta foto?')) return;
+  var arr=_fotosByBlock[pk]||[];
+  _fotosByBlock[pk]=arr.filter(function(r){ return r.photoId!==photoId; });
+  try{
+    var jobs=await PS.jobsOf(_draftId);
+    for(var j=0;j<jobs.length;j++){
+      if(jobs[j].kind==='salvarFotoForm' && jobs[j].status!=='done' && jobs[j].photoId===photoId) await PS.dropJob(jobs[j].jobId);
+    }
+  }catch(e){}
+  try{ await PS.dropPhoto(photoId); }catch(e){}
+  var sep=pk.indexOf('::');
+  if(sep>0){ renderLista(pk.slice(0,sep)); await repintarFotos(pk.slice(0,sep)); }
+  else {
+    var c=document.getElementById('thumbs-'+pk);
+    if(c){ var im=c.querySelector('.thumb[data-pid="'+photoId+'"]'); if(im) im.remove(); }
+  }
+  scheduleSave(); psRefreshBadge();
+}
+
+/* ── ESCOLHA ÚNICA (N2) + "Outro" (N8) ─────────────────────────────────── */
+function renderEscolha(uid){
+  var host=document.getElementById('esc-'+uid); if(!host) return;
+  var D=bd(uid), opts=(D.opts||[]).slice();
+  if(D.permitirOutro) opts.push('Outro');
+  var cls=pillsCls(opts);
+  var h='<div class="'+cls+'">'+opts.map(function(o){
+    return '<button type="button" class="pill'+(D.val===o?' on':'')+'" onclick="setEscolha(\''+uid+'\',this.dataset.v)" data-v="'+attr(o)+'">'+esc(o)+'</button>';
+  }).join('')+'</div>';
+  if(D.permitirOutro && D.val==='Outro'){
+    h += '<label>Qual?</label><input type="text" class="b-outro" value="'+attr(D.outroTxt||'')+'" '
+      +  'placeholder="Descreva" oninput="setOutro(\''+uid+'\',this.value)">';
+  }
+  if(D.gateway) h += '<div class="field-hint">🔑 Este bloco é um <b>gateway</b>: outros blocos podem aparecer só para uma destas respostas.</div>';
+  host.innerHTML=h;
+}
+function setEscolha(uid, v){
+  var D=bd(uid); if(D.val===v) return;   // também não é toggle
+  D.val=v; renderEscolha(uid); aplicarGateways(); scheduleSave();
+}
+function setOutro(uid, v){ bd(uid).outroTxt=v; scheduleSave(); }
+
+/* ── TEXTO FIXO (N3) ───────────────────────────────────────────────────── */
+function renderTexto(uid){
+  var el=document.getElementById('txt-'+uid); if(!el) return;
+  var c=String(bd(uid).corpo||'').trim();
+  el.innerHTML = c ? esc(c) : '<span style="color:var(--muted)">Toque em ⚙ configurar e escreva o aviso, a cláusula ou a instrução que deve sair no PDF.</span>';
+}
+
+/* ── DATA / HORA (N1) ──────────────────────────────────────────────────── */
+function aplicarModoData(uid){
+  var el=document.querySelector('.blk[data-uid="'+uid+'"]'); if(!el) return;
+  var modo=bd(uid).modo||'data';
+  var cd=q(el,'.c-data'), ch=q(el,'.c-hora');
+  if(cd) cd.style.display = (modo==='hora') ? 'none' : '';
+  if(ch) ch.style.display = (modo==='data') ? 'none' : '';
+}
+
+/* ── MEDIÇÃO com faixa (N4) ────────────────────────────────────────────── */
+function statusMed(uid, valorTxt){
+  var D=bd(uid); if(!D.temFaixa) return null;
+  var v=parseFloat(String(valorTxt==null?'':valorTxt).replace(',','.'));
+  var at=parseFloat(String(D.at).replace(',','.')), cr=parseFloat(String(D.cr).replace(',','.'));
+  if(isNaN(v)||isNaN(at)||isNaN(cr)) return null;
+  var lo=Math.min(at,cr), hi=Math.max(at,cr);
+  if(D.dir==='abaixo') return v<=lo ? 'cr' : (v<=hi ? 'at' : 'ok');
+  return v>=hi ? 'cr' : (v>=lo ? 'at' : 'ok');
+}
+function renderMedStatus(uid){
+  var el=document.querySelector('.blk[data-uid="'+uid+'"]'); if(!el) return;
+  var D=bd(uid);
+  var un=document.getElementById('un-'+uid); if(un) un.textContent=D.unidade||'';
+  var fx=document.getElementById('fx-'+uid);
+  if(fx) fx.innerHTML = D.temFaixa
+    ? ('Faixa: atenção '+(D.dir==='acima'?'≥':'≤')+' '+esc(String(D.at))+' '+esc(D.unidade)
+       +' · crítico '+(D.dir==='acima'?'≥':'≤')+' '+esc(String(D.cr))+' '+esc(D.unidade))
+    : 'Unidade fixa, definida ao montar o bloco.';
+  var box=document.getElementById('stm-'+uid); if(!box) return;
+  var v=q(el,'.b-val') ? q(el,'.b-val').value : '';
+  var st=statusMed(uid, v);
+  box.innerHTML = st ? ('<div class="stbadge st-'+st+'">'+(st==='ok'?'✓ Dentro da faixa':(st==='at'?'⚠ Atenção':'🔴 Crítico'))+'</div>') : '';
+}
+function onMedValor(uid){ renderMedStatus(uid); scheduleSave(); }
+
+/* ── SEÇÃO (N6) ────────────────────────────────────────────────────────── */
+function renderSecao(uid){
+  var host=document.getElementById('sec-'+uid); if(!host) return;
+  var vazio=host.querySelector(':scope > .sec-vazia');
+  var temBloco=!!host.querySelector(':scope > .blk');
+  if(!temBloco && !vazio){
+    var d=document.createElement('div'); d.className='sec-vazia'; d.textContent='Seção vazia — toque em “＋ Bloco nesta seção”.';
+    host.appendChild(d);
+  }
+  if(temBloco && vazio) vazio.remove();
+  var b=document.getElementById('secfold-'+uid);
+  if(b) b.textContent = (bd(uid).aberta===false ? '▸ expandir' : '▾ recolher');
+  host.classList.toggle('sec-fold', bd(uid).aberta===false);
+}
+function togSecao(uid){ bd(uid).aberta = (bd(uid).aberta===false); renderSecao(uid); scheduleSave(); }
+
+/* ── GATEWAY (N7) ──────────────────────────────────────────────────────────
+   Esconde, mas NÃO apaga o que já foi digitado — o form02 apaga, e num
+   construtor em que o próprio usuário configura a condição isso é destrutivo.
+   Em compensação, o que está escondido NÃO entra no PDF nem na lista de
+   orçamento: é exatamente o bug do form03/04, em que o gateway vazio imprimia
+   Parafuso E Pistão juntos porque o filtro valia só na tela.                */
+function gatewaysDisponiveis(){
+  var out=[];
+  document.querySelectorAll('#app .blk[data-tipo="escolha"]').forEach(function(el){
+    var D=bd(el.dataset.uid);
+    if(D && D.gateway) out.push({ uid:el.dataset.uid, titulo:(q(el,'.b-tit')?q(el,'.b-tit').value:'') || 'Pergunta', opts:(D.opts||[]).slice() });
+  });
+  return out;
+}
+// A visibilidade sobe por DOIS caminhos: a seção que contém o bloco e a CADEIA de
+// gateways. 19/08 — antes só o primeiro elo do gateway era conferido, então um
+// bloco governado por uma pergunta que o técnico nunca viu (porque ELA estava
+// escondida) continuava saindo no laudo. `visitados` trava o ciclo A↔B.
+function blocoVisivel(el, visitados){
+  if(!el) return false;
+  visitados = visitados || {};
+  var uid = el.dataset.uid;
+  if(visitados[uid]) return false;   // ciclo: ninguém pode responder — trata como oculto
+  visitados[uid] = 1;
+  var c = bd(uid).cond;
+  if(c && c.gwUid){
+    var g=document.querySelector('.blk[data-uid="'+c.gwUid+'"]');
+    if(!g) return false;                                   // gateway removido
+    if(bd(c.gwUid).val !== c.valor) return false;
+    if(!blocoVisivel(g, visitados)) return false;           // o gateway também precisa estar visível
+  }
+  var pai = el.parentElement ? el.parentElement.closest('.blk') : null;
+  return pai ? blocoVisivel(pai, visitados) : true;
+}
+// Quem (transitivamente) depende deste bloco? Serve para não oferecer condição
+// circular e para avisar antes de remover um gateway.
+function dependentesDe(uid){
+  var out=[], mudou=true, alvo={};
+  alvo[uid]=1;
+  while(mudou){
+    mudou=false;
+    document.querySelectorAll('#app .blk').forEach(function(el){
+      var u=el.dataset.uid; if(alvo[u]) return;
+      var c=bd(u).cond;
+      if(c && c.gwUid && alvo[c.gwUid]){ alvo[u]=1; out.push(u); mudou=true; }
+    });
+  }
+  return out;
+}
+function aplicarGateways(){
+  var gws=gatewaysDisponiveis();
+  document.querySelectorAll('#app .blk').forEach(function(el){
+    var uid=el.dataset.uid, c=bd(uid).cond;
+    var tag=q(el,'.gwtag'), btn=q(el,'.b-cond');
+    if(btn) btn.style.display = (gws.length && !(gws.length===1 && gws[0].uid===uid)) ? '' : 'none';
+    if(btn) btn.classList.toggle('gw', !!(c && c.gwUid));
+    // 🔴 19/08 — AQUI havia um apagador silencioso: se o gateway ainda não
+    // existisse no DOM, `cond` era zerada. Durante o `hydrateUI` os blocos nascem
+    // na ordem do rascunho, então um bloco condicionado que estivesse ACIMA do
+    // gateway perdia a condição PARA SEMPRE no primeiro reload — e voltava a sair
+    // no PDF, em silêncio. A condição agora é dado do usuário: só ele a remove.
+    if(tag){
+      if(c && c.gwUid){
+        var gEl=document.querySelector('.blk[data-uid="'+c.gwUid+'"]');
+        if(!gEl){
+          tag.style.display=''; tag.innerHTML='⚠ a pergunta que controla este bloco não existe mais — ele fica fora do laudo até você refazer a condição';
+        } else {
+          var gt=q(gEl,'.b-tit') ? q(gEl,'.b-tit').value : '';
+          var temOpc=(bd(c.gwUid).opts||[]).indexOf(c.valor)>=0;
+          tag.style.display='';
+          tag.innerHTML='⇄ aparece só quando “'+esc(gt||'pergunta')+'” = <b>'+esc(c.valor)+'</b>'
+            + (temOpc?'':' <span style="color:var(--amber)">⚠ essa opção não existe mais na pergunta</span>');
+        }
+      } else { tag.style.display='none'; tag.textContent=''; }
+    }
+    el.classList.toggle('oculto', !blocoVisivel(el));
+  });
+}
+function abrirCond(uid){
+  var proibidos=dependentesDe(uid);   // evita condição circular (A↔B some com os dois)
+  var gws=gatewaysDisponiveis().filter(function(g){ return g.uid!==uid && proibidos.indexOf(g.uid)<0; });
+  var c=bd(uid).cond;
+  document.getElementById('cfgTitulo').textContent='Quando este bloco aparece';
+  document.getElementById('cfgSub').textContent='Escondido não some do rascunho — mas não sai no PDF nem na lista de orçamento.';
+  var h='<button type="button" class="mini" style="width:100%;margin-bottom:8px'+(!c?';border-color:var(--brand);color:var(--brand)':'')+'" onclick="setCond(\''+uid+'\',\'\',\'\')">Sempre aparece</button>';
+  if(!gws.length) h+='<div class="field-hint">Nenhum gateway ainda. Crie um bloco <b>Escolha única</b> e marque “usar como gateway” na configuração dele.</div>';
+  gws.forEach(function(g){
+    h+='<label>'+esc(g.titulo)+'</label>';
+    g.opts.forEach(function(o){
+      var on=c && c.gwUid===g.uid && c.valor===o;
+      h+='<button type="button" class="mini" style="width:100%;margin-bottom:6px'+(on?';border-color:var(--brand);color:var(--brand)':'')+'" '
+        +'onclick="setCond(\''+uid+'\',\''+g.uid+'\',this.dataset.v)" data-v="'+attr(o)+'">= '+esc(o)+'</button>';
+    });
+  });
+  document.getElementById('cfgBody').innerHTML=h;
+  document.getElementById('cfgOverlay').classList.add('open');
+}
+function setCond(uid, gwUid, valor){
+  bd(uid).cond = gwUid ? { gwUid:gwUid, valor:valor } : null;
+  aplicarGateways(); scheduleSave(); abrirCond(uid);
+}
+
+/* ── CONFIGURAÇÃO POR TIPO (⚙) ─────────────────────────────────────────── */
+var _cfgUid=null;
+function fecharCfg(){
+  document.getElementById('cfgOverlay').classList.remove('open');
+  if(_cfgUid){
+    var el=document.querySelector('.blk[data-uid="'+_cfgUid+'"]');
+    if(el){
+      var t=el.dataset.tipo;
+      if(t==='lista') { renderLista(_cfgUid); repintarFotos(_cfgUid); }
+      if(t==='escolha'){ renderEscolha(_cfgUid); aplicarGateways(); }
+      if(t==='texto')  renderTexto(_cfgUid);
+      if(t==='data')   aplicarModoData(_cfgUid);
+      if(t==='med')    renderMedStatus(_cfgUid);
+    }
+  }
+  _cfgUid=null; scheduleSave();
+}
+function abrirCfg(uid){
+  _cfgUid=uid;
+  var el=document.querySelector('.blk[data-uid="'+uid+'"]'); if(!el) return;
+  var tipo=el.dataset.tipo, D=bd(uid), h='';
+  document.getElementById('cfgTitulo').textContent='Configurar · '+(BLK_TITLE[tipo]||tipo);
+  document.getElementById('cfgSub').textContent='';
+  if(tipo==='med'){
+    h = '<label>Unidade (fixa — o técnico não escolhe em campo)</label>'
+      + '<select onchange="setCfgMed(\'unidade\',this.value)">'
+      + UNIDADES.filter(function(u){ return u!=='outra'; }).map(function(u){ return '<option'+(u===D.unidade?' selected':'')+'>'+u+'</option>'; }).join('')
+      + '</select>'
+      + '<label style="margin-top:10px"><input type="checkbox" id="cfgFaixa" '+(D.temFaixa?'checked':'')+' onchange="setCfgMed(\'temFaixa\',this.checked)"> Usar faixa de atenção / crítico</label>';
+    if(D.temFaixa){
+      h += '<div class="row2"><div><label>Atenção</label><input type="text" inputmode="decimal" value="'+attr(String(D.at))+'" oninput="setCfgMed(\'at\',this.value)"></div>'
+        +  '<div><label>Crítico</label><input type="text" inputmode="decimal" value="'+attr(String(D.cr))+'" oninput="setCfgMed(\'cr\',this.value)"></div></div>'
+        +  '<label>Direção</label><select onchange="setCfgMed(\'dir\',this.value)">'
+        +  '<option value="acima"'+(D.dir==='acima'?' selected':'')+'>pior quando SOBE</option>'
+        +  '<option value="abaixo"'+(D.dir==='abaixo'?' selected':'')+'>pior quando DESCE</option></select>';
+    }
+  } else if(tipo==='escolha'){
+    h = '<label>Opções (uma por linha)</label>'
+      + '<textarea style="min-height:110px" oninput="setCfgOpts(this.value)">'+esc((D.opts||[]).join('\n'))+'</textarea>'
+      + '<label style="margin-top:10px"><input type="checkbox" '+(D.gateway?'checked':'')+' onchange="setCfgEsc(\'gateway\',this.checked)"> Usar como <b>gateway</b></label>'
+      + '<label><input type="checkbox" '+(D.permitirOutro?'checked':'')+' onchange="setCfgEsc(\'permitirOutro\',this.checked)"> Oferecer “Outro” com campo de texto</label>';
+  } else if(tipo==='data'){
+    h = '<label>O que capturar</label><select onchange="setCfgData(this.value)">'
+      + ['data','hora','datahora'].map(function(m){ return '<option value="'+m+'"'+((D.modo||'data')===m?' selected':'')+'>'
+          +(m==='data'?'Só data':(m==='hora'?'Só hora':'Data e hora'))+'</option>'; }).join('')+'</select>';
+  } else if(tipo==='texto'){
+    h = '<label>Texto que sai no PDF</label><textarea style="min-height:140px" oninput="setCfgTexto(this.value)">'+esc(D.corpo||'')+'</textarea>';
+  } else if(tipo==='lista'){
+    document.getElementById('cfgSub').innerHTML='Cada lista tem o seu conjunto. <b style="color:#fca5a5">⚠</b> intervenção · <b style="color:#93c5fd">💬</b> comentário · <b style="color:#86efac">📷</b> foto.';
+    h = '<label>Conjuntos prontos</label><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+      + CONJUNTOS.map(function(c){ return '<button type="button" class="mini'+(D.setId===c.id?' on':'')+'" onclick="aplicarConjunto(\''+uid+'\',\''+c.id+'\')">'+esc(c.nome)+'</button>'; }).join('')
+      + '</div><label>Colunas</label><div id="cfgCols"></div>'
+      + '<button type="button" class="mini" style="width:100%;margin-top:6px" onclick="addColuna(\''+uid+'\')">＋ Coluna</button>';
+  }
+  document.getElementById('cfgBody').innerHTML=h;
+  if(tipo==='lista') renderCfgCols(uid);
+  document.getElementById('cfgOverlay').classList.add('open');
+}
+function setCfgMed(k,v){ var D=bd(_cfgUid); D[k]=v; if(k==='temFaixa'||k==='dir') abrirCfg(_cfgUid); }
+function setCfgEsc(k,v){ bd(_cfgUid)[k]=v; renderEscolha(_cfgUid); aplicarGateways(); }
+function setCfgOpts(v){
+  var D=bd(_cfgUid);
+  D.opts=v.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+  if(D.opts.indexOf(D.val)<0 && D.val!=='Outro') D.val=null;
+  // 19/08 — renomear uma opção deixava órfã toda condição que apontava para ela:
+  // o bloco sumia do laudo PARA SEMPRE e a etiqueta continuava anunciando um valor
+  // que já não existia. Agora a etiqueta acusa (ver aplicarGateways) e o painel avisa.
+  var orfas=0;
+  document.querySelectorAll('#app .blk').forEach(function(el){
+    var c=bd(el.dataset.uid).cond;
+    if(c && c.gwUid===_cfgUid && D.opts.indexOf(c.valor)<0) orfas++;
+  });
+  if(orfas) toast(orfas+' bloco(s) apontam para uma opção que você acabou de renomear');
+  renderEscolha(_cfgUid); aplicarGateways();
+}
+function setCfgData(v){ bd(_cfgUid).modo=v; aplicarModoData(_cfgUid); }
+function setCfgTexto(v){ bd(_cfgUid).corpo=v; }
+function renderCfgCols(uid){
+  var box=document.getElementById('cfgCols'); if(!box) return;
+  box.innerHTML=(bd(uid).cols||[]).map(function(c){
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">'
+      + '<input type="text" style="flex:1;min-width:0" value="'+attr(c.nome)+'" oninput="setColNome(\''+uid+'\',\''+c.id+'\',this.value)">'
+      + '<button type="button" class="mini'+(c.interv?' on':'')+'" onclick="togColuna(\''+uid+'\',\''+c.id+'\',\'interv\')">⚠</button>'
+      + '<button type="button" class="mini'+(c.coment?' on':'')+'" onclick="togColuna(\''+uid+'\',\''+c.id+'\',\'coment\')">💬</button>'
+      + '<button type="button" class="mini'+(c.foto?' on':'')+'" onclick="togColuna(\''+uid+'\',\''+c.id+'\',\'foto\')">📷</button>'
+      + '<button type="button" class="mini" onclick="rmColuna(\''+uid+'\',\''+c.id+'\')">✕</button>'
+      + '</div>';
+  }).join('');
+}
+function marcarProprio(uid){ bd(uid).setId=null; bd(uid).setNome='próprio'; }
+function setColNome(uid,cid,v){ var c=colDe(uid,cid); if(c){ c.nome=v; marcarProprio(uid); } }
+function togColuna(uid,cid,k){ var c=colDe(uid,cid); if(c){ c[k]=!c[k]; marcarProprio(uid); renderCfgCols(uid); } }
+function addColuna(uid){ bd(uid).cols.push({id:pgpUid(),nome:'',interv:false,coment:false,foto:false}); marcarProprio(uid); renderCfgCols(uid); }
+function rmColuna(uid,cid){
+  var D=bd(uid);
+  if((D.cols||[]).length<=2){ toast('Uma lista precisa de pelo menos 2 colunas'); return; }
+  D.cols=D.cols.filter(function(c){ return c.id!==cid; });
+  (function w(arr){ arr.forEach(function(x){ if(x.col===cid) x.col=null; w(x.subs||[]); }); })(D.itens||[]);
+  marcarProprio(uid); renderCfgCols(uid);
+}
+function aplicarConjunto(uid,cid){
+  var c=CONJUNTOS.find(function(x){ return x.id===cid; }); if(!c) return;
+  var inst=instanciarConjunto(c), D=bd(uid);
+  D.setId=inst.setId; D.setNome=inst.setNome; D.cols=inst.cols;
+  // as marcações antigas apontavam para colunas que não existem mais
+  (function w(arr){ arr.forEach(function(x){ x.col=null; w(x.subs||[]); }); })(D.itens||[]);
+  renderCfgCols(uid); toast('Conjunto aplicado — as marcações desta lista foram zeradas');
+}
+
+/* ── A LISTA DE APOIO AO ORÇAMENTO ─────────────────────────────────────── */
+// Colhe tudo que caiu numa coluna marcada com ⚠, em qualquer lista VISÍVEL,
+// em qualquer nível. Sub-item sai como "Sub — Pai".
+function colherIntervencoes(){
+  var out=[];
+  document.querySelectorAll('#app .blk[data-tipo="lista"]').forEach(function(el){
+    if(!blocoVisivel(el)) return;
+    var luid=el.dataset.uid, D=bd(luid);
+    var titulo=(q(el,'.b-tit')?q(el,'.b-tit').value:'') || 'Lista';
+    (function w(arr, pai){
+      (arr||[]).forEach(function(it){
+        var col=colDe(luid, it.col);
+        if(col && col.interv && String(it.nome||'').trim()){
+          var pk=luid+'::'+it.uid;
+          out.push({ rotulo: pai ? (it.nome+' — '+pai.nome) : it.nome,
+                     classe: it.classe||'produto', coluna: col.nome, lista: titulo,
+                     comentario: it.coment||'', exige_foto: !!col.foto,
+                     tem_foto: (_fotosByBlock[pk]||[]).length>0,
+                     sem_foto: !!it.semFoto, motivo: it.motivo||'',
+                     item_uid: it.uid });
+        }
+        w(it.subs, it);
+      });
+    })(D.itens, null);
+  });
+  return out;
+}
+
+// ══ FOTOS (bytes no IndexedDB + fila durável; padrão corretiva V2) ══════════
+// P1 (backlog 18/08) — a legenda deixou de ser "a do bloco" e passou a ser "a do
+// PONTO": `pointKey` é o uid do bloco de foto OU `uidDaLista::uidDoItem`. Item de
+// lista tem legenda AUTOMÁTICA (item — coluna), como o `FOTO_PONTOS` do corretiva
+// e o `fotoDoTeste()` do diagnóstico já faziam: o técnico não digita nada.
+function legendaDe(pointKey){
+  var pk = String(pointKey||'');
+  var sep = pk.indexOf('::');
+  if(sep > 0){
+    var luid = pk.slice(0, sep), iuid = pk.slice(sep+2);
+    var it = acharItem(luid, iuid);
+    if(!it) return 'Foto do item';
+    var col = colDe(luid, it.col);
+    return (String(it.nome||'').trim() || 'Item') + (col ? (' — ' + col.nome) : '');
+  }
+  var el = document.querySelector('.blk[data-uid="'+pk+'"]');
+  var leg = el ? q(el,'.b-leg') : null;
+  return (leg && leg.value.trim()) || 'Foto do serviço';
+}
+function legendaDoBloco(uid){ return legendaDe(uid); }   // compat
 function pickPhoto(uid){
   if(_sending) return;
   const inp = document.getElementById('fileInput');
@@ -1126,12 +1880,19 @@ function handlePhoto(uid, file){
   });
 }
 async function addPhoto(uid, dataUrl, fileName){
-  var caption = legendaDoBloco(uid);
+  var caption = legendaDe(uid);
   var cont = document.getElementById('thumbs-' + uid);
   var el = document.createElement('img'); el.className='thumb pending'; el.src=dataUrl; if(cont) cont.appendChild(el);
   if(!Array.isArray(_fotosByBlock[uid])) _fotosByBlock[uid]=[];
   var ref = { photoId:null, caption:caption, secao:uid, status:'pending', url:null, fileName:fileName };
   _fotosByBlock[uid].push(ref);
+  // 19/08 — foto de ITEM de lista: o cartão precisa se redesenhar, senão a caixa
+  // continua vermelha dizendo "Foto obrigatória" com a miniatura logo abaixo, e o
+  // técnico fotografa de novo achando que não pegou.
+  if(String(uid).indexOf('::')>0){
+    var _lu=String(uid).slice(0, String(uid).indexOf('::'));
+    setTimeout(function(){ renderLista(_lu); repintarFotos(_lu); }, 0);
+  }
   // 29/07 (F-01): ms da CAPTURA, gerado 1x. O corpo do job é gravado no IndexedDB
   // e reenviado tal e qual — nunca é remontado, logo o client_ts nunca muda.
   var _clientTs = Date.now();
@@ -1142,7 +1903,7 @@ async function addPhoto(uid, dataUrl, fileName){
     var fotoUid = 'f_'+_formUid+'_'+photoId;
     ref.foto_uid = fotoUid; ref.client_ts = _clientTs;
     var body = { action:'salvarFotoForm', os:state_os(), cliente:val('f_cliente')||'SemCliente', secao:uid, legenda:caption,
-      nomeArquivo:fileName, base64:dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_generica', entity_type:'generica',
+      nomeArquivo:fileName, base64:dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_diag_oficina', entity_type:'diag_oficina',
       foto_uid:fotoUid, client_ts:_clientTs };   // 29/07 (F-01): client_ts congelado na captura
     try{ await PS.updatePhoto(photoId,{ fotoUid:fotoUid, clientTs:_clientTs }); }catch(e){}
     await PS.enqueue({ draftId:_draftId, kind:'salvarFotoForm', url:GAS_URL, body:body, photoId:photoId, label:caption });
@@ -1159,21 +1920,29 @@ function markPhotoSent(photoId, url){
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
 function fotosFlat(){
   var out=[];
-  document.querySelectorAll('#stack .blk[data-tipo="foto"]').forEach(function(el){
-    var uid=el.dataset.uid, leg=legendaDoBloco(uid);
-    (_fotosByBlock[uid]||[]).forEach(function(f){
-      out.push({ url:f.url||null, fileName:f.fileName, secao:uid, caption:leg, status:f.status||'pending',
+  function emitir(pk){
+    var leg=legendaDe(pk);
+    (_fotosByBlock[pk]||[]).forEach(function(f){
+      out.push({ url:f.url||null, fileName:f.fileName, secao:pk, caption:leg, status:f.status||'pending',
                  foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 });
     });
+  }
+  document.querySelectorAll('#app .blk[data-tipo="foto"]').forEach(function(el){ emitir(el.dataset.uid); });
+  // fotos por ITEM de lista (pointKey = uidDaLista::uidDoItem)
+  document.querySelectorAll('#app .blk[data-tipo="lista"]').forEach(function(el){
+    var luid=el.dataset.uid;
+    (function w(arr){ (arr||[]).forEach(function(it){ emitir(luid+'::'+it.uid); w(it.subs); }); })(bd(luid).itens);
   });
   return out;
 }
 // 29/07 (F-26, mesma classe da corretiva): o fotos_json era congelado no Concluir —
 // num envio offline TODAS as fotos iam com url:null. Remonta na hora do envio a
 // partir do store durável (uploadUrl confirmada + foto_uid p/ join posterior).
-// Só devolve legenda se o bloco AINDA existe na tela.
+// Só devolve legenda se o ponto AINDA existe na tela; senão deixa a congelada valer.
 function legendaViva(pointKey){
-  return document.querySelector('.blk[data-uid="'+pointKey+'"]') ? legendaDoBloco(pointKey) : '';
+  var pk=String(pointKey||''), sep=pk.indexOf('::');
+  if(sep>0){ return acharItem(pk.slice(0,sep), pk.slice(sep+2)) ? legendaDe(pk) : ''; }
+  return document.querySelector('.blk[data-uid="'+pk+'"]') ? legendaDe(pk) : '';
 }
 async function fotosJsonDoStore(draftId, congelado){
   var ps=[];
@@ -1181,12 +1950,12 @@ async function fotosJsonDoStore(draftId, congelado){
   if(!ps || !ps.length) return congelado;
   ps.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
   return ps.map(function(p){
-    // 19/08 (H2 — o mesmo P1 do backlog de 18/08). `p.caption` é a legenda do
-    // INSTANTE DO CLIQUE. O `fotosFlat()` relia ao vivo e o PDF usava essa, mas
-    // quem sobrescreve o `fotos_json` no envio é ESTA função (sender) — então PDF
-    // e fotos_json divergiam sempre que a legenda fosse corrigida depois da foto.
-    // Relê pelo pointKey; a congelada continua valendo para o bloco que já não
-    // existe mais na tela.
+    // P1 — AQUI estava o bug: `p.caption` é a legenda do INSTANTE DO CLIQUE.
+    // `fotosFlat()` relia ao vivo, mas quem sobrescreve o `fotos_json` no envio é
+    // esta função (sender, ~L1486) — então PDF e fotos_json divergiam sempre que a
+    // legenda mudasse depois da foto (e num item de lista ela muda sozinha, ao
+    // marcar a coluna). Agora relê pelo pointKey, com a congelada como reserva
+    // para o ponto que já não existe mais na tela.
     return { url:p.uploadUrl||null, fileName:p.fileName, secao:p.pointKey,
              caption:(legendaViva(p.pointKey) || p.caption || ''), status:(p.uploadStatus==='ok'?'ok':'pending'),
              foto_uid:p.fotoUid||('f_'+_formUid+'_'+p.photoId), client_ts:p.clientTs||0 };
@@ -1267,10 +2036,17 @@ async function colherAssinatura(btn){
   await saveDraft();   // assinatura é preciosa: grava JÁ, sem esperar o debounce
   toast('✅ Assinatura registrada');
 }
+// 19/08 — o bloco de assinaturas pode acabar dentro de uma seção escondida por
+// gateway. Antes ele continuava contando como pendente: o técnico não via o bloco
+// (display:none), não podia assinar, não podia apagar e não podia concluir a OS.
+// Beco sem saída. O que está fora do laudo também está fora da cobrança.
 function assinaturasPendentes(){
   var out=[];
-  document.querySelectorAll('#stack .blk[data-tipo="sig"] .sig-slot').forEach(function(slot){
-    if(!_sigBySlot[slot.dataset.slot]) out.push(slot);
+  document.querySelectorAll('#app .blk[data-tipo="sig"]').forEach(function(blk){
+    if(!blocoVisivel(blk)) return;
+    blk.querySelectorAll('.sig-slot').forEach(function(slot){
+      if(!_sigBySlot[slot.dataset.slot]) out.push(slot);
+    });
   });
   return out;
 }
@@ -1392,15 +2168,15 @@ function pgpColetarAssinatura(cfg){
 var _saveTimer = null;
 function scheduleSave(){ clearTimeout(_saveTimer); _saveTimer = setTimeout(function(){ saveDraft(); }, 500); }
 function draftKeyFor(osId, tarefaId){
-  if(osId) return 'generica::'+osId+'::'+(tarefaId||'');
+  if(osId) return 'diag_oficina::'+osId+'::'+(tarefaId||'');
   var u=''; try{ u=localStorage.getItem(AVULSA_UID_KEY)||''; }catch(e){}
   if(!u){ u=pgpUid(); try{ localStorage.setItem(AVULSA_UID_KEY,u); }catch(e){} }
-  return 'generica::avulsa::'+u;
+  return 'diag_oficina::avulsa::'+u;
 }
 function ensureDraftId(){ if(!_draftId) _draftId=draftKeyFor(_osId,_tarefaId); return _draftId; }
 function draftRecord(){
   captura();
-  return { draftId:ensureDraftId(), formType:'generica', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
+  return { draftId:ensureDraftId(), formType:'diag_oficina', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
     state:JSON.parse(JSON.stringify(state)), status:(_sending?'sending':'editing'),
     pdfPending:_pdfPendente, updatedAt:Date.now() };
 }
@@ -1413,24 +2189,78 @@ function captura(){
   state.identificacao = { tecnico:val('f_tecnico'), cliente:val('f_cliente'), os:val('f_os'), equipamento:val('f_equip'), modelo:val('f_modelo') };
   state.atendimento = { data:val('f_data'), hora:val('f_hora') };
   state.blocos = []; state.assinaturas = [];
-  document.querySelectorAll('#stack .blk').forEach(function(el){
-    var uid=el.dataset.uid, tipo=el.dataset.tipo;
+  state.blocos = capturaNivel(document.getElementById('stack'));
+  // 19/08 — a máquina e a lista de intervenção entram no MESMO state que alimenta
+  // o PDF e o campos_json. Um só lugar: laudo e payload não podem divergir.
+  // preserva o que já havia se ainda não há máquina escolhida nesta sessão —
+  // `captura()` roda no autosave e não pode apagar o vínculo do rascunho.
+  if(_maqAtual){
+    state.maquina_id = _maqAtual.id || '';
+    state.maquina_label = maqLabel(_maqAtual);
+  } else {
+    state.maquina_id = state.maquina_id || '';
+    state.maquina_label = state.maquina_label || '';
+  }
+  state.orcamento = colherIntervencoes();
+}
+// N6 — o `#stack .blk` original era seletor DESCENDENTE: com seção aninhada o
+// bloco de dentro casaria DUAS vezes e fora de ordem. Agora é filho direto +
+// recursão, e o estado deixou de ser lista para ser árvore.
+function capturaNivel(host){
+  if(!host) return [];
+  var out=[];
+  [].forEach.call(host.children, function(el){
+    if(!el.classList || !el.classList.contains('blk')) return;
+    var b=capturaBloco(el); if(b) out.push(b);
+  });
+  return out;
+}
+function capturaBloco(el){
+  var uid=el.dataset.uid, tipo=el.dataset.tipo, D=bd(uid);
+  var base={ uid:uid, tipo:tipo, titulo:(q(el,'.b-tit')?q(el,'.b-tit').value:'') };
+  if(D.cond && D.cond.gwUid) base.cond={ gwUid:D.cond.gwUid, valor:D.cond.valor };
+  base.oculto = !blocoVisivel(el);
+  {
+    var _push=[];
+    function state_blocos_push(o){ _push.push(o); }
     if(tipo==='obs'){
-      state.blocos.push({ uid:uid, tipo:'obs', texto:q(el,'.b-obs').value });
+      state_blocos_push(Object.assign(base,{ texto:q(el,'.b-obs').value }));
     } else if(tipo==='pr'){
-      state.blocos.push({ uid:uid, tipo:'pr', pergunta:q(el,'.b-perg').value, resposta:q(el,'.b-resp').value });
+      state_blocos_push(Object.assign(base,{ pergunta:q(el,'.b-perg').value, resposta:q(el,'.b-resp').value }));
     } else if(tipo==='med'){
-      state.blocos.push({ uid:uid, tipo:'med', grandeza:q(el,'.b-grand').value, valor:q(el,'.b-val').value,
-        unidade:q(el,'.b-unid').value, unidadeOutra:q(el,'.b-unid-outra').value });
+      state_blocos_push(Object.assign(base,{ grandeza:q(el,'.b-grand').value, valor:q(el,'.b-val').value,
+        unidade:D.unidade||'', temFaixa:!!D.temFaixa, at:D.at, cr:D.cr, dir:D.dir||'acima',
+        status:statusMed(uid, q(el,'.b-val')?q(el,'.b-val').value:'') }));
     } else if(tipo==='foto'){
-      state.blocos.push({ uid:uid, tipo:'foto', legenda:q(el,'.b-leg').value,
-        fotos:(_fotosByBlock[uid]||[]).map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }; }) });
+      state_blocos_push(Object.assign(base,{ legenda:q(el,'.b-leg').value,
+        fotos:(_fotosByBlock[uid]||[]).map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }; }) }));
+    } else if(tipo==='lista'){
+      state_blocos_push(Object.assign(base,{
+        setId:D.setId||null, setNome:D.setNome||'próprio',
+        cols:(D.cols||[]).map(function(c){ return { id:c.id, nome:c.nome, interv:!!c.interv, coment:!!c.coment, foto:!!c.foto }; }),
+        itens:(function serial(arr){ return (arr||[]).map(function(it){
+          var pk=uid+'::'+it.uid;
+          return { uid:it.uid, nome:it.nome, col:it.col, coment:it.coment, classe:it.classe,
+                   semFoto:!!it.semFoto, motivo:it.motivo||'', fotoManual:!!it.fotoManual,
+                   fotos:(_fotosByBlock[pk]||[]).map(function(f){ return { photoId:f.photoId, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }; }),
+                   subs:serial(it.subs) }; }); })(D.itens) }));
+    } else if(tipo==='secao'){
+      state_blocos_push(Object.assign(base,{ aberta:(D.aberta!==false), filhos:capturaNivel(q(el,'.sec-stack')) }));
+    } else if(tipo==='escolha'){
+      state_blocos_push(Object.assign(base,{ opts:(D.opts||[]).slice(), val:D.val||null,
+        gateway:!!D.gateway, permitirOutro:!!D.permitirOutro, outroTxt:D.outroTxt||'' }));
+    } else if(tipo==='data'){
+      state_blocos_push(Object.assign(base,{ modo:D.modo||'data',
+        data:(q(el,'.b-data')?q(el,'.b-data').value:''), hora:(q(el,'.b-hora')?q(el,'.b-hora').value:'') }));
+    } else if(tipo==='texto'){
+      state_blocos_push(Object.assign(base,{ corpo:D.corpo||'' }));
     } else if(tipo==='form'){
       var fid=q(el,'.b-form').value;
       var fdef=null; for(var fi=0; fi<FORM_CATALOGO.length; fi++){ if(FORM_CATALOGO[fi].id===fid){ fdef=FORM_CATALOGO[fi]; break; } }
-      state.blocos.push({ uid:uid, tipo:'form', formId:fid, formNome:(fdef?fdef.nome:''), obs:q(el,'.b-form-obs').value, aberto:el.dataset.aberto||'' });
+      state_blocos_push(Object.assign(base,{ formId:fid, formNome:(fdef?fdef.nome:''), obs:q(el,'.b-form-obs').value, aberto:el.dataset.aberto||'' }));
     } else if(tipo==='sig'){
-      state.blocos.push({ uid:uid, tipo:'sig' });
+      state_blocos_push(base);
+      if(base.oculto) return _push[0] || null;   // escondido não assina e não imprime
       el.querySelectorAll('.sig-slot').forEach(function(slot){
         var s=_sigBySlot[slot.dataset.slot]||{};
         state.assinaturas.push({ slotUid:slot.dataset.slot, papel:q(slot,'.b-papel').value,
@@ -1438,7 +2268,8 @@ function captura(){
           dataUrl:s.dataUrl||null, w:s.w, h:s.h, ts:s.ts||null });
       });
     }
-  });
+    return _push[0] || null;
+  }
 }
 // Reconstrói a tela a partir do rascunho.
 function setV(id,v){ var e=document.getElementById(id); if(e && v!=null) e.value=v; }
@@ -1447,14 +2278,16 @@ function hydrateUI(){
   setV('f_tecnico',i.tecnico); setV('f_cliente',i.cliente); setV('f_os',i.os); setV('f_equip',i.equipamento); setV('f_modelo',i.modelo);
   setV('f_data',at.data); setV('f_hora',at.hora);
   var sigs = Array.isArray(state.assinaturas) ? state.assinaturas : [];
-  (state.blocos||[]).forEach(function(b){
-    var el = addBlock(b.tipo, b, true);
-    if(el && b.tipo==='sig'){
-      var list=q(el,'.sig-list');
-      sigs.forEach(function(sd){ addSigSlot(list, sd); });
-    }
-  });
+  // addBlock já recria os filhos de cada seção (d.filhos). As assinaturas são uma
+  // lista PLANA no state e o bloco `sig` é único, então preenche-se depois — em
+  // qualquer nível onde ele tenha ficado.
+  (state.blocos||[]).forEach(function(b){ addBlock(b.tipo, b, true); });
+  var sigEl = document.querySelector('#app .blk[data-tipo="sig"]');
+  if(sigEl){ var list=q(sigEl,'.sig-list'); sigs.forEach(function(sd){ addSigSlot(list, sd); }); }
   refreshEmpty();
+  aplicarGateways();
+  // ⚠ as fotos NÃO são repintadas aqui: quem pinta é o `restoreDraft`, depois de
+  // encher o `_fotosByBlock`. Dois donos do mesmo container = miniatura em dobro.
 }
 async function restoreDraft(){
   ensureDraftId();
@@ -1472,11 +2305,32 @@ async function restoreDraft(){
       if(!_fotosByBlock[p.pointKey]) _fotosByBlock[p.pointKey]=[];
       var okp=(p.uploadStatus==='ok');
       _fotosByBlock[p.pointKey].push({ photoId:p.photoId, caption:p.caption, secao:p.pointKey, status:(okp?'ok':'pending'), url:p.uploadUrl||null, fileName:p.fileName });
+      // ponto de ITEM (`lista::item`) é redesenhado logo abaixo pelo renderLista —
+      // pintar aqui também duplicaria a miniatura.
+      if(String(p.pointKey).indexOf('::')>0) return;
       var cont=document.getElementById('thumbs-'+p.pointKey); if(!cont) return;
       var img=document.createElement('img'); img.src=p.dataUrl; img.setAttribute('data-pid',String(p.photoId));
       img.className='thumb '+(okp?'ok':'pending'); cont.appendChild(img);
     });
+    // agora sim: com o `_fotosByBlock` cheio, as listas redesenham sabendo quais
+    // itens já têm foto (senão todos voltariam vermelhos pedindo foto de novo).
+    var listas=[].slice.call(document.querySelectorAll('#app .blk[data-tipo="lista"]'));
+    for(var li=0; li<listas.length; li++){
+      renderLista(listas[li].dataset.uid);
+      await repintarFotos(listas[li].dataset.uid);
+    }
   }catch(e){}
+  // 🔴 19/08 — `_maqAtual` NÃO era restaurado: qualquer `captura()` posterior
+  // sobrescrevia `state.maquina_id` com ''. Numa oficina com wi-fi ruim (o
+  // getMaquinasByOS falha e o catch é silencioso de propósito) o laudo era gravado
+  // SEM máquina — justamente o elo que hoje só existe no campos_json.
+  if(!_maqAtual && state.maquina_id){
+    var achada=_maquinas.filter(function(m){ return String(m.id)===String(state.maquina_id); })[0];
+    _maqAtual = achada || { id:state.maquina_id, _rotulo:state.maquina_label||'' };
+    var selEl=document.getElementById('f_maqSel');
+    if(selEl && achada){ selEl.value=String(_maquinas.indexOf(achada)); document.getElementById('maqSelWrap').style.display=''; }
+    atualizarDicaMaquina();
+  }
   return true;
 }
 
@@ -1491,8 +2345,40 @@ async function enviar(){
   if(_sending){ toast('Esta OS já foi concluída — acompanhe os envios.'); return; }
   captura();
   // ── validações ──
-  var blocosReais = (state.blocos||[]).filter(function(b){ return b.tipo!=='sig'; });
+  // conteúdo REAL = o que vai sair no laudo. Bloco escondido por gateway não
+  // conta: senão um laudo cujo único item está oculto passa da validação e sai
+  // impresso "— nenhum item registrado neste laudo —".
+  var blocosReais = [];
+  (function w(a){ (a||[]).forEach(function(b){
+    if(b.tipo==='sig' || b.oculto) return;
+    if(b.tipo==='secao'){ w(b.filhos); return; }
+    if(typeof lvTemConteudo==='function' && !lvTemConteudo(b)) return;
+    blocosReais.push(b); }); })(state.blocos);
   if(!blocosReais.length){ toast('Adicione ao menos um item antes de concluir'); return; }
+  // 19/08 (DEC-1b) — foto obrigatória nos itens marcados numa coluna que exige
+  // foto. O escape é DELIBERADO: em oficina a peça pode já ter ido para a
+  // retífica. Mas a exceção fica auditável (motivo no laudo) em vez de virar
+  // hábito de contornar.
+  var semFoto = (state.orcamento||[]).filter(function(x){ return x.exige_foto && !x.tem_foto && !x.sem_foto; });
+  if(semFoto.length){
+    // 19/08 — o item pode estar dentro de uma seção recolhida: sem expandir, o
+    // scroll ia para o nada e o toast não dizia em qual lista. Numa OS com 6
+    // seções fechadas o técnico batia em "Concluir" sem saber o que faltava.
+    var alvo=document.querySelector('.lit[data-item="'+semFoto[0].item_uid+'"]');
+    if(alvo){
+      var sec=alvo.closest('.blk[data-tipo="secao"]');
+      while(sec){ bd(sec.dataset.uid).aberta=true; renderSecao(sec.dataset.uid);
+        sec = sec.parentElement ? sec.parentElement.closest('.blk[data-tipo="secao"]') : null; }
+      alvo.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+    toast(semFoto.length+' item(ns) exigem foto — o primeiro é “'+(semFoto[0].rotulo||'')+'” em '+(semFoto[0].lista||'')); 
+    return;
+  }
+  if(_maquinas.length>1 && !_maqAtual){
+    toast('Escolha a máquina desta OS antes de concluir');
+    var ms=document.getElementById('maqSelWrap'); if(ms) ms.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   var pend = assinaturasPendentes();
   if(pend.length){
     pend[0].scrollIntoView({behavior:'smooth', block:'center'});
@@ -1509,12 +2395,20 @@ async function enviar(){
   await ensureDraftSaved();
   if(_osId){
     var _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
+    // 19/08 — maquina_id no campos_json. O `salvarPdfDrive` já mandava a máquina
+    // desde sempre, mas o FORMULARIO nascia sem: a máquina existia só como TEXTO
+    // digitado em `identificacao.equipamento`. Sem o id não há elo durável entre o
+    // laudo e o cadastro — se a máquina for renomeada, o histórico se perde.
+    // ⚠ `HEADERS.FORMULARIOS` ainda NÃO tem coluna `Maquina_ID`; enquanto não tiver,
+    //   este é o único lugar onde o vínculo sobrevive.
     var payloadState = { identificacao:state.identificacao, atendimento:state.atendimento,
-      blocos:state.blocos, assinaturas:assinaturasMeta() };
-    var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'generica', form_uid:_formUid,
+      maquina_id:state.maquina_id, maquina_label:state.maquina_label,
+      blocos:state.blocos, assinaturas:assinaturasMeta(), orcamento:state.orcamento };
+    var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'diag_oficina', form_uid:_formUid,
+      maquina_id:(_maqAtual&&_maqAtual.id)||'',
       tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
       tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
-    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados da OS genérica' });
+    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados do diagnóstico' });
   }
   if(_osId){ await enfileirarPdf(); }
   _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
@@ -1703,7 +2597,7 @@ async function psAbrirPainel(){
   var KIND={ saveFormulario:'Dados da OS genérica', salvarFotoForm:'Foto', salvarPdfDrive:'PDF da OS' };
   if(!jobs.length){ box.innerHTML='<div class="sub">Nenhum envio pendente. Tudo confirmado ✅</div>'; }
   else box.innerHTML=jobs.map(function(j){
-    var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+j.label):'');   // 19/08 (H6): o esc() vem no innerHTML abaixo
+    var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+j.label):'');   // 19/08: o esc() vem no innerHTML abaixo
     var st=j.status==='dead'?'⚠ travado (revisar)':'⏳ pendente';
     return '<div class="ps-job"><div class="who">'+esc(who)+'</div>'
       +'<div class="meta">'+st+' · tentativas '+(j.tries||0)+'/'+PS.MAX_TRIES+'</div>'
@@ -2189,7 +3083,7 @@ async function buildPdfBase64(){
   // Agora o documento e' DESENHADO. Some a dependencia de getBoundingClientRect
   // (o mesmo state passa a gerar o mesmo PDF em qualquer aparelho), some o
   // clipe silencioso de bloco maior que a folha, e o arquivo encolhe ~99%.
-  var pdf = lvDocGenerica(photosByKey);
+  var pdf = lvDocDiagOficina(photosByKey);
   return pdf.output('datauristring').split(',')[1];
 }
 async function enfileirarPdf(){
@@ -2200,10 +3094,10 @@ async function enfileirarPdf(){
     var base64=await buildPdfBase64();
     var body={ action:'salvarPdfDrive', os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
       maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:(_maqAtual?maqLabel(_maqAtual):(i.equipamento||'')),
-      base64:base64, fileName:'OS_Generica_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_generica',
-      caption:'OS Genérica — relatório do serviço', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
+      base64:base64, fileName:'Diag_Oficina_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_diag_oficina',
+      caption:'Diagnóstico de Oficina — laudo', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
       pdf_uid:'pdf_'+_formUid };
-    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF da OS' });
+    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF do laudo' });
     _pdfPendente=false; await marcarPdfPendente(false);
   }catch(e){
     _pdfPendente=true; await marcarPdfPendente(true);
@@ -2213,6 +3107,7 @@ async function enfileirarPdf(){
 
 // ── Máquina da OS (autofill; padrão form01/corretiva) ──
 function maqLabel(m){
+  if(m && m._rotulo) return m._rotulo;   // reconstruída do rascunho (sem rede)
   var base=[m.brand,m.model].filter(Boolean).join(' '); var extra=[];
   if(m.serial) extra.push('Série '+m.serial); if(m.tag) extra.push(m.tag);
   return (base||'Máquina')+(extra.length?' · '+extra.join(' · '):'');
@@ -2227,8 +3122,10 @@ function aplicarMaquina(m){
   if(md && !md.value.trim()) md.value=modelo;
 }
 function selMaquina(){
-  var idx=document.getElementById('f_maqSel').value; if(idx==='') return;
+  var idx=document.getElementById('f_maqSel').value;
+  if(idx===''){ _maqAtual=null; atualizarDicaMaquina(); return; }
   var m=_maquinas[parseInt(idx,10)]; if(!m) return; _maqAtual=m;
+  atualizarDicaMaquina();
   var equip=m.tag||m.tipoEquip||m.tipo||m.brand||'';
   var modLbl=[m.brand,m.model].filter(Boolean).join(' ');
   document.getElementById('f_equip').value=equip;
@@ -2253,14 +3150,40 @@ async function carregarMaquinasOS(){
     const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
-    if(machines.length===1){ aplicarMaquina(machines[0]); }
-    else{
-      const wrap=document.getElementById('maqSelWrap'), sel=document.getElementById('f_maqSel');
-      sel.innerHTML='<option value="">— selecione a máquina —</option>'+machines.map(function(m,i){ return '<option value="'+i+'">'+esc(maqLabel(m))+'</option>'; }).join('');
-      wrap.style.display='';
+    // 19/08 — o seletor agora aparece SEMPRE que a OS tem máquina, mesmo com uma
+    // só: o laudo grava `maquina_id` e o técnico precisa VER de qual máquina é o
+    // que está preenchendo. Com uma máquina, ele já vem escolhido.
+    const wrap=document.getElementById('maqSelWrap'), sel=document.getElementById('f_maqSel');
+    sel.innerHTML=(machines.length>1?'<option value="">— selecione a máquina —</option>':'')
+      + machines.map(function(m,i){ return '<option value="'+i+'">'+esc(maqLabel(m))+'</option>'; }).join('');
+    wrap.style.display='';
+    if(state.maquina_id){
+      var ix=machines.map(function(m){ return String(m.id); }).indexOf(String(state.maquina_id));
+      if(ix>=0){ sel.value=String(ix); aplicarMaquina(machines[ix]); atualizarDicaMaquina(); return; }
     }
+    if(machines.length===1){ sel.value='0'; aplicarMaquina(machines[0]); }
+    if(machines.length>1){
+      // ⚠ política combinada: na OFICINA cada OS deve ter UMA máquina. O pipeline
+      // (`PIPELINE_TAREFAS`) é chaveado por OS_ID e não tem coluna de máquina —
+      // uma OS com N máquinas teria UM pipeline para todas. Se aparecer mais de
+      // uma aqui, é sinal de que a regra foi furada; o laudo avisa em vez de
+      // escolher sozinho.
+      _maqAtual = null;
+    }
+    atualizarDicaMaquina();
   }catch(e){ /* silencioso — técnico preenche à mão */ }
   finally{ pgpBootAviso(null); }   // 13/08 (perf)
+}
+function atualizarDicaMaquina(){
+  var h=document.getElementById('maqHint'); if(!h) return;
+  if(!_maquinas.length){ h.textContent=''; return; }
+  if(_maquinas.length>1 && !_maqAtual){
+    h.innerHTML='⚠ Esta OS tem <b>'+_maquinas.length+' máquinas</b>. Na oficina o combinado é uma por OS — escolha de qual é este laudo antes de continuar.';
+    return;
+  }
+  h.innerHTML = _maqAtual
+    ? ('O laudo vai gravado com <b>'+esc(_maqAtual.id||'sem id')+'</b> — é o elo entre este documento e o cadastro da máquina.')
+    : '';
 }
 function preencherResponsavelSessao(){
   var el=document.getElementById('f_tecnico'); if(!el || el.value.trim()) return;
@@ -3262,6 +4185,265 @@ function lvDocGenerica(photosByKey){
   return doc;
 }
 
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DIAG_OFICINA — laudo de diagnóstico de oficina                  19/08/2026
+
+   Desenhado no motor Gen4 (vetorial). A premissa do estudo de 13/08 — "Gen4 só
+   serve para estrutura previsível; construtor tem de ficar no tp-*" — não vale
+   para um CONSTRUTOR: o conteúdo não é arbitrário, é um conjunto FINITO e
+   conhecido de tipos de bloco. O que varia é ordem e quantidade, que é
+   exatamente o trabalho do paginador.
+
+   ⚠ Bloco escondido por gateway NÃO entra aqui. É o bug do form03/04, em que o
+     gateway vazio imprimia Parafuso E Pistão juntos porque o filtro valia só na
+     tela — a peneira tem de ser a MESMA nos dois lugares.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Achata a árvore de blocos preservando a ordem, descartando o que está oculto.
+// A seção vira um marcador `__sec` para virar subtítulo no documento.
+function lvAchatar(blocos){
+  var out=[];
+  (function w(arr, dentro){
+    (arr||[]).forEach(function(b){
+      if(b.oculto) return;
+      if(b.tipo==='secao'){
+        var filhos=[];
+        (function ww(a){ (a||[]).forEach(function(x){ if(!x.oculto) filhos.push(x); }); })(b.filhos);
+        if(!filhos.length) return;
+        out.push({ __sec:true, titulo:b.titulo||'Seção' });
+        w(b.filhos, true);
+        return;
+      }
+      out.push(b);
+    });
+  })(blocos, false);
+  return out;
+}
+function lvTemConteudo(b){
+  if(b.__sec) return true;
+  switch(b.tipo){
+    case 'foto':    return true;
+    case 'obs':     return !!String(b.texto||'').trim();
+    case 'pr':      return !!(String(b.pergunta||'').trim() || String(b.resposta||'').trim());
+    case 'med':     return !!(String(b.grandeza||'').trim() || String(b.valor||'').trim());
+    case 'form':    return !!(b.formNome || b.obs);
+    case 'texto':   return !!String(b.corpo||'').trim();
+    case 'data':    return !!(b.data || b.hora);
+    case 'escolha': return !!b.val;
+    case 'lista':   return lvListaTemLinha(b);
+    default:        return false;
+  }
+}
+function lvListaTemLinha(b){
+  var achou=false;
+  (function w(a){ (a||[]).forEach(function(it){
+    if(String(it.nome||'').trim()) achou=true; w(it.subs); }); })(b.itens);
+  return achou;
+}
+function lvDataHora(b){
+  var d=lvData(b.data||''), h=b.hora||'';
+  if(b.modo==='hora') return h||'—';
+  if(b.modo==='datahora') return (d||'—')+(h?(' · '+h):'');
+  return d||'—';
+}
+function lvStatusLabel(st){ return st==='ok' ? 'dentro da faixa' : (st==='at' ? 'ATENÇÃO' : (st==='cr' ? 'CRÍTICO' : '')); }
+function lvStatusCor(st){ return st==='ok' ? LV_COR.ok : (st==='at' ? LV_COR.at : (st==='cr' ? LV_COR.cr : LV_COR.texto)); }
+
+function lvDocDiagOficina(photosByKey){
+  var i = state.identificacao || {}, at = state.atendimento || {};
+  var dataHora = lvData(at.data) + (at.hora ? ' · ' + at.hora : '');
+  var sigs = (state.assinaturas || []).filter(function(a){ return a && (a.nome || a.dataUrl); });
+  var plano = lvAchatar(state.blocos || []).filter(function(b){ return b.tipo!=='sig' && lvTemConteudo(b); });
+  var interv = Array.isArray(state.orcamento) ? state.orcamento : colherIntervencoes();
+
+  var doc = lvNovoDoc('Diagnóstico de Oficina', 'Laudo de diagnóstico de oficina — ProperCare');
+  var L = new Laudo(doc, { titulo:'Diagnóstico de Oficina', tecnico:i.tecnico || '—', data:lvData(at.data) }, {
+    cabecalho: function(L, primeira){
+      return lvCabMarca(L, primeira, {
+        marca:'PROPERCARE · PROPER COMPRESSORES',
+        subtitulo:'Diagnóstico de Oficina',
+        titulo:'Diagnóstico de Oficina',
+        ref:'OS ' + (i.os || '—'),
+        dir:(i.cliente || '—'),
+        img:(typeof LOGO_DATAURL !== 'undefined') ? LOGO_DATAURL : null
+      });
+    },
+    rodapeEsq:'Diagnóstico de Oficina ' + (i.os || '') + (i.cliente ? ' · ' + i.cliente : '') + (at.data ? ' · ' + lvData(at.data) : ''),
+    rodapeEsq2:'Proper Compressores · Divinópolis/MG'
+  });
+  var n = 0;
+
+  // ── 1. identificação ──────────────────────────────────────────────────
+  L.h1(++n, 'Identificação do atendimento');
+  var pares = [
+    ['Nº da OS', i.os], ['Data / hora', dataHora],
+    ['Cliente', i.cliente], ['Técnico responsável', i.tecnico],
+    ['Equipamento / TAG', i.equipamento], ['Modelo / Série', i.modelo]
+  ];
+  if(state.maquina_label || state.maquina_id){
+    pares.push(['Máquina (cadastro)', (state.maquina_label||'') + (state.maquina_id ? (' · ' + state.maquina_id) : '')]);
+  }
+  L.kv(pares, { pularVazio:false, kw:44 });
+
+  // ── 2. o corpo, na ordem em que foi montado ───────────────────────────
+  if(!plano.length){
+    L.h1(++n, 'Diagnóstico');
+    L.p('— nenhum item registrado neste laudo —', { size:8, cor:LV_COR.suave, italico:true });
+  } else {
+    L.h1(++n, 'Diagnóstico');
+    var fila=[];
+    var descarrega=function(){ if(fila.length){ L.figuras(fila, { numerar:true }); fila=[]; } };
+
+    plano.forEach(function(b){
+      if(b.__sec){ descarrega(); L.h2(b.titulo); return; }
+
+      if(b.tipo==='foto'){
+        var leg=String(b.legenda||'').trim() || (b.titulo||'Foto do serviço');
+        var shots=(photosByKey && photosByKey[b.uid]) || [];
+        if(!shots.length){ fila.push({ dataUrl:'', legenda:leg }); return; }
+        shots.forEach(function(sh, ix){
+          fila.push({ dataUrl:sh.dataUrl, legenda:leg + (shots.length>1 ? (' ('+(ix+1)+'/'+shots.length+')') : '') });
+        });
+        return;
+      }
+      descarrega();
+
+      if(b.tipo==='obs'){
+        if(b.titulo) L.h2(b.titulo);
+        L.caixa(b.texto||'', { altMin:9 });
+
+      } else if(b.tipo==='texto'){
+        // N3 — texto fixo. Sai como destaque para não se confundir com o que o
+        // técnico escreveu no bloco de observação.
+        L.destaque(b.titulo||'Aviso', b.corpo||'', LV_COR.azul);
+
+      } else if(b.tipo==='data'){
+        L.kv([[b.titulo||'Data', lvDataHora(b)]], { pularVazio:false, kw:52 });
+
+      } else if(b.tipo==='escolha'){
+        // N2 — sai com as caixinhas marcadas, como no form03/04.
+        var opts=(b.opts||[]).slice();
+        if(b.permitirOutro) opts.push('Outro');
+        L.opcoes(b.titulo||'Pergunta', opts.map(function(o){ return { v:o, lab:o }; }), b.val||'');
+        if(b.val==='Outro' && String(b.outroTxt||'').trim()) L.p('Outro: ' + b.outroTxt, { size:7.2, cor:LV_COR.suave });
+
+      } else if(b.tipo==='pr'){
+        L.kv([[b.pergunta||(b.titulo||'Pergunta'), b.resposta||'—']], { pularVazio:false, kw:60 });
+
+      } else if(b.tipo==='med'){
+        // N4 — a unidade é a do bloco (fixa) e a faixa vira status impresso.
+        var vv=String(b.valor||'').trim();
+        var linhas=[[ b.grandeza || b.titulo || '—',
+                      vv ? {txt:vv, bold:true, align:'right'} : {txt:'não medido', italico:true, cor:LV_COR.suave, align:'right'},
+                      {txt:b.unidade||'', align:'center'} ]];
+        if(b.temFaixa){
+          var st=b.status || null;
+          linhas[0].push(st ? {txt:lvStatusLabel(st), bold:(st!=='ok'), cor:lvStatusCor(st), align:'center'}
+                            : {txt:'—', cor:LV_COR.suave, align:'center'});
+          L.tabela([{t:'Medição'},{t:'Valor',align:'right'},{t:'Un.',align:'center'},{t:'Faixa',align:'center'}], [90,26,18,46], linhas);
+          L.p('Limites: atenção ' + (b.dir==='acima'?'≥':'≤') + ' ' + b.at + ' ' + (b.unidade||'')
+              + ' · crítico ' + (b.dir==='acima'?'≥':'≤') + ' ' + b.cr + ' ' + (b.unidade||''),
+              { size:6.6, cor:LV_COR.suave });
+        } else {
+          L.tabela([{t:'Medição'},{t:'Valor',align:'right'},{t:'Unidade',align:'center'}], [110,40,30], linhas);
+        }
+
+      } else if(b.tipo==='lista'){
+        L.h2(b.titulo || 'Lista');
+        var cols=b.cols||[];
+        var linhasL=[];
+        (function w(arr, pai){
+          (arr||[]).forEach(function(it){
+            if(!String(it.nome||'').trim()){ w(it.subs, it); return; }
+            var col=cols.filter(function(c){ return c.id===it.col; })[0] || null;
+            var nome=(pai ? '    ↳ ' : '') + it.nome;
+            var cel=col ? { txt:col.nome, bold:!!col.interv, cor:(col.interv?LV_COR.cr:LV_COR.texto), align:'center' }
+                        : { txt:'—', cor:LV_COR.suave, align:'center' };
+            var obs=[];
+            if(String(it.coment||'').trim()) obs.push(it.coment);
+            if(col && col.interv){
+              var pk=b.uid+'::'+it.uid;
+              var nf=((photosByKey && photosByKey[pk]) || []).length;
+              if(nf) obs.push(nf+' foto'+(nf>1?'s':''));
+              else if(it.semFoto) obs.push('sem foto: '+(it.motivo||'motivo não informado'));
+              else if(col.foto) obs.push('foto pendente');
+            }
+            linhasL.push([ nome, cel, (obs.join(' · ') || '—') ]);
+            w(it.subs, it);
+          });
+        })(b.itens, null);
+        L.tabela([{t:'Item'},{t:'Condição',align:'center'},{t:'Observação'}], [62,30,88], linhasL);
+
+        // as fotos dos itens saem logo abaixo da tabela da própria lista
+        var fotosLista=[];
+        (function w(arr){
+          (arr||[]).forEach(function(it){
+            var pk=b.uid+'::'+it.uid;
+            var sh=(photosByKey && photosByKey[pk]) || [];
+            var colx=cols.filter(function(c){ return c.id===it.col; })[0] || null;
+            sh.forEach(function(x, ix){
+              fotosLista.push({ dataUrl:x.dataUrl,
+                legenda:(it.nome||'Item') + (colx?(' — '+colx.nome):'') + (sh.length>1?(' ('+(ix+1)+'/'+sh.length+')'):'') });
+            });
+            w(it.subs);
+          });
+        })(b.itens);
+        if(fotosLista.length) L.figuras(fotosLista, { numerar:true });
+
+      } else if(b.tipo==='form'){
+        L.kv([[b.formNome || 'Formulário', b.obs || '—']], { pularVazio:false, kw:52 });
+        L.p('Aberto em campo em ' + (b.aberto || '—') + ' · gera PDF próprio — ver Gestão de Documentos desta OS',
+            { size:6.6, cor:LV_COR.suave });
+      }
+    });
+    descarrega();
+  }
+
+  // ── 3. a lista de apoio ao orçamento — SEMPRE em folha nova ───────────
+  // Decisão de 19/08: não é PDF separado. Arquivo separado dobraria a exposição
+  // ao `pdf_uid` ausente (cada retry cria arquivo novo no Drive) e duplicaria a
+  // categoria na Gestão de Documentos. "Começa em página nova" já resolve o
+  // imprimir-só-essa-parte.
+  L.novaPagina();
+  L.h1(++n, 'Itens que requerem intervenção — apoio ao orçamento');
+  L.p('Colhido automaticamente de todas as listas deste laudo, por qualquer coluna marcada como de intervenção. '
+    + 'Esta lista APOIA o orçamento: não tem preço e não é proposta comercial.', { size:7, cor:LV_COR.suave });
+  if(!interv.length){
+    L.p('— nenhum item marcado como requerendo intervenção —', { size:8, cor:LV_COR.suave, italico:true });
+  } else {
+    var grupos=[['produto','Produtos'],['servico','Serviços'],['transversal','Tarefas transversais']];
+    grupos.forEach(function(g){
+      var doGrupo=interv.filter(function(x){ return (x.classe||'produto')===g[0]; });
+      if(!doGrupo.length) return;
+      L.h2(g[1] + ' (' + doGrupo.length + ')');
+      L.tabela([{t:'Item'},{t:'Origem'},{t:'Evidência',align:'center'}], [76,64,40],
+        doGrupo.map(function(x){
+          var ev = x.tem_foto ? {txt:'com foto', cor:LV_COR.ok, align:'center'}
+                 : (x.sem_foto ? {txt:'sem foto', cor:LV_COR.at, align:'center'}
+                 : (x.exige_foto ? {txt:'foto pendente', cor:LV_COR.at, align:'center'}
+                                 : {txt:'—', cor:LV_COR.suave, align:'center'}));
+          var origem = x.lista + ' · ' + x.coluna + (x.comentario ? ('\n' + x.comentario) : '')
+                     + (x.sem_foto && x.motivo ? ('\nmotivo: ' + x.motivo) : '');
+          return [ {txt:x.rotulo, bold:true}, origem, ev ];
+        }));
+    });
+    L.p('Total: ' + interv.length + (interv.length===1 ? ' item.' : ' itens.'), { size:7.4, bold:true });
+  }
+
+  // ── 4. assinaturas ────────────────────────────────────────────────────
+  if(sigs.length){
+    L.h1(++n, 'Assinaturas');
+    L.assinaturas(sigs.map(function(a){
+      return { nome:a.nome, dataUrl:a.dataUrl, ts:a.ts, papel:(a.papel === 'Outro' ? (a.papelOutro || 'Outro') : a.papel) };
+    }));
+  }
+
+  L.fecharRodapes();
+  return doc;
+}
 
 </script>
 

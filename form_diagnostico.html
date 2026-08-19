@@ -2122,7 +2122,24 @@ function setRec(ix,campo,v){ state.recomendacoes[ix][campo]=v; if(campo==='class
 function delRec(ix){ state.recomendacoes.splice(ix,1); render(); scheduleSave(); }
 function addRecLivre(){ state.recomendacoes.push({causaId:'', acao:'', classe:'Operacional', prazo:'30 dias', risco:'', pecas:[], origem:'manual'}); ordenarRecs(); render(); scheduleSave(); }
 function setFotoLeg(ix,v){ state.fotos[ix].legenda=v; scheduleSave(); }
-function delFoto(ix){ state.fotos.splice(ix,1); render(); scheduleSave(); }
+// 19/08 (H5) — `delFoto` tirava a foto do laudo e NÃO cancelava o envio: ela
+// desaparecia da tela e subia ao Drive do mesmo jeito. Aqui os bytes viajam no
+// CORPO do job (não há PS.savePhoto), então o casamento é pelo `foto_uid`.
+async function delFoto(ix){
+  var f = state.fotos[ix] || {};
+  state.fotos.splice(ix,1); render(); scheduleSave();
+  if(!f.foto_uid) return;
+  try{
+    var jobs = await PS.listJobs();
+    for(var j=0;j<jobs.length;j++){
+      var job=jobs[j];
+      if(job.kind==='salvarFotoForm' && job.status!=='done' && job.body && job.body.foto_uid===f.foto_uid){
+        await PS.dropJob(job.jobId);
+      }
+    }
+    psRefreshBadge();
+  }catch(e){}
+}
 function delSig(ix){ delete _sigBySlot[state.assinaturas[ix].slot]; state.assinaturas.splice(ix,1); render(); scheduleSave(); }
 function razaoCargaTexto(){
   var t = parseFloat(state.resp.h_total), c = parseFloat(state.resp.h_carga);
@@ -2459,8 +2476,34 @@ function psRefreshBadge(){
     b.textContent = '📤 ' + (c.pending||0) + ' na fila' + (c.dead ? ' · '+c.dead+' com falha' : '');
   }).catch(function(){});
 }
-function psAbrirPainel(){ document.getElementById('psOverlay').classList.add('open'); }
+// ══ 19/08 (H4) — O PAINEL DA FILA ERA UMA CASCA ═════════════════════════════
+// `psAbrirPainel` só abria o overlay: o `#psJobs` NUNCA era preenchido e não
+// existiam `psRetry`/`psDrop`. O técnico com um envio travado abria a fila, via
+// vazio, e não tinha o que fazer. Corpo portado do form_corretiva (o `.ps-job` do
+// CSS e o `PS.MAX_TRIES` já existiam aqui — só faltava quem usasse).
+async function psAbrirPainel(){
+  var ov=document.getElementById('psOverlay'), box=document.getElementById('psJobs');
+  if(!ov) return;
+  var jobs=[]; try{ jobs=await PS.listJobs(); }catch(e){}
+  jobs=jobs.filter(function(j){ return j.status!=='done'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+  var KIND={ saveFormulario:'Dados do diagnóstico', salvarFotoForm:'Foto', salvarPdfDrive:'PDF do laudo' };
+  if(box){
+    if(!jobs.length){ box.innerHTML='<div class="sub">Nenhum envio pendente. Tudo confirmado ✅</div>'; }
+    else box.innerHTML=jobs.map(function(j){
+      var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+j.label):'');
+      var st=j.status==='dead'?'⚠ travado (revisar)':'⏳ pendente';
+      return '<div class="ps-job"><div class="who">'+esc(who)+'</div>'
+        +'<div class="meta">'+st+' · tentativas '+(j.tries||0)+'/'+PS.MAX_TRIES+(j.body&&j.body.os?(' · OS '+esc(String(j.body.os))):'')+'</div>'
+        +(j.lastError?'<div class="err">'+esc(j.lastError)+'</div>':'')
+        +'<div class="act"><button onclick="psRetry('+j.jobId+')">↻ Reenviar</button>'
+        +'<button onclick="psDrop('+j.jobId+')">Descartar</button></div></div>';
+    }).join('');
+  }
+  ov.classList.add('open');
+}
 function psFecharPainel(){ document.getElementById('psOverlay').classList.remove('open'); }
+async function psRetry(id){ await PS.retryJob(id); psAbrirPainel(); }
+async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa não irá ao servidor.')){ await PS.dropJob(id); psAbrirPainel(); psRefreshBadge(); } }
 
 (async function init(){
   var p = new URLSearchParams(location.search);

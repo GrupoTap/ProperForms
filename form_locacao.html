@@ -145,7 +145,7 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   /* foto */
   .btn-foto-mini{background:var(--bg);border:1px dashed var(--brand);color:var(--brand);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
+  .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border);cursor:pointer}
   .thumb.ok{border-color:var(--green)}
   .thumb.pending{border-color:var(--amber);opacity:.75}
   .thumb.erro{border-color:var(--red)}
@@ -696,6 +696,7 @@ window.PS = (function(){
   function savePhoto(p){ return put('photos',p); }
   function photosOf(draftId){ return all('photos').then(function(a){ return a.filter(function(p){return p.draftId===draftId;}); }); }
   function updatePhoto(id,patch){ return get('photos',id).then(function(p){ if(!p) return; Object.assign(p,patch); return put('photos',p); }); }
+  function dropPhoto(photoId){ return del('photos', photoId); }   // 19/08 (H1) — aditivo
   function dropPhotos(draftId){ return all('photos').then(function(a){ return Promise.all(a.filter(function(p){return p.draftId===draftId;}).map(function(p){ return del('photos',p.photoId); })); }); }
 
   // ─ Outbox ─
@@ -760,7 +761,7 @@ window.PS = (function(){
 
   return { open:open, ready:function(){return ready;}, onChange:onChange, MAX_TRIES:MAX_TRIES,
     saveDraft:saveDraft, loadDraft:loadDraft, dropDraft:dropDraft, listDrafts:listDrafts,
-    savePhoto:savePhoto, photosOf:photosOf, updatePhoto:updatePhoto, dropPhotos:dropPhotos,
+    savePhoto:savePhoto, photosOf:photosOf, updatePhoto:updatePhoto, dropPhoto:dropPhoto, dropPhotos:dropPhotos,
     enqueue:enqueue, listJobs:listJobs, jobsOf:jobsOf, dropJobsOf:dropJobsOf, retryJob:retryJob, dropJob:dropJob,
     setSender:setSender, pump:pump, counts:counts };
 })();
@@ -1045,8 +1046,16 @@ async function delBloco(btn){
   if(blocoTemConteudo(el) && !confirm('Remover este bloco? O conteúdo dele sai da OS.')) return;
   // fotos do bloco removido: cancela uploads ainda na fila (a foto não deve mais ir ao Drive)
   if(el.dataset.tipo==='foto'){
+    // 19/08 (H1) — limpar `_fotosByBlock` e cancelar o job NÃO bastava: o
+    // `fotos_json` do envio é REMONTADO do store (F-26, 29/07), então a foto de um
+    // bloco apagado continuava viajando — com url e tudo, se já tivesse subido.
+    // É a divergência PDF × fotos_json do P1, pela porta oposta.
     var ids=(_fotosByBlock[uid]||[]).map(function(r){ return r.photoId; }).filter(function(x){ return x!=null; });
     delete _fotosByBlock[uid];
+    try{
+      var doStore=await PS.photosOf(_draftId);
+      doStore.forEach(function(ph){ if(ph.pointKey===uid && ids.indexOf(ph.photoId)<0) ids.push(ph.photoId); });
+    }catch(e){}
     if(ids.length){
       try{
         var jobs=await PS.jobsOf(_draftId);
@@ -1055,6 +1064,7 @@ async function delBloco(btn){
           if(j.kind==='salvarFotoForm' && j.status!=='done' && ids.indexOf(j.photoId)>=0){ await PS.dropJob(j.jobId); }
         }
       }catch(e){}
+      for(var kk=0; kk<ids.length; kk++){ try{ await PS.dropPhoto(ids[kk]); }catch(e){} }
     }
   }
   if(el.dataset.tipo==='sig'){
@@ -1062,6 +1072,37 @@ async function delBloco(btn){
   }
   el.remove(); refreshEmpty(); scheduleSave(); psRefreshBadge();
 }
+
+// ══ 19/08 (H5) — APAGAR UMA FOTO SÓ ═════════════════════════════════════════
+// Antes, foto tremida ou da peça errada custava o BLOCO inteiro (legenda + as
+// outras fotos) — e ainda caía no H1, sobrevivendo no fotos_json. Delegação no
+// #stack para pegar os dois caminhos que criam <img class="thumb">: o addPhoto e
+// o restoreDraft.
+async function removerFotoPonto(pk, photoId){
+  if(_sending) return;
+  if(!confirm('Apagar esta foto?')) return;
+  _fotosByBlock[pk]=(_fotosByBlock[pk]||[]).filter(function(r){ return r.photoId!==photoId; });
+  try{
+    var jobs=await PS.jobsOf(_draftId);
+    for(var j=0;j<jobs.length;j++){
+      if(jobs[j].kind==='salvarFotoForm' && jobs[j].status!=='done' && jobs[j].photoId===photoId) await PS.dropJob(jobs[j].jobId);
+    }
+  }catch(e){}
+  try{ await PS.dropPhoto(photoId); }catch(e){}
+  var cont=document.getElementById('thumbs-'+pk);
+  if(cont){ var im=cont.querySelector('.thumb[data-pid="'+photoId+'"]'); if(im) im.remove(); }
+  scheduleSave(); psRefreshBadge();
+  toast('Foto apagada');
+}
+(function wireApagarFoto(){
+  var stack=document.getElementById('stack'); if(!stack) return;
+  stack.addEventListener('click', function(e){
+    var im=e.target.closest ? e.target.closest('.thumb') : null; if(!im) return;
+    var cont=im.closest('.thumbs'); if(!cont || !cont.id) return;
+    var pid=im.getAttribute('data-pid'); if(pid==null || pid==='') return;
+    removerFotoPonto(cont.id.replace(/^thumbs-/,''), parseInt(pid,10));
+  });
+})();
 
 // ── Reordenação por arrasto (alça ≡; pointer events; a ordem do DOM é a verdade) ──
 (function wireDrag(){
@@ -1203,14 +1244,24 @@ function fotosFlat(){
 // 29/07 (F-26, mesma classe da corretiva): o fotos_json era congelado no Concluir —
 // num envio offline TODAS as fotos iam com url:null. Remonta na hora do envio a
 // partir do store durável (uploadUrl confirmada + foto_uid p/ join posterior).
+// Só devolve legenda se o bloco AINDA existe na tela.
+function legendaViva(pointKey){
+  return document.querySelector('.blk[data-uid="'+pointKey+'"]') ? legendaDoBloco(pointKey) : '';
+}
 async function fotosJsonDoStore(draftId, congelado){
   var ps=[];
   try{ ps=await PS.photosOf(draftId); }catch(e){ return congelado; }
   if(!ps || !ps.length) return congelado;
   ps.sort(function(a,b){ return (a.photoId||0)-(b.photoId||0); });
   return ps.map(function(p){
+    // 19/08 (H2 — o mesmo P1 do backlog de 18/08). `p.caption` é a legenda do
+    // INSTANTE DO CLIQUE. O `fotosFlat()` relia ao vivo e o PDF usava essa, mas
+    // quem sobrescreve o `fotos_json` no envio é ESTA função (sender) — então PDF
+    // e fotos_json divergiam sempre que a legenda fosse corrigida depois da foto.
+    // Relê pelo pointKey; a congelada continua valendo para o bloco que já não
+    // existe mais na tela.
     return { url:p.uploadUrl||null, fileName:p.fileName, secao:p.pointKey,
-             caption:p.caption||'', status:(p.uploadStatus==='ok'?'ok':'pending'),
+             caption:(legendaViva(p.pointKey) || p.caption || ''), status:(p.uploadStatus==='ok'?'ok':'pending'),
              foto_uid:p.fotoUid||('f_'+_formUid+'_'+p.photoId), client_ts:p.clientTs||0 };
   });
 }
@@ -1739,7 +1790,7 @@ async function psAbrirPainel(){
   var KIND={ saveFormulario:'Dados da entrega', salvarFotoForm:'Foto', salvarPdfDrive:'PDF do termo de entrega' };
   if(!jobs.length){ box.innerHTML='<div class="sub">Nenhum envio pendente. Tudo confirmado ✅</div>'; }
   else box.innerHTML=jobs.map(function(j){
-    var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+esc(j.label)):'');
+    var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+j.label):'');   // 19/08 (H6): o esc() vem no innerHTML abaixo
     var st=j.status==='dead'?'⚠ travado (revisar)':'⏳ pendente';
     return '<div class="ps-job"><div class="who">'+esc(who)+'</div>'
       +'<div class="meta">'+st+' · tentativas '+(j.tries||0)+'/'+PS.MAX_TRIES+'</div>'

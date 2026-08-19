@@ -528,6 +528,35 @@ function applyGwVisibility(){
     const gw=el.getAttribute('data-gw'); el.style.display = (!gw || gw===_gwVal) ? '' : 'none';
   });
 }
+// ══ 19/08 (H3) — O ENVIO PRECISA USAR A MESMA PENEIRA DA TELA E DO PDF ═══════
+// `applyGwVisibility` só mexe em `display`, e o `campos_json` ia com o `state`
+// INTEIRO: respondia-se dois itens de Parafuso, trocava-se o gateway para Pistão,
+// e as respostas de Parafuso viajavam para o banco num laudo de Pistão. O PDF já
+// filtrava (G10a, 13/08); só o envio não.
+// ⚠ Filtra na SAÍDA, não limpa na troca: um toque errado no gateway não pode
+//   destruir resposta já dada — a resposta volta se o gateway voltar.
+// (O form02 resolve limpando — `_limparItemPulado` — porque lá o gateway é fixo.)
+function _itemEscondido(k){
+  for (var i=0;i<SC.secoes.length;i++){
+    var its=SC.secoes[i].itens||[];
+    for (var j=0;j<its.length;j++){
+      if (its[j].k===k) return !!(its[j].gw && its[j].gw !== _gwVal);
+    }
+  }
+  return false;
+}
+function stateParaEnvio(){
+  var out = JSON.parse(JSON.stringify(state));
+  var cortados = [];
+  Object.keys(out.itens||{}).forEach(function(k){
+    if (_itemEscondido(k)){ delete out.itens[k]; cortados.push(k); }
+  });
+  Object.keys(out.fotos||{}).forEach(function(k){
+    if (_itemEscondido(k)) delete out.fotos[k];
+  });
+  out._gw_cortados = cortados.length;   // rastro: quantos itens o gateway tirou
+  return out;
+}
 
 // ══ Fotos ══
 function pickPhoto(secao){
@@ -629,10 +658,12 @@ async function enviar(){
     var _sess=null;
     try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
     try{
-      const fotosFlat=[]; Object.keys(state.fotos).forEach(k=>(state.fotos[k]||[]).forEach(f=>fotosFlat.push(Object.assign({secao:k},f))));
+      // 19/08 (H3): a mesma peneira do gateway que a tela e o PDF já usam
+      const _envio=stateParaEnvio();
+      const fotosFlat=[]; Object.keys(_envio.fotos||{}).forEach(k=>(_envio.fotos[k]||[]).forEach(f=>fotosFlat.push(Object.assign({secao:k},f))));
       const payload={action:'saveFormulario',os_id:_osId,tarefa_id:_tarefaId,tipo_formulario:SC.tipoForm,form_uid:_formUid,
         tecnico_nome:state.identificacao.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||'',
-        tecnico_id:(_sess&&_sess.tecnico&&_sess.tecnico.id)||'',campos_json:state,fotos_json:fotosFlat};
+        tecnico_id:(_sess&&_sess.tecnico&&_sess.tecnico.id)||'',campos_json:_envio,fotos_json:fotosFlat};
       if(_origem) payload.origem=_origem;                 // 29/07 (F-14)
       const d=await gasPostJson(payload);                 // 29/07 (F-12): parse seguro + retry
       if(d.status!=='ok') throw new Error(d.message||d.error||'Erro do servidor');
