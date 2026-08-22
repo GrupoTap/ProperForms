@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  21/08/2026 — CABEÇALHO DO CLIENTE VINDO DA OS (rev. interna +1)
+  CAUSA: o campo Cliente deste formulário só era preenchido quando a URL trazia
+    ?cliente=. Aberto pelo pipeline sem esse parâmetro, ele ficava vazio — e o
+    relatório saía sem o cliente. O dado JÁ VIAJA no envelope: o GAS anexa
+    os.cliente_nome / cliente_cnpj / cliente_cidade / cliente_telefone /
+    cliente_email ao objeto `os` de getMaquinasByOS desde o v69, e no
+    ecossistema inteiro só o form05 lia essas chaves.
+  CORREÇÃO: no boot que já chama getMaquinasByOS, preencher os campos de
+    cabeçalho do cliente que ESTE formulário tem, a partir de os.cliente_*,
+    SEMPRE "só se estiver vazio".
+  ⚠ NÃO MUDOU: nenhuma requisição nova (o `os` vem no MESMO envelope que já era
+    buscado), nenhuma chave de payload, nenhum id, nenhuma função renomeada,
+    nenhum campo novo criado em formulário que não pede. Rascunho e digitação
+    do técnico nunca são sobrescritos. GAS intocado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
   Reclamacao do estagiario: "os formularios demoram demais para abrir" e
   "eu clico e nao acontece nada, nao sei se pegou".
@@ -1106,6 +1124,29 @@ function selMaquina(){
   document.getElementById('f_equip').value  = equip;
   document.getElementById('f_modelo').value = modLbl + (m.serial ? (modLbl ? ' / ' : '') + 'Série ' + m.serial : '');
 }
+
+// ── 21/08 — CABEÇALHO DO CLIENTE A PARTIR DO OBJETO `os` ────────────────────
+// O GAS já anexa cliente_nome/cnpj/cidade/telefone/email ao `os` devolvido por
+// getMaquinasByOS. Preenche SÓ campo VAZIO e SÓ campo que existe neste
+// formulário — rascunho e digitação do técnico são intocáveis.
+function pgpPreencherClienteDaOS(os){
+  try{
+    if(!os) return;
+    var mapa = [
+      ['f_cliente', os.cliente_nome || os.cliente || ''],
+      ['f_cnpj',     os.cliente_cnpj     || ''],
+      ['f_cidade',   os.cliente_cidade   || ''],
+      ['f_telefone', os.cliente_telefone || ''],
+      ['f_email',    os.cliente_email    || '']
+    ];
+    mapa.forEach(function(par){
+      var el = document.getElementById(par[0]);
+      if(!el || !par[1]) return;
+      if(String(el.value || '').trim() !== '') return;   // só se vazio
+      el.value = par[1];
+    });
+  }catch(e){ /* cabeçalho é conveniência: nunca derruba o boot */ }
+}
 async function carregarMaquinasOS(){
   if (!_osId) return;
   // 13/08 (perf): esta chamada roda no boot e ate hoje era 100% invisivel — os campos
@@ -1123,6 +1164,7 @@ async function carregarMaquinasOS(){
   // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
   // logo remover parts do objeto nao apaga peca nenhuma.
     const data = await gasPostJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId }, 2); // 28/07: parse seguro
+    try{ pgpPreencherClienteDaOS(data && data.os); }catch(_eCli){}   // 21/08 (cabeçalho do cliente)
     const machines = (data && data.machines) || [];
     if (!machines.length) return;
     _maquinas = machines;

@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  21/08/2026 — CABEÇALHO DO CLIENTE VINDO DA OS (rev. interna +1)
+  CAUSA: o campo Cliente deste formulário só era preenchido quando a URL trazia
+    ?cliente=. Aberto pelo pipeline sem esse parâmetro, ele ficava vazio — e o
+    relatório saía sem o cliente. O dado JÁ VIAJA no envelope: o GAS anexa
+    os.cliente_nome / cliente_cnpj / cliente_cidade / cliente_telefone /
+    cliente_email ao objeto `os` de getMaquinasByOS desde o v69, e no
+    ecossistema inteiro só o form05 lia essas chaves.
+  CORREÇÃO: no boot que já chama getMaquinasByOS, preencher os campos de
+    cabeçalho do cliente que ESTE formulário tem, a partir de os.cliente_*,
+    SEMPRE "só se estiver vazio".
+  ⚠ NÃO MUDOU: nenhuma requisição nova (o `os` vem no MESMO envelope que já era
+    buscado), nenhuma chave de payload, nenhum id, nenhuma função renomeada,
+    nenhum campo novo criado em formulário que não pede. Rascunho e digitação
+    do técnico nunca são sobrescritos. GAS intocado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
   Reclamacao do estagiario: "os formularios demoram demais para abrir" e
   "eu clico e nao acontece nada, nao sei se pegou".
@@ -427,6 +445,48 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
 #pgpBootAviso.show{display:block}
 #pgpBootAviso .pgp-dot{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pgpspin .6s linear infinite}
 </style>
+<!-- ══ 21/08 — ACABAMENTO DE USO EM CAMPO (P4) ═══════════════════════════════
+     CAUSA: `.lit-top` era UMA linha flex com o input `.lit-nome` (flex:1;
+     min-width:0) espremido por TRÊS botões `.ib` de 44px + gaps. Num celular de
+     360px sobravam ~140-160px para o texto: "Junta do cabeçote" aparecia como
+     "Junta (" e o placeholder nunca cabia. O mesmo aperto atingia as linhas de
+     medição e de assinatura, que também são flex de 3 campos.
+     CORREÇÃO: só CSS aditivo, no fim da folha (vence por cascata, sem editar
+     nenhuma regra existente) + o placeholder encurtado. Nenhuma classe, id ou
+     comportamento de edição/persistência foi tocado; os alvos de toque
+     continuam com 44px.
+     ══════════════════════════════════════════════════════════════════════════ -->
+<style>
+  /* P4.1 — nome do item em linha própria, largura total; os 3 botões descem. */
+  .lit-top{flex-wrap:wrap}
+  .lit-nome{flex:1 1 100%}
+
+  /* P4.2 — rótulos longos nas pills de classificação: quebram em vez de
+     estourar/truncar (o texto é o que o técnico lê para escolher). */
+  .cl{display:flex;align-items:center;justify-content:center;text-align:center;
+      overflow-wrap:anywhere;word-break:break-word}
+
+  /* P4.3 — gavetas: em celular com barra de gestos o último item ficava
+     debaixo da borda. Respiro + área segura do aparelho. */
+  .add-sheet{padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  .ps-sheet{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+
+  /* P4.4 — linhas de 3 campos (medição, assinatura) em tela estreita: os
+     campos passam a quebrar em vez de encolher até ficarem ilegíveis. */
+  @media (max-width:400px){
+    .med-row{flex-wrap:wrap}
+    .med-row .g{flex:1 1 100%}
+    .med-row .v{flex:1 1 45%}
+    .med-row .u{flex:1 1 45%}
+    .sig-row{flex-wrap:wrap}
+    .sig-row .papel{flex:1 1 100%}
+    .sig-row .nome{flex:1 1 100%}
+  }
+
+  /* P4.5 — margem extra sob o campo em foco quando o teclado sobe (ver o
+     script "TECLADO NÃO COBRE O CAMPO EM FOCO", no fim do arquivo). */
+  body.pgp-kb-open{padding-bottom:180px}
+</style>
 <script>
 /* ══ 13/08 (perf) — HELPERS DA RODADA DE PERFORMANCE ═══════════════════════
    ADITIVO. Nada aqui substitui o que ja existia: os toast()/showToast(),
@@ -578,6 +638,23 @@ function pgpBootAviso(msg){
     <h1 style="margin-top:10px" id="okTitle">OS genérica registrada</h1>
     <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
     <div class="sub" id="okStatus" style="margin-top:10px"></div>
+    <!-- ══ 21/08 (P5) — O PDF QUE NUNCA CHEGOU ═══════════════════════════════
+         Até aqui, falhar a geração do PDF produzia UM toast de 2,5 s e o
+         estado ficava só no rascunho do aparelho. A tarefa aparecia ✅ no
+         pipeline, o técnico não tinha motivo nenhum para reabrir o formulário
+         — e a única retomada existente era no boot de uma reabertura. Este
+         banner é permanente enquanto o PDF estiver pendente, diz O QUE falhou
+         e dá o botão para tentar de novo na hora. -->
+    <div id="okPdfWarn" style="display:none;max-width:460px;margin:14px auto 0;padding:12px 14px;border:1px solid #7f1d1d;background:#2a1416;border-radius:10px;text-align:left">
+      <div style="font-weight:800;color:#fca5a5;font-size:13.5px">⚠ O PDF deste laudo ainda não foi gerado</div>
+      <div style="font-size:12px;color:#e5b4b4;margin-top:5px;line-height:1.45">
+        Os dados e as fotos foram salvos. O laudo em PDF é o que aparece na Gestão de
+        Documentos e na pasta da OS — sem ele, o laudo não existe para o resto do sistema.
+      </div>
+      <div id="okPdfWarnMsg" style="font-size:11.5px;color:#cbd5e1;margin-top:6px;word-break:break-word"></div>
+      <button class="btn-sign" id="okPdfRetryBtn" style="width:100%;margin-top:10px;background:#b91c1c;border-color:#7f1d1d"
+              onclick="tentarPdfAgora(this)">📄 Gerar o PDF agora</button>
+    </div>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">
       <button class="btn-sign" style="width:auto;padding:11px 16px" id="okFilaBtn" onclick="psAbrirPainel()">📤 Ver envios</button>
     </div>
@@ -907,6 +984,10 @@ let _maquinas = [], _maqAtual = null;
 const _formUid = pgpUid();
 let _sending = false;       // true depois de "Concluir": a fila cuida do envio
 let _pdfPendente = false;   // PDF não pôde ser gerado (libs ausentes) → gera ao reabrir
+// 21/08 (P5) — a MENSAGEM da falha. Até aqui a exceção era descartada dentro do
+// catch de enfileirarPdf e ninguém — nem o técnico, nem o PCM, nem este arquivo
+// numa reabertura — sabia O QUE tinha falhado.
+let _pdfErroMsg = '';
 let _psHasPending = false;  // há jobs pendentes → guard de beforeunload
 const AVULSA_UID_KEY = 'proper_diagoficina_avulsa_uid';
 
@@ -1323,7 +1404,7 @@ function htmlLitem(luid, it, pai){
   }).join('');
   var h = '<div class="lit'+(pai?' sub':'')+(precisa?' flag':'')+'" data-item="'+attr(it.uid)+'">'
     + '<div class="lit-top">'
-    +   '<input type="text" class="lit-nome" value="'+attr(it.nome)+'" placeholder="Nome do item — toque para trocar" '
+    +   '<input type="text" class="lit-nome" value="'+attr(it.nome)+'" placeholder="Nome do item" '
     +     'oninput="setItemNome(\''+luid+'\',\''+it.uid+'\',this.value)">'
     +   '<button type="button" class="ib'+(mostraFoto?' on':'')+'" title="Foto neste item" onclick="togFotoItem(\''+luid+'\',\''+it.uid+'\')">📷</button>'
     +   (pai?'':'<button type="button" class="ib" title="Sub-item" onclick="addLitem(\''+luid+'\',\''+it.uid+'\')">⊕</button>')
@@ -2178,11 +2259,16 @@ function draftRecord(){
   captura();
   return { draftId:ensureDraftId(), formType:'diag_oficina', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
     state:JSON.parse(JSON.stringify(state)), status:(_sending?'sending':'editing'),
-    pdfPending:_pdfPendente, updatedAt:Date.now() };
+    pdfPending:_pdfPendente, pdfError:_pdfErroMsg, updatedAt:Date.now() };   // 21/08 (P5): pdfError
 }
 function saveDraft(){ try{ ensureDraftId(); return PS.saveDraft(draftRecord()); }catch(e){ return Promise.resolve(); } }
 function ensureDraftSaved(){ return saveDraft(); }
 async function marcarPdfPendente(v){ _pdfPendente=!!v; try{ var d=await PS.loadDraft(_draftId); if(d){ d.pdfPending=!!v; await PS.saveDraft(d); } }catch(e){} }
+// 21/08 (P5) — grava a mensagem do erro no rascunho, ao lado do pdfPending.
+async function marcarPdfErro(msg){
+  _pdfErroMsg = String(msg || '');
+  try{ var d=await PS.loadDraft(_draftId); if(d){ d.pdfError=_pdfErroMsg; await PS.saveDraft(d); } }catch(e){}
+}
 
 // Lê o DOM (ordem + valores) e reconstrói state.blocos / state.assinaturas.
 function captura(){
@@ -2294,7 +2380,8 @@ async function restoreDraft(){
   var d=null; try{ d=await PS.loadDraft(_draftId); }catch(e){}
   if(!d) return false;
   if(d.state && typeof d.state==='object'){ Object.assign(state, d.state); }
-  _pdfPendente=!!d.pdfPending; _sending=(d.status==='sending');
+  _pdfPendente=!!d.pdfPending; _pdfErroMsg=String(d.pdfError||'');   // 21/08 (P5)
+  _sending=(d.status==='sending');
   hydrateUI();
   // fotos: o store de fotos é a fonte da verdade (tem os bytes). Reconstrói refs + thumbs.
   try{
@@ -2401,16 +2488,35 @@ async function enviar(){
     // laudo e o cadastro — se a máquina for renomeada, o histórico se perde.
     // ⚠ `HEADERS.FORMULARIOS` ainda NÃO tem coluna `Maquina_ID`; enquanto não tiver,
     //   este é o único lugar onde o vínculo sobrevive.
+    // 21/08 (P5) — A PENDÊNCIA DO PDF PRECISA SAIR DO APARELHO.
+    // `pdfPending` vivia SÓ no rascunho (IndexedDB deste celular): o
+    // saveFormulario não levava, o GAS não registrava, o PCM não mostrava — a
+    // tarefa fechava ✅ no pipeline com o laudo sem PDF e o sistema inteiro
+    // ficava coerente e errado. O PDF passa a ser GERADO aqui, antes de montar
+    // o payload, para que o campos_json possa DECLARAR o que aconteceu.
+    // ⚠ Sem coluna nova no GAS (regra da rodada): o sinal viaja dentro do
+    //   `campos_json`, que já existe e já é gravado inteiro. O PCM lê de lá.
+    // ⚠ A ORDEM DA FILA não muda: saveFormulario continua sendo enfileirado
+    //   primeiro; o `salvarPdfDrive` entra depois, com o PDF já pronto na mão.
+    var _pdfB64 = null, _pdfErroEnvio = '';
+    try{ _pdfB64 = await buildPdfBase64(); }
+    catch(ePdf){ _pdfErroEnvio = String((ePdf && ePdf.message) || ePdf || 'falha desconhecida');
+                 try{ console.error('[diag_oficina] buildPdfBase64 falhou no envio:', ePdf); }catch(_c){} }
+    _pdfPendente = !_pdfB64;
+    await marcarPdfPendente(_pdfPendente);
+    await marcarPdfErro(_pdfErroEnvio);
+
     var payloadState = { identificacao:state.identificacao, atendimento:state.atendimento,
       maquina_id:state.maquina_id, maquina_label:state.maquina_label,
-      blocos:state.blocos, assinaturas:assinaturasMeta(), orcamento:state.orcamento };
+      blocos:state.blocos, assinaturas:assinaturasMeta(), orcamento:state.orcamento,
+      pdf_pendente:!!_pdfPendente, pdf_erro:_pdfErroEnvio || '' };   // 21/08 (P5)
     var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:'diag_oficina', form_uid:_formUid,
       maquina_id:(_maqAtual&&_maqAtual.id)||'',
       tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
       tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
     await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados do diagnóstico' });
   }
-  if(_osId){ await enfileirarPdf(); }
+  if(_osId){ await enfileirarPdf(_pdfB64); }   // 21/08 (P5): usa o PDF já gerado acima
   _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
   document.getElementById('app').style.display='none';
   document.getElementById('dock').style.display='none';
@@ -2463,6 +2569,16 @@ async function atualizarOkScreen(){
   var pend=jobs.filter(function(j){return j.status==='pending';}).length;
   var dead=jobs.filter(function(j){return j.status==='dead';}).length;
   if(filaBtn) filaBtn.style.display=(pend+dead>0)?'':'none';
+  // 21/08 (P5) — banner permanente do PDF pendente (some sozinho quando gera).
+  try{
+    var _warn=document.getElementById('okPdfWarn'), _wmsg=document.getElementById('okPdfWarnMsg');
+    if(_warn){
+      _warn.style.display = (_osId && _pdfPendente) ? '' : 'none';
+      if(_wmsg) _wmsg.textContent = _pdfErroMsg
+        ? ('Motivo registrado: ' + _pdfErroMsg)
+        : 'Motivo não registrado (laudo concluído numa versão anterior do formulário).';
+    }
+  }catch(eW){}
   if(!_osId){ if(okSub) okSub.textContent='Conteúdo guardado no aparelho. Sem OS vinculada, os dados não ficam no sistema.'; }
   if(pend+dead===0 && !_pdfPendente){
     if(big) big.textContent='✅'; if(title) title.textContent='OS genérica enviada';
@@ -3086,23 +3202,53 @@ async function buildPdfBase64(){
   var pdf = lvDocDiagOficina(photosByKey);
   return pdf.output('datauristring').split(',')[1];
 }
-async function enfileirarPdf(){
-  if(!_osId) return;
+// 21/08 (P5) — dois acréscimos, ambos aditivos:
+//  · `base64Pronto` (opcional): quando `enviar()` já gerou o PDF antes de montar
+//    o payload — é o que permite ao campos_json DECLARAR a pendência. Sem o
+//    argumento, o comportamento é idêntico ao de sempre (gera aqui).
+//  · devolve true/false e GRAVA a mensagem do erro, em vez de descartá-la.
+async function enfileirarPdf(base64Pronto){
+  if(!_osId) return false;
   var i=state.identificacao||{}, _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
   var _num=i.os||'';
   try{
-    var base64=await buildPdfBase64();
+    var base64 = base64Pronto || await buildPdfBase64();
     var body={ action:'salvarPdfDrive', os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
       maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:(_maqAtual?maqLabel(_maqAtual):(i.equipamento||'')),
       base64:base64, fileName:'Diag_Oficina_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_diag_oficina',
       caption:'Diagnóstico de Oficina — laudo', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
       pdf_uid:'pdf_'+_formUid };
     await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF do laudo' });
-    _pdfPendente=false; await marcarPdfPendente(false);
+    _pdfPendente=false; await marcarPdfPendente(false); await marcarPdfErro('');
+    return true;
   }catch(e){
-    _pdfPendente=true; await marcarPdfPendente(true);
-    toast('Dados salvos. O PDF será gerado ao reabrir com internet.');
+    var _msg = String((e && e.message) || e || 'falha desconhecida');
+    _pdfPendente=true; await marcarPdfPendente(true); await marcarPdfErro(_msg);
+    try{ console.error('[diag_oficina] PDF não gerado:', e); }catch(_c){}
+    // 21/08 (P5): o toast passa a DIZER o que falhou — e a tela final tem
+    // banner permanente com o botão de tentar de novo.
+    toast('PDF não gerado (' + _msg + '). Os dados foram salvos — use "Gerar o PDF agora" na tela final.');
+    return false;
   }
+}
+
+// 21/08 (P5) — RETOMADA MANUAL. Até aqui a única retomada era no boot de uma
+// reabertura da MESMA instância no MESMO aparelho — e o técnico não tem motivo
+// para reabrir um formulário que o pipeline mostra como ✅ concluído. Este é o
+// botão do banner da tela final.
+async function tentarPdfAgora(btn){
+  if(btn && btn.dataset.pgpBusy==='1') return;
+  if(btn){ btn.dataset.pgpBusy='1'; btn.disabled=true; btn.classList.add('is-busy'); }
+  pgpEsperaLonga('📄 Gerando o PDF do laudo…');
+  var ok=false;
+  try{
+    try{ await pgpEnsureLibsPDF(); }catch(eLib){ /* o enfileirarPdf reporta */ }
+    ok = await enfileirarPdf();
+  }catch(e){ ok=false; }
+  pgpEsperaLonga(null);
+  if(btn){ delete btn.dataset.pgpBusy; btn.disabled=false; btn.classList.remove('is-busy'); }
+  if(ok){ toast('✅ PDF gerado — subindo para o Drive.'); try{ PS.pump(); }catch(e){} }
+  try{ await atualizarOkScreen(); }catch(e){}
 }
 
 // ── Máquina da OS (autofill; padrão form01/corretiva) ──
@@ -3132,6 +3278,29 @@ function selMaquina(){
   document.getElementById('f_modelo').value=modLbl+(m.serial?(modLbl?' / ':'')+'Série '+m.serial:'');
   scheduleSave();
 }
+
+// ── 21/08 — CABEÇALHO DO CLIENTE A PARTIR DO OBJETO `os` ────────────────────
+// O GAS já anexa cliente_nome/cnpj/cidade/telefone/email ao `os` devolvido por
+// getMaquinasByOS. Preenche SÓ campo VAZIO e SÓ campo que existe neste
+// formulário — rascunho e digitação do técnico são intocáveis.
+function pgpPreencherClienteDaOS(os){
+  try{
+    if(!os) return;
+    var mapa = [
+      ['f_cliente', os.cliente_nome || os.cliente || ''],
+      ['f_cnpj',     os.cliente_cnpj     || ''],
+      ['f_cidade',   os.cliente_cidade   || ''],
+      ['f_telefone', os.cliente_telefone || ''],
+      ['f_email',    os.cliente_email    || '']
+    ];
+    mapa.forEach(function(par){
+      var el = document.getElementById(par[0]);
+      if(!el || !par[1]) return;
+      if(String(el.value || '').trim() !== '') return;   // só se vazio
+      el.value = par[1];
+    });
+  }catch(e){ /* cabeçalho é conveniência: nunca derruba o boot */ }
+}
 async function carregarMaquinasOS(){
   if(!_osId) return;
   // 13/08 (perf): chamada de boot ate hoje invisivel — os campos de maquina
@@ -3148,6 +3317,7 @@ async function carregarMaquinasOS(){
   // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
   // logo remover parts do objeto nao apaga peca nenhuma.
     const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
+    try{ pgpPreencherClienteDaOS(data && data.os); }catch(_eCli){}   // 21/08 (cabeçalho do cliente)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     // 19/08 — o seletor agora aparece SEMPRE que a OS tem máquina, mesmo com uma
@@ -4252,7 +4422,30 @@ function lvDataHora(b){
 function lvStatusLabel(st){ return st==='ok' ? 'dentro da faixa' : (st==='at' ? 'ATENÇÃO' : (st==='cr' ? 'CRÍTICO' : '')); }
 function lvStatusCor(st){ return st==='ok' ? LV_COR.ok : (st==='at' ? LV_COR.at : (st==='cr' ? LV_COR.cr : LV_COR.texto)); }
 
+// ══ 21/08 (P5) — BLINDAGEM DO MOTOR DE PDF ══════════════════════════════════
+// Qualquer exceção aqui dentro caía no catch de `enfileirarPdf`, que só marcava
+// `_pdfPendente` e mostrava um toast — a exceção real era descartada e ninguém
+// ficava sabendo O QUE quebrou (foi exatamente esse o buraco do laudo da OS
+// PGP-2026-0053). Agora o motor carrega um MARCADOR do que estava desenhando e
+// a exceção sobe com esse contexto grudado na mensagem.
+// ⚠ Nome público INTOCADO: `lvDocDiagOficina` continua existindo com a mesma
+//   assinatura; o que ganhou nome novo foi o corpo, que ninguém chama de fora.
+var _lvOnde = '';
 function lvDocDiagOficina(photosByKey){
+  _lvOnde = 'abertura do documento';
+  try{
+    return lvDocDiagOficinaCorpo(photosByKey);
+  }catch(e){
+    var _ctx = _lvOnde || 'ponto não identificado';
+    var _msg = 'falha ao montar o PDF em [' + _ctx + ']: ' + String((e && e.message) || e || 'erro desconhecido');
+    try{ console.error('[diag_oficina] ' + _msg, e); }catch(_c){}
+    var _err = new Error(_msg);
+    try{ _err.causaOriginal = e; _err.ondePdf = _ctx; }catch(_c2){}
+    throw _err;
+  }
+}
+
+function lvDocDiagOficinaCorpo(photosByKey){
   var i = state.identificacao || {}, at = state.atendimento || {};
   var dataHora = lvData(at.data) + (at.hora ? ' · ' + at.hora : '');
   var sigs = (state.assinaturas || []).filter(function(a){ return a && (a.nome || a.dataUrl); });
@@ -4277,6 +4470,7 @@ function lvDocDiagOficina(photosByKey){
   var n = 0;
 
   // ── 1. identificação ──────────────────────────────────────────────────
+  _lvOnde = 'identificação do atendimento';
   L.h1(++n, 'Identificação do atendimento');
   var pares = [
     ['Nº da OS', i.os], ['Data / hora', dataHora],
@@ -4297,7 +4491,10 @@ function lvDocDiagOficina(photosByKey){
     var fila=[];
     var descarrega=function(){ if(fila.length){ L.figuras(fila, { numerar:true }); fila=[]; } };
 
-    plano.forEach(function(b){
+    plano.forEach(function(b, _bi){
+      // 21/08 (P5): marcador do bloco em desenho — é o que vira contexto no erro.
+      _lvOnde = 'bloco ' + (_bi + 1) + ' (' + (b.tipo || 'tipo?') + ') “'
+              + String(b.titulo || b.grandeza || b.pergunta || b.legenda || 'sem título') + '”';
       if(b.__sec){ descarrega(); L.h2(b.titulo); return; }
 
       if(b.tipo==='foto'){
@@ -4352,11 +4549,14 @@ function lvDocDiagOficina(photosByKey){
         }
 
       } else if(b.tipo==='lista'){
+        _lvOnde = 'lista “' + String(b.titulo || 'sem título') + '”';
         L.h2(b.titulo || 'Lista');
         var cols=b.cols||[];
         var linhasL=[];
         (function w(arr, pai){
           (arr||[]).forEach(function(it){
+            _lvOnde = 'lista “' + String(b.titulo || 'sem título') + '”, item “'
+                    + String(it.nome || 'sem nome') + '”' + (pai ? ' (sub-item)' : '');
             if(!String(it.nome||'').trim()){ w(it.subs, it); return; }
             var col=cols.filter(function(c){ return c.id===it.col; })[0] || null;
             var nome=(pai ? '    ↳ ' : '') + it.nome;
@@ -4379,6 +4579,7 @@ function lvDocDiagOficina(photosByKey){
 
         // as fotos dos itens saem logo abaixo da tabela da própria lista
         var fotosLista=[];
+        _lvOnde = 'fotos da lista “' + String(b.titulo || 'sem título') + '”';
         (function w(arr){
           (arr||[]).forEach(function(it){
             var pk=b.uid+'::'+it.uid;
@@ -4407,6 +4608,7 @@ function lvDocDiagOficina(photosByKey){
   // ao `pdf_uid` ausente (cada retry cria arquivo novo no Drive) e duplicaria a
   // categoria na Gestão de Documentos. "Começa em página nova" já resolve o
   // imprimir-só-essa-parte.
+  _lvOnde = 'lista de apoio ao orçamento';
   L.novaPagina();
   L.h1(++n, 'Itens que requerem intervenção — apoio ao orçamento');
   L.p('Colhido automaticamente de todas as listas deste laudo, por qualquer coluna marcada como de intervenção. '
@@ -4435,16 +4637,68 @@ function lvDocDiagOficina(photosByKey){
 
   // ── 4. assinaturas ────────────────────────────────────────────────────
   if(sigs.length){
+    _lvOnde = 'bloco de assinaturas';
     L.h1(++n, 'Assinaturas');
     L.assinaturas(sigs.map(function(a){
       return { nome:a.nome, dataUrl:a.dataUrl, ts:a.ts, papel:(a.papel === 'Outro' ? (a.papelOutro || 'Outro') : a.papel) };
     }));
   }
 
+  _lvOnde = 'fechamento dos rodapés';
   L.fecharRodapes();
   return doc;
 }
 
+</script>
+
+<!-- ══ 21/08 (P4) — TECLADO NÃO COBRE O CAMPO EM FOCO ═══════════════════════
+     CAUSA: o dock é fixo na base e o teclado do celular cobre o terço inferior.
+     Tocar num campo que está nessa faixa deixava o técnico digitando às cegas.
+     CORREÇÃO: ao focar um campo, se ele estiver abaixo da metade da área
+     visível, rola o suficiente para que ele fique acima do teclado. 100%
+     aditivo: nenhum listener existente foi removido; usa visualViewport quando
+     o aparelho oferece e cai em innerHeight quando não.
+     ══════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  try{
+    var EDITAVEIS = { INPUT:1, TEXTAREA:1, SELECT:1 };
+    var _t = null;
+    function alturaVisivel(){
+      try{
+        if (window.visualViewport && window.visualViewport.height) return window.visualViewport.height;
+      }catch(e){}
+      return window.innerHeight || 0;
+    }
+    document.addEventListener('focusin', function(ev){
+      var el = ev.target;
+      if (!el || !EDITAVEIS[el.tagName]) return;
+      if (el.type === 'hidden' || el.readOnly || el.disabled) return;
+      document.body.classList.add('pgp-kb-open');
+      if (_t) clearTimeout(_t);
+      // 300 ms: tempo do teclado terminar de subir e o viewport encolher.
+      _t = setTimeout(function(){
+        try{
+          var r = el.getBoundingClientRect();
+          var h = alturaVisivel();
+          if (!h) return;
+          if (r.bottom > h * 0.55){
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
+        }catch(e){}
+      }, 300);
+    }, true);
+    document.addEventListener('focusout', function(){
+      if (_t) clearTimeout(_t);
+      _t = setTimeout(function(){
+        try{
+          var a = document.activeElement;
+          if (!a || !EDITAVEIS[a.tagName]) document.body.classList.remove('pgp-kb-open');
+        }catch(e){ document.body.classList.remove('pgp-kb-open'); }
+      }, 120);
+    }, true);
+  }catch(e){ /* acabamento: nunca derruba o formulário */ }
+})();
 </script>
 
 </body>

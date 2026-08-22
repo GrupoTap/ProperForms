@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  21/08/2026 — CABEÇALHO DO CLIENTE VINDO DA OS (rev. interna +1)
+  CAUSA: o campo Cliente deste formulário só era preenchido quando a URL trazia
+    ?cliente=. Aberto pelo pipeline sem esse parâmetro, ele ficava vazio — e o
+    relatório saía sem o cliente. O dado JÁ VIAJA no envelope: o GAS anexa
+    os.cliente_nome / cliente_cnpj / cliente_cidade / cliente_telefone /
+    cliente_email ao objeto `os` de getMaquinasByOS desde o v69, e no
+    ecossistema inteiro só o form05 lia essas chaves.
+  CORREÇÃO: no boot que já chama getMaquinasByOS, preencher os campos de
+    cabeçalho do cliente que ESTE formulário tem, a partir de os.cliente_*,
+    SEMPRE "só se estiver vazio".
+  ⚠ NÃO MUDOU: nenhuma requisição nova (o `os` vem no MESMO envelope que já era
+    buscado), nenhuma chave de payload, nenhum id, nenhuma função renomeada,
+    nenhum campo novo criado em formulário que não pede. Rascunho e digitação
+    do técnico nunca são sobrescritos. GAS intocado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   13/08/2026 — RODADA DE PERFORMANCE 13/08 (abertura de formulario)
   Reclamacao do estagiario: "os formularios demoram demais para abrir" e
   "eu clico e nao acontece nada, nao sei se pegou".
@@ -496,6 +514,22 @@ function pgpBootAviso(msg){
     <h1 style="margin-top:10px" id="okTitle">OS genérica registrada</h1>
     <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
     <div class="sub" id="okStatus" style="margin-top:10px"></div>
+    <!-- ══ 21/08 (P5) — O PDF QUE NUNCA CHEGOU ═══════════════════════════════
+         Falhar a geração do PDF produzia UM toast de 2,5 s e a pendência ficava
+         só no rascunho deste aparelho. A tarefa aparecia ✅ no pipeline e a
+         única retomada existente era no boot de uma REABERTURA da mesma
+         instância — que o técnico não tem motivo nenhum para fazer. Banner
+         permanente + motivo + botão para tentar na hora. -->
+    <div id="okPdfWarn" style="display:none;max-width:460px;margin:14px auto 0;padding:12px 14px;border:1px solid #7f1d1d;background:#2a1416;border-radius:10px;text-align:left">
+      <div style="font-weight:800;color:#fca5a5;font-size:13.5px">⚠ O PDF deste laudo ainda não foi gerado</div>
+      <div style="font-size:12px;color:#e5b4b4;margin-top:5px;line-height:1.45">
+        Os dados e as fotos foram salvos. O PDF é o que aparece na Gestão de Documentos
+        e na pasta da OS — sem ele, o laudo não existe para o resto do sistema.
+      </div>
+      <div id="okPdfWarnMsg" style="font-size:11.5px;color:#cbd5e1;margin-top:6px;word-break:break-word"></div>
+      <button class="btn-sign" id="okPdfRetryBtn" style="width:100%;margin-top:10px;background:#b91c1c;border-color:#7f1d1d"
+              onclick="tentarPdfAgora(this)">📄 Gerar o PDF agora</button>
+    </div>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px">
       <button class="btn-sign" style="width:auto;padding:11px 16px" id="okFilaBtn" onclick="psAbrirPainel()">📤 Ver envios</button>
     </div>
@@ -809,6 +843,8 @@ let _maquinas = [], _maqAtual = null;
 const _formUid = pgpUid();
 let _sending = false;       // true depois de "Concluir": a fila cuida do envio
 let _pdfPendente = false;   // PDF não pôde ser gerado (libs ausentes) → gera ao reabrir
+// 21/08 (P5) — a MENSAGEM da falha, que até aqui era descartada no catch.
+let _pdfErroMsg = '';
 let _psHasPending = false;  // há jobs pendentes → guard de beforeunload
 const AVULSA_UID_KEY = 'proper_generica_avulsa_uid';
 
@@ -1402,11 +1438,16 @@ function draftRecord(){
   captura();
   return { draftId:ensureDraftId(), formType:'generica', osId:_osId, tarefaId:_tarefaId, formUid:_formUid,
     state:JSON.parse(JSON.stringify(state)), status:(_sending?'sending':'editing'),
-    pdfPending:_pdfPendente, updatedAt:Date.now() };
+    pdfPending:_pdfPendente, pdfError:_pdfErroMsg, updatedAt:Date.now() };   // 21/08 (P5): pdfError
 }
 function saveDraft(){ try{ ensureDraftId(); return PS.saveDraft(draftRecord()); }catch(e){ return Promise.resolve(); } }
 function ensureDraftSaved(){ return saveDraft(); }
 async function marcarPdfPendente(v){ _pdfPendente=!!v; try{ var d=await PS.loadDraft(_draftId); if(d){ d.pdfPending=!!v; await PS.saveDraft(d); } }catch(e){} }
+// 21/08 (P5) — grava a mensagem do erro no rascunho, ao lado do pdfPending.
+async function marcarPdfErro(msg){
+  _pdfErroMsg = String(msg || '');
+  try{ var d=await PS.loadDraft(_draftId); if(d){ d.pdfError=_pdfErroMsg; await PS.saveDraft(d); } }catch(e){}
+}
 
 // Lê o DOM (ordem + valores) e reconstrói state.blocos / state.assinaturas.
 function captura(){
@@ -1461,7 +1502,8 @@ async function restoreDraft(){
   var d=null; try{ d=await PS.loadDraft(_draftId); }catch(e){}
   if(!d) return false;
   if(d.state && typeof d.state==='object'){ Object.assign(state, d.state); }
-  _pdfPendente=!!d.pdfPending; _sending=(d.status==='sending');
+  _pdfPendente=!!d.pdfPending; _pdfErroMsg=String(d.pdfError||'');   // 21/08 (P5)
+  _sending=(d.status==='sending');
   hydrateUI();
   // fotos: o store de fotos é a fonte da verdade (tem os bytes). Reconstrói refs + thumbs.
   try{
@@ -1569,6 +1611,16 @@ async function atualizarOkScreen(){
   var pend=jobs.filter(function(j){return j.status==='pending';}).length;
   var dead=jobs.filter(function(j){return j.status==='dead';}).length;
   if(filaBtn) filaBtn.style.display=(pend+dead>0)?'':'none';
+  // 21/08 (P5) — banner permanente do PDF pendente (some sozinho quando gera).
+  try{
+    var _warn=document.getElementById('okPdfWarn'), _wmsg=document.getElementById('okPdfWarnMsg');
+    if(_warn){
+      _warn.style.display = (_osId && _pdfPendente) ? '' : 'none';
+      if(_wmsg) _wmsg.textContent = _pdfErroMsg
+        ? ('Motivo registrado: ' + _pdfErroMsg)
+        : 'Motivo não registrado (laudo concluído numa versão anterior do formulário).';
+    }
+  }catch(eW){}
   if(!_osId){ if(okSub) okSub.textContent='Conteúdo guardado no aparelho. Sem OS vinculada, os dados não ficam no sistema.'; }
   if(pend+dead===0 && !_pdfPendente){
     if(big) big.textContent='✅'; if(title) title.textContent='OS genérica enviada';
@@ -2192,8 +2244,9 @@ async function buildPdfBase64(){
   var pdf = lvDocGenerica(photosByKey);
   return pdf.output('datauristring').split(',')[1];
 }
+// 21/08 (P5): devolve true/false e GRAVA a mensagem do erro (era descartada).
 async function enfileirarPdf(){
-  if(!_osId) return;
+  if(!_osId) return false;
   var i=state.identificacao||{}, _sess=null; try{ _sess=JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
   var _num=i.os||'';
   try{
@@ -2204,11 +2257,32 @@ async function enfileirarPdf(){
       caption:'OS Genérica — relatório do serviço', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
       pdf_uid:'pdf_'+_formUid };
     await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF da OS' });
-    _pdfPendente=false; await marcarPdfPendente(false);
+    _pdfPendente=false; await marcarPdfPendente(false); await marcarPdfErro('');
+    return true;
   }catch(e){
-    _pdfPendente=true; await marcarPdfPendente(true);
-    toast('Dados salvos. O PDF será gerado ao reabrir com internet.');
+    var _msg = String((e && e.message) || e || 'falha desconhecida');
+    _pdfPendente=true; await marcarPdfPendente(true); await marcarPdfErro(_msg);
+    try{ console.error('[form] PDF não gerado:', e); }catch(_c){}
+    toast('PDF não gerado (' + _msg + '). Os dados foram salvos — use "Gerar o PDF agora" na tela final.');
+    return false;
   }
+}
+
+// 21/08 (P5) — RETOMADA MANUAL do PDF pendente (botão do banner da tela final).
+// A retomada automática só existe no boot de uma reabertura desta instância.
+async function tentarPdfAgora(btn){
+  if(btn && btn.dataset.pgpBusy==='1') return;
+  if(btn){ btn.dataset.pgpBusy='1'; btn.disabled=true; btn.classList.add('is-busy'); }
+  try{ pgpEsperaLonga('📄 Gerando o PDF…'); }catch(e){}
+  var ok=false;
+  try{
+    try{ await pgpEnsureLibsPDF(); }catch(eLib){ /* enfileirarPdf reporta */ }
+    ok = await enfileirarPdf();
+  }catch(e){ ok=false; }
+  try{ pgpEsperaLonga(null); }catch(e){}
+  if(btn){ delete btn.dataset.pgpBusy; btn.disabled=false; btn.classList.remove('is-busy'); }
+  if(ok){ toast('✅ PDF gerado — subindo para o Drive.'); try{ PS.pump(); }catch(e){} }
+  try{ await atualizarOkScreen(); }catch(e){}
 }
 
 // ── Máquina da OS (autofill; padrão form01/corretiva) ──
@@ -2235,6 +2309,29 @@ function selMaquina(){
   document.getElementById('f_modelo').value=modLbl+(m.serial?(modLbl?' / ':'')+'Série '+m.serial:'');
   scheduleSave();
 }
+
+// ── 21/08 — CABEÇALHO DO CLIENTE A PARTIR DO OBJETO `os` ────────────────────
+// O GAS já anexa cliente_nome/cnpj/cidade/telefone/email ao `os` devolvido por
+// getMaquinasByOS. Preenche SÓ campo VAZIO e SÓ campo que existe neste
+// formulário — rascunho e digitação do técnico são intocáveis.
+function pgpPreencherClienteDaOS(os){
+  try{
+    if(!os) return;
+    var mapa = [
+      ['f_cliente', os.cliente_nome || os.cliente || ''],
+      ['f_cnpj',     os.cliente_cnpj     || ''],
+      ['f_cidade',   os.cliente_cidade   || ''],
+      ['f_telefone', os.cliente_telefone || ''],
+      ['f_email',    os.cliente_email    || '']
+    ];
+    mapa.forEach(function(par){
+      var el = document.getElementById(par[0]);
+      if(!el || !par[1]) return;
+      if(String(el.value || '').trim() !== '') return;   // só se vazio
+      el.value = par[1];
+    });
+  }catch(e){ /* cabeçalho é conveniência: nunca derruba o boot */ }
+}
 async function carregarMaquinasOS(){
   if(!_osId) return;
   // 13/08 (perf): chamada de boot ate hoje invisivel — os campos de maquina
@@ -2251,6 +2348,7 @@ async function carregarMaquinasOS(){
   // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
   // logo remover parts do objeto nao apaga peca nenhuma.
     const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
+    try{ pgpPreencherClienteDaOS(data && data.os); }catch(_eCli){}   // 21/08 (cabeçalho do cliente)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
