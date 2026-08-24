@@ -156,6 +156,11 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
   .b-unid-outra{margin-top:6px;display:none}
   .b-unid-outra.show{display:block}
   /* foto */
+  /* 24/08 (F3) — saída para a OS durante o preenchimento (alvo de 44px). */
+  .btn-voltar-os{display:inline-flex;align-items:center;gap:7px;min-height:44px;
+    background:var(--bg);border:1px solid var(--border);color:var(--muted);
+    border-radius:9px;padding:0 14px;font-size:13px;font-family:inherit;cursor:pointer;margin-bottom:10px}
+  .btn-voltar-os:active{opacity:.7}
   .btn-foto-mini{background:var(--bg);border:1px dashed var(--brand);color:var(--brand);border-radius:8px;
     padding:8px 14px;min-height:44px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   .thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
@@ -233,8 +238,13 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
     border-radius:9px;padding:11px;font-size:13px;color:#cbd5e1;white-space:pre-wrap;line-height:1.5}
   /* lista (bloco novo) — CARTÕES, nunca <table> */
   .lst-colbar{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:9px}
+  /* 24/08 (F2) — a barra ganhou um rótulo: sem ele os chips eram lidos como as
+     respostas da lista, e o toque neles não fazia nada (ver colchip abaixo). */
+  .colbar-lbl{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);opacity:.75;width:100%;margin-bottom:1px}
   .colchip{font-size:11px;border:1px solid var(--border);background:var(--bg);color:var(--muted);border-radius:20px;
-    padding:3px 9px;display:inline-flex;align-items:center;gap:4px}
+    padding:3px 9px;display:inline-flex;align-items:center;gap:4px;
+    font-family:inherit;cursor:pointer}
+  .colchip:active{opacity:.7}
   .colchip.interv{border-color:var(--red);color:#fca5a5}
   .colchip .dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
   .colchip.interv .dot{background:var(--red)}
@@ -481,6 +491,14 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
     .sig-row{flex-wrap:wrap}
     .sig-row .papel{flex:1 1 100%}
     .sig-row .nome{flex:1 1 100%}
+    /* 24/08 (F4) — MESMO defeito do P4.4, numa linha que ficou de fora: a
+       identificação usa .row3 (Nº da OS · Data · Hora) e, num aparelho de
+       390px, o campo da OS virava uma caixa de ~30px com o rótulo quebrado em
+       três linhas. Achado ao fotografar a tela para conferir o F2 — não estava
+       no chamado. Mesma receita: quebra em vez de encolher. */
+    .row3{flex-wrap:wrap}
+    .row3>div:first-child{flex:1 1 100%}
+    .row3>div{flex:1 1 45%}
   }
 
   /* P4.5 — margem extra sob o campo em foco quando o teclado sobe (ver o
@@ -592,6 +610,8 @@ function pgpBootAviso(msg){
 </head>
 <body>
 <div id="app">
+  <!-- 24/08 (F3) — ver bloco JS "SAIR PARA A OS". Só aparece quando há destino. -->
+  <button type="button" class="btn-voltar-os" id="btnVoltarOS" style="display:none" onclick="sairParaOS()">← Voltar para a OS</button>
   <h1>🔧 Diagnóstico de Oficina</h1>
   <div class="sub">Monte o diagnóstico na ordem real da desmontagem. Tudo marcado como intervenção vira a lista de apoio ao orçamento.</div>
   <div id="osPill" class="pill-info" style="display:none"></div>
@@ -1379,14 +1399,29 @@ function colDe(luid, cid){ return (bd(luid).cols||[]).find(function(c){ return c
 function renderLista(uid){
   var host = document.getElementById('lst-'+uid); if(!host) return;
   var D = bd(uid), cols = D.cols||[];
-  var chips = '<span class="setname">'+esc(D.setNome||'próprio')+'</span>'
+  // ══ 24/08 (F2) · ESTES CHIPS SÃO A LEGENDA, NÃO A RESPOSTA ════════════════
+  // Chamado do Fernando (24/08): "os botões ok, nok, n/a não estão clicáveis".
+  // Estavam certos e errados ao mesmo tempo: são <span> — legenda das COLUNAS
+  // da lista — mas com cara de pill (borda arredondada + bolinha colorida), do
+  // lado de um cartão cujo corpo dizia só "Nenhum item ainda.". Quem chega
+  // toca ali, nada acontece, e a tela parece quebrada.
+  // 🔑 Afordância que mente é defeito, mesmo com o código correto. Agora:
+  //    (a) a barra diz o que é ("RESPOSTAS DESTA LISTA — toque para editar");
+  //    (b) o chip é <button> e abre a MESMA configuração do "✎ colunas";
+  //    (c) o vazio explica onde a resposta é marcada (no item).
+  var chips = '<div class="colbar-lbl">Respostas desta lista — toque para editar</div>'
+    + '<span class="setname">'+esc(D.setNome||'próprio')+'</span>'
     + cols.map(function(c){
-        return '<span class="colchip'+(c.interv?' interv':'')+'"><span class="dot"></span>'
-             + esc(c.nome||'—')+(c.coment?' 💬':'')+(c.foto?' 📷':'')+'</span>'; }).join('');
+        return '<button type="button" class="colchip'+(c.interv?' interv':'')+'" '
+             + 'title="Coluna de resposta — toque para editar as colunas desta lista" '
+             + 'onclick="abrirCfg(\''+uid+'\')"><span class="dot"></span>'
+             + esc(c.nome||'—')+(c.coment?' 💬':'')+(c.foto?' 📷':'')+'</button>'; }).join('');
   host.innerHTML =
       '<div class="lst-colbar">'+chips+'<button type="button" class="mini" onclick="abrirCfg(\''+uid+'\')">✎ colunas</button></div>'
     + ((D.itens&&D.itens.length) ? D.itens.map(function(it){ return htmlLitem(uid,it,null); }).join('')
-                                 : '<div class="sec-vazia">Nenhum item ainda.</div>')
+                                 : '<div class="sec-vazia">Nenhum item ainda — toque em <b>＋ Item</b> abaixo.<br>'
+                                   + 'As respostas ('+esc((cols.map(function(c){return c.nome;}).join(' / ')||'Ok / NOK / N.A.'))
+                                   + ') aparecem <b>dentro de cada item</b>, não aqui em cima.</div>')
     + '<button type="button" class="mini" style="width:100%" onclick="addLitem(\''+uid+'\',null)">＋ Item</button>';
 }
 function htmlLitem(luid, it, pai){
@@ -2682,6 +2717,44 @@ function cancelarAutoVolta() {
   if (aviso) aviso.style.display = 'none';
 }
 
+// ══ 24/08 (F3) · SAIR PARA A OS ANTES DE CONCLUIR ═══════════════════════════
+// Mesmo defeito e mesma correção do form01 (ver changelog de lá): o PCF abre por
+// `location.href` na mesma aba, então o botão físico do aparelho caía no boot do
+// PCF SEM `?modo=pipeline&os_id` — na LISTA de OS, não na OS.
+// ⚠ DIFERENÇA para o form01: aqui o rascunho é durável (ProperSafe, IndexedDB) —
+//   sair NÃO perde o diagnóstico, ele volta ao reabrir. Por isso não se pergunta
+//   nada… exceto quando há ENVIO pendente na fila, que é o caso em que sair cedo
+//   demais realmente atrapalha (mesmo motivo do beforeunload já existente).
+var _saindoParaOS = false;
+function mostrarBotaoVoltarOS(){
+  lerRetornoDaUrl();
+  var b = document.getElementById('btnVoltarOS');
+  if (!b) return;
+  if (!destinoDeVolta()) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  b.textContent = _retornoUrl ? '← Voltar ao ProperAdmin' : '← Voltar para a OS';
+}
+function sairParaOS(confirmar){
+  var destino = destinoDeVolta();
+  if (!destino) return false;
+  if (confirmar !== false && _psHasPending){
+    if (!confirm('Ainda há fotos/envios em andamento.\n\nSair agora? O rascunho fica salvo no aparelho e a fila continua na próxima abertura.')) return false;
+  }
+  _saindoParaOS = true;
+  location.href = destino;
+  return true;
+}
+function armarGuardaVoltar(){
+  if (!destinoDeVolta()) return;
+  try { history.pushState({ pgpForm:'diag_oficina' }, '', location.href); } catch(e) { return; }
+  window.addEventListener('popstate', function(){
+    if (_saindoParaOS) return;
+    if (!_psHasPending) { sairParaOS(false); return; }
+    if (confirm('Ainda há fotos/envios em andamento.\n\nSair agora? O rascunho fica salvo no aparelho e a fila continua na próxima abertura.')) { sairParaOS(false); return; }
+    try { history.pushState({ pgpForm:'diag_oficina' }, '', location.href); } catch(e) {}
+  });
+}
+
 function voltarAoPipeline() {
   clearInterval(_autoVoltaTimer);
   _autoVoltaTimer = null;
@@ -3412,11 +3485,14 @@ function wireInputs(){
   if(p.get('os_numero') && !val('f_os')) document.getElementById('f_os').value=p.get('os_numero');
   if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId)+' · aberta no PCM'; }
   preencherResponsavelSessao();
+  mostrarBotaoVoltarOS();   // 24/08 (F3)
+  armarGuardaVoltar();      // 24/08 (F3)
   carregarMaquinasOS();
   wireInputs();
   refreshEmpty();
   // instância já concluída numa sessão anterior → mostra o status e tenta o PDF pendente
   if(_sending){
+    var _bv=document.getElementById('btnVoltarOS'); if(_bv) _bv.style.display='none';   // 24/08 (F3)
     document.getElementById('app').style.display='none';
     document.getElementById('dock').style.display='none';
     document.getElementById('okScreen').style.display='';

@@ -110,6 +110,26 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Form 01 — Recebimento</title>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     24/08/2026 — TRÊS DEFEITOS DE CAMPO (chamado do Fernando). 100% ADITIVO:
+     nenhum id, função ou action existente foi renomeado; o GAS não muda.
+
+     F1 · FOTO DA GALERIA. Havia UM input, com `capture="environment"` — o
+          aparelho abre a câmera e nem oferece a galeria. Quem fotografou antes
+          de abrir o form não conseguia anexar. Agora são dois caminhos:
+          "📷 Câmera" (input com capture) e "🖼 Galeria" (input SEM capture,
+          múltipla). É o mesmo par que o diag_oficina já usava desde 13/08.
+          ⚠ As fotos da galeria são processadas EM SEQUÊNCIA, com "N de M" na
+            barra: em paralelo, N decodificações de 12 MP travam o aparelho.
+     F3 · VOLTAR PARA A OS. O form só tratava a CONCLUSÃO (12/08); sair no meio
+          não existia. Como o PCF abre o form por `location.href` na mesma aba,
+          o botão físico desfazia essa navegação e caía no boot do PCF SEM
+          `?modo=pipeline&os_id` — ou seja, na LISTA de OS. Agora há botão de
+          voltar no topo e o botão físico é interceptado; os dois vão para o
+          MESMO destino (`destinoDeVolta()`, que já existia e respeita `?ret=`).
+          ⚠ Este form não tem rascunho local: a confirmação só aparece quando há
+            preenchimento a perder, e some depois de enviado.
+     ═══════════════════════════════════════════════════════════════════════ -->
 <style>
   :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -131,6 +151,12 @@ form01.html — 11/07/2026 — Sprint F: form_uid + envio robusto + fotos com et
   .item:first-child{border-top:0;padding-top:0;margin-top:0}
   .photo-zone{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
   .btn-foto{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+  /* 24/08 (F3) — saída para a OS DURANTE o preenchimento. Alvo de 44px: é o
+     mínimo tocável de dedo em campo, e este botão fica ao lado do título. */
+  .btn-voltar-os{display:inline-flex;align-items:center;gap:7px;min-height:44px;
+    background:var(--bg);border:1px solid var(--border);color:var(--muted);
+    border-radius:9px;padding:0 14px;font-size:13px;font-family:inherit;cursor:pointer;margin-bottom:10px}
+  .btn-voltar-os:active{opacity:.7}
   .thumbs{display:flex;gap:6px;flex-wrap:wrap}
   .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid var(--border)}
   .thumb.ok{border-color:var(--green)}.thumb.uploading{opacity:.5}.thumb.erro{border-color:var(--red)}
@@ -299,6 +325,9 @@ function pgpBootAviso(msg){
 </head>
 <body>
 <div id="app">
+  <!-- 24/08 (F3) — sai da tela sem depender do botão físico do aparelho.
+       Escondido por padrão: só aparece quando existe OS/ret para onde voltar. -->
+  <button type="button" class="btn-voltar-os" id="btnVoltarOS" style="display:none" onclick="sairParaOS()">← Voltar para a OS</button>
   <h1>📥 Recebimento de máquina</h1>
   <div class="sub">Registro do estado na chegada à oficina — Form 01</div>
   <div id="osPill" class="pill-info" style="display:none"></div>
@@ -341,10 +370,17 @@ function pgpBootAviso(msg){
     <h2>📷 Fotos da chegada</h2>
     <div class="sub" style="margin-bottom:8px">Registre a máquina por todos os lados + a placa de identificação. Protege contra reclamação posterior.</div>
     <div class="photo-zone">
-      <button class="btn-foto" onclick="pickPhoto('chegada')">📷 Adicionar foto</button>
+      <!-- 24/08 (F1) — eram um botão só, ligado ao input com capture=environment:
+           o aparelho abre a CÂMERA e NÃO oferece a galeria. Quem já tinha
+           fotografado antes de abrir o form não conseguia anexar. Agora são dois
+           caminhos, exatamente como no diag_oficina (Etapa B, 13/08). -->
+      <button class="btn-foto" onclick="pickPhoto('chegada')">📷 Câmera</button>
+      <button class="btn-foto" onclick="pickPhotoGal('chegada')">🖼 Galeria</button>
       <div class="thumbs" id="thumbs-chegada"></div>
     </div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+    <!-- SEM capture= : o aparelho oferece Galeria/Arquivos e aceita várias -->
+    <input type="file" id="fileInputGal" accept="image/*" multiple style="display:none">
   </div>
 
   <button class="btn-primary" id="btnEnviar" onclick="enviar()">✓ Concluir recebimento</button>
@@ -476,7 +512,26 @@ function pickPhoto(secao){
   inp.onchange = e => { const f = e.target.files[0]; if (f) handlePhoto(secao, f); inp.value=''; };
   inp.click();
 }
-function handlePhoto(secao, file){
+// 24/08 (F1) — GALERIA. Mesmo padrão do diag_oficina: input SEM capture=, várias
+// fotos de uma vez, processadas EM SEQUÊNCIA com "N de M" na barra de espera.
+// ⚠ Em paralelo, N decodificações de 12 MP na main thread travam o aparelho —
+//   foi a lição de 13/08 no diag; não repetir aqui.
+function pickPhotoGal(secao){
+  const inp = document.getElementById('fileInputGal');
+  inp.onchange = async e => {
+    const fs = [].slice.call(e.target.files||[]); inp.value='';
+    for (let i=0; i<fs.length; i++){
+      pgpEsperaLonga('📷 Processando foto '+(i+1)+' de '+fs.length+'…');
+      try{ await handlePhoto(secao, fs[i]); }catch(err){}
+    }
+    pgpEsperaLonga(null);
+  };
+  inp.click();
+}
+// 24/08 (F1) — passou a DEVOLVER Promise para o pickPhotoGal poder enfileirar e
+// contar. Quem chamava ignorando o retorno (pickPhoto) continua idêntico.
+function handlePhoto(secao, file){ return new Promise(function(_resolve){ _handlePhoto1(secao, file, _resolve); }); }
+function _handlePhoto1(secao, file, _resolve){
   // 13/08 (perf): a compressao (FileReader + decode + canvas + toDataURL) roda na
   // main thread e, numa foto de 12 MP, trava a tela por segundos ANTES de a
   // miniatura existir. Ate hoje esse intervalo nao tinha sinal nenhum: o tecnico
@@ -492,12 +547,12 @@ function handlePhoto(secao, file){
       cv.getContext('2d').drawImage(img,0,0,w,h);
       const dataUrl = cv.toDataURL('image/jpeg', IMG_QUALITY);
       pgpEsperaLonga(null);   // 13/08 (perf): a miniatura ja assume o sinal daqui
-      uploadPhoto(secao, dataUrl, file.name || 'foto.jpg');
+      Promise.resolve(uploadPhoto(secao, dataUrl, file.name || 'foto.jpg')).then(_resolve, _resolve);
     };
-    img.onerror = () => { pgpEsperaLonga(null); toast('Não consegui ler essa foto'); };  // 13/08 (perf)
+    img.onerror = () => { pgpEsperaLonga(null); toast('Não consegui ler essa foto'); _resolve(); };  // 13/08 (perf)
     img.src = reader.result;
   };
-  reader.onerror = () => { pgpEsperaLonga(null); toast('Não consegui ler essa foto'); };  // 13/08 (perf)
+  reader.onerror = () => { pgpEsperaLonga(null); toast('Não consegui ler essa foto'); _resolve(); };  // 13/08 (perf)
   reader.readAsDataURL(file);
 }
 // 29/07 (F-01): metadados CONGELADOS por foto — gerados 1x na captura e reusados
@@ -587,6 +642,7 @@ async function enviar(){
   // _pdfAguardando). Sem PDF, some aqui mesmo.
   if (_osId) { _pdfAguardando = enviarPdfParaDrive(); }
   else { pgpEsperaLonga(null); }
+  var _bv = document.getElementById('btnVoltarOS'); if (_bv) _bv.style.display='none';   // 24/08 (F3)
   document.getElementById('app').style.display='none';
   document.getElementById('okScreen').style.display='';
   document.getElementById('okSub').textContent = _osId ? 'A tarefa de recebimento foi concluída no pipeline.' : 'Fotos salvas no Drive — gere o PDF. Sem OS vinculada, os dados do formulário NÃO ficam no sistema.';
@@ -674,6 +730,59 @@ function cancelarAutoVolta() {
   _autoVoltaCancelado = true;
   var aviso = document.getElementById('auto-volta-aviso');
   if (aviso) aviso.style.display = 'none';
+}
+
+// ══ 24/08 (F3) · SAIR PARA A OS ANTES DE CONCLUIR ═══════════════════════════
+// Chamado do Fernando (24/08): "não tenho como voltar pra OS; se clico no botão
+// voltar do celular já volta direto para a lista de OS".
+// POR QUÊ ACONTECIA: o PCF abre o form por `location.href` na MESMA aba. O botão
+// físico desfaz essa navegação e devolve o PCF ao boot SEM `?modo=pipeline&os_id`
+// — e o PCF, sem esses parâmetros, abre a LISTA. Não era bug do PCF: o form nunca
+// tratou a saída, só a conclusão (prepararTelaFinal, 12/08).
+// COMO FICOU: (a) um botão de voltar visível no topo o tempo todo; (b) o botão
+// físico é interceptado e leva ao MESMO destino (o pipeline daquela OS).
+// ⚠ Este form NÃO tem rascunho local — sair perde o preenchimento. Por isso a
+//   confirmação existe, e só quando há o que perder.
+var _saindoParaOS = false;
+function _f01TemConteudo(){
+  if (Object.keys(state.checklist).length) return true;
+  if ((state.fotos.chegada||[]).length) return true;
+  var ids = ['f_tecnico','f_os','f_cliente','f_equip','f_modelo','f_frete','f_avarias','f_acessorios'];
+  for (var i=0;i<ids.length;i++){ if (val(ids[i])) return true; }
+  return false;
+}
+function mostrarBotaoVoltarOS(){
+  lerRetornoDaUrl();
+  var b = document.getElementById('btnVoltarOS');
+  if (!b) return;
+  if (!destinoDeVolta()) { b.style.display = 'none'; return; }   // avulso: não há para onde
+  b.style.display = '';
+  b.textContent = _retornoUrl ? '← Voltar ao ProperAdmin' : '← Voltar para a OS';
+}
+// confirmar=false ⇒ já foi confirmado (ou não há o que perder)
+function sairParaOS(confirmar){
+  var destino = destinoDeVolta();
+  if (!destino) return false;
+  if (confirmar !== false && !_enviado && _f01TemConteudo()){
+    if (!confirm('Sair sem concluir o recebimento?\n\nO que você preencheu nesta tela será perdido.')) return false;
+  }
+  _saindoParaOS = true;
+  location.href = destino;
+  return true;
+}
+// ⚠ O guard só é armado quando HÁ destino: sem OS, deixar o botão físico agir
+//   normalmente é o certo — o técnico volta para onde estava.
+function armarGuardaVoltar(){
+  if (!destinoDeVolta()) return;
+  try { history.pushState({ pgpForm:'form01' }, '', location.href); } catch(e) { return; }
+  window.addEventListener('popstate', function(){
+    if (_saindoParaOS) return;                    // saída nossa, deixa passar
+    if (_enviado) { sairParaOS(false); return; }  // já enviado: nada a perder
+    if (!_f01TemConteudo()) { sairParaOS(false); return; }
+    if (confirm('Sair sem concluir o recebimento?\n\nO que você preencheu nesta tela será perdido.')) { sairParaOS(false); return; }
+    // ficou: repõe o estado consumido, senão o próximo toque sai sem perguntar
+    try { history.pushState({ pgpForm:'form01' }, '', location.href); } catch(e) {}
+  });
 }
 
 function voltarAoPipeline() {
@@ -1200,6 +1309,8 @@ function preencherResponsavelSessao(){
   if (_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: ' + (p.get('os_numero')||_osId); }
   document.getElementById('f_data').value = new Date().toISOString().slice(0,10);
   preencherResponsavelSessao();
+  mostrarBotaoVoltarOS();   // 24/08 (F3)
+  armarGuardaVoltar();      // 24/08 (F3)
   carregarMaquinasOS();
 })();
 </script>
