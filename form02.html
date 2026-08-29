@@ -2424,7 +2424,7 @@ async function _tentarUploadFoto(secao, compressed, thumbId, os, cliente) {
   try {
     const payload = {
       action: 'salvarFotoForm',
-      key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+      key: 'fb9e6bd8b112a4a50eb30fbcedc7681fc29c331af4600584656ade9dace002da',
       os, cliente, secao, nomeArquivo: fileName, base64, mimeType,
       entity_type: 'form02', categoria: 'foto_form02',
       client_ts: _clientTs, foto_uid: _fotoUid
@@ -2505,7 +2505,7 @@ async function goToFinal() {
     try {
       var _payload = {
         action: 'saveFormulario',
-        key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+        key: 'fb9e6bd8b112a4a50eb30fbcedc7681fc29c331af4600584656ade9dace002da',
         os_id: _osId,
         tarefa_id: _tarefaId,
         tipo_formulario: 'form02',
@@ -3083,7 +3083,7 @@ async function pdfHidratarFotosDrive() {
       try {
         const d = await gasPostJson({
           action: 'getFotoBase64',
-          key: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
+          key: 'fb9e6bd8b112a4a50eb30fbcedc7681fc29c331af4600584656ade9dace002da',
           url: u
         }, 2);
         if (d && d.status === 'ok' && d.base64) {
@@ -3478,7 +3478,7 @@ function installPWAManifest() {
 var _maquinas = [];
 var _maqAtual = null;     // máquina aplicada (etiqueta o PDF no Drive)
 var _pdfEnviado = false;  // sobe o PDF ao Drive 1x por sessão do form
-var FORM_KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+var FORM_KEY = 'fb9e6bd8b112a4a50eb30fbcedc7681fc29c331af4600584656ade9dace002da';
 function escOpt(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
 function maqLabel(m){
   var base = [m.brand, m.model].filter(Boolean).join(' ');
