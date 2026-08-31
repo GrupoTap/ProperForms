@@ -638,8 +638,10 @@ function pgpBootAviso(msg){
       <div><label>Local de instalação (planta / endereço)</label><input type="text" id="f_local" placeholder="Onde a máquina foi deixada e instalada"></div>
       <div class="row2">
         <div><label>Contrato / Proposta nº</label><input type="text" id="f_contrato"></div>
-        <div><label>Nº do empréstimo (se houver)</label><input type="text" id="f_emp_num"></div>
+        <div><label>Nº do empréstimo</label><input type="text" id="f_emp_num"></div>
       </div>
+      <button type="button" class="btn-sign" style="margin-top:8px;font-size:13.5px;padding:10px" onclick="empGerarNumeros()">↻ Gerar os dois pelo nº da OS</button>
+      <div class="parte-nota" id="empNumNota"></div>
     </div>
 
     <div class="emp-sec">
@@ -1025,6 +1027,37 @@ function _gasMsgErro(e){
   if (e && (e.name === 'TimeoutError' || e.name === 'AbortError' || /timed? ?out|abort/i.test(String(e.message||''))))
     return new Error('o servidor não respondeu a tempo — tente de novo');
   return e;
+}
+
+/* 🔴 31/08 (2ª volta) — POR QUE EXISTE UMA LEITURA POR GET AQUI.
+   O `getClientsForField` do GAS v133 vive **só no `doGet`** (linha 4646, entre
+   o `doGet` da 4505 e o `doPost` da 4763). Pedindo por POST, como faz todo o
+   resto deste formulário, ele cai no `default:` do `doPost` e volta
+   `{status:'error', error:'Ação desconhecida: getClientsForField'}` — que é
+   JSON VÁLIDO, então o `gcFetchJson` não lança, o `catch` nunca roda e o
+   `d.clients` chega `undefined`. A lista montava com a frase de SUCESSO e zero
+   clientes: **a falha vestida de estado normal**, a mesma família da A5, do
+   SYNC-01 e da PCF V101.
+   ⚠ E a bancada não pegou porque MOCKAVA o `getClientsForField` devolvendo a
+   lista pronta — nunca provou que a action responde ao verbo que este arquivo
+   usa. É a lição A5 outra vez, num disfarce novo.
+   O padrão do GET é o do PCM: `?action=…&key=…`, `{method:'GET'}`. */
+async function gcFetchJsonGet(action, extra){
+  var qs = '?action=' + encodeURIComponent(action) + '&key=' + encodeURIComponent(KEY);
+  Object.keys(extra || {}).forEach(function(k){
+    qs += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(extra[k]);
+  });
+  /* mesmo teto de LEITURA que o `_gasFetchComTeto` já usa — o boot deste
+     formulário não pode ficar "carregando…" por três minutos (chamado de 13/08). */
+  var sinal = _gasSinal(GAS_TIMEOUT_LEITURA);
+  try{
+    var opts = { method:'GET', cache:'no-store' };
+    if (sinal) opts.signal = sinal;
+    var r = await fetch(GAS_URL + qs, opts);
+    var t = await r.text();
+    try { return JSON.parse(t); }
+    catch(e){ throw new Error('servidor respondeu página de erro (não-JSON)'); }
+  } catch(e){ throw _gasMsgErro(e); }
 }
 
 async function gcFetchJson(payload, tentativas){
@@ -1809,6 +1842,7 @@ function captura(){
     destino_cnpj:val('f_dest_cnpj'), destino_cidade:val('f_dest_cidade'),
     destino_telefone:val('f_dest_fone'), destino_contato:val('f_dest_contato'),
     local:val('f_local'), contrato:val('f_contrato'), numero:val('f_emp_num'),
+    numero_auto:_numAuto,
     taxa:_vl.taxa, diaria:_vl.diaria, mensal:_vl.mensal,
     aprov_min:EMP_APROV_MIN, total_livre:EMP_TOTAL_LIVRE, dias_diaria:EMP_DIAS_DIARIA
   };
@@ -1867,6 +1901,7 @@ function hydrateUI(){
   var em=state.emprestimo||{}, mq=state.maquina||{}, mc=state.maquinaCliente||{}, pz=state.prazos||{};
   setV('f_proprietario',em.proprietario||lo.proprietario); setV('f_local',em.local||lo.local);
   setV('f_contrato',em.contrato||lo.contrato); setV('f_emp_num',em.numero);
+  _numAuto = em.numero_auto || '';
   setV('f_inicio',pz.inicio||lo.inicio); setV('f_previsao',pz.previsao_devolucao||lo.previsao);
   setV('f_diag_prev',pz.diag_previsto); setV('f_sim_diag',pz.sim_diag); setV('f_sim_aprov',pz.sim_aprov);
   if(em.taxa   != null) setV('f_vl_taxa',   em.taxa);
@@ -2712,9 +2747,12 @@ function wireInputs(){
   /* o nome digitado do destino muda a resposta de "este cliente é novo?" — o
      bloco de CNPJ/cidade tem de aparecer e sumir enquanto se digita, não só no
      blur. Handler separado para não pendurar trabalho extra nos outros 30. */
-  ['f_destino','f_cliente'].forEach(function(id){
+  ['f_destino','f_cliente','f_os'].forEach(function(id){
     var el=document.getElementById(id); if(!el) return;
-    el.addEventListener('input', empAtualizarNovoCliente);
+    /* 31/08 (2ª volta): o nome do destino muda a resposta de "este cliente é
+       novo?" E as iniciais do número sugerido — as duas coisas acompanham a
+       digitação, não só o blur. */
+    el.addEventListener('input', function(){ empAtualizarNovoCliente(); empRecalcular(); });
   });
 }
 
@@ -2788,18 +2826,35 @@ function empSelDestino(){
 }
 async function empCarregarClientes(){
   var sel = document.getElementById('f_destSel'); if(!sel) return;
+  sel.innerHTML = '<option value="">— carregando a lista do PCM… —</option>';
+  var nomes = [], full = [], erro = '';
   try{
-    var d = await gcFetchJson({ action:'getClientsForField' });
-    var full = (d && d.clientsFull) || [];
-    var nomes = (d && d.clients) || full.map(function(c){ return c.nome; });
-    _clientesPCM = full.length ? full : nomes.map(function(n){ return { nome:n }; });
-    sel.innerHTML = '<option value="">— escolher na lista do PCM —</option>'
-      + nomes.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
-    if(_destPreSel){ sel.value = _destPreSel; if(sel.value) empSelDestino(); _destPreSel=''; }
-  }catch(e){
-    // silencioso, como o resto do boot: sem rede o técnico digita o nome e toca o trabalho
-    sel.innerHTML = '<option value="">— lista do PCM indisponível: digite o nome abaixo —</option>';
+    var d = await gcFetchJsonGet('getClientsForField');   // GET: a action só existe no doGet
+    /* 🔴 A GUARDA QUE FALTAVA. Antes bastava a resposta ser JSON para o caminho
+       de sucesso seguir: `d.clients` undefined virava lista vazia e o select
+       dizia "escolher na lista do PCM" sem ter nada para escolher. Agora o
+       sucesso exige o que o sucesso tem: um ARRAY de clientes. Qualquer outra
+       coisa — status de erro, chave faltando, action desconhecida — é FALHA, e
+       a falha aparece com o motivo. */
+    if(!d || d.status === 'error' || !Array.isArray(d.clients)){
+      erro = (d && (d.error || d.message)) || 'resposta sem a lista de clientes';
+    } else {
+      nomes = d.clients;
+      full  = Array.isArray(d.clientsFull) ? d.clientsFull : [];
+      if(!nomes.length) erro = 'o PCM não devolveu nenhum cliente';
+    }
+  }catch(e){ erro = (e && e.message) || 'sem conexão'; }
+
+  if(erro){
+    _clientesPCM = [];
+    sel.innerHTML = '<option value="">⚠ lista indisponível (' + esc(String(erro).slice(0,60)) + ') — digite o nome abaixo</option>';
+    empAtualizarNovoCliente();
+    return;
   }
+  _clientesPCM = full.length ? full : nomes.map(function(n){ return { nome:n }; });
+  sel.innerHTML = '<option value="">— escolher na lista do PCM (' + nomes.length + ') —</option>'
+    + nomes.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
+  if(_destPreSel){ sel.value = _destPreSel; if(sel.value) empSelDestino(); _destPreSel=''; }
   empAtualizarNovoCliente();
 }
 // Sobe o que foi digitado para o cabeçalho. Sobrescreve DE PROPÓSITO — é um
@@ -2866,8 +2921,65 @@ function empEcoDatas(){
     }
   });
 }
+/* ══ 31/08 (2ª volta) — NÚMERO DO EMPRÉSTIMO E DO CONTRATO ═══════════════
+   Pedido do Fernando: parar de inventar número em campo. Formato decidido por
+   ele: `EMP-<nº da OS sem prefixo>-<iniciais de quem recebeu>`, ex.
+   `EMP-2026-0101-JRF` a partir da OS `PGP-2026-0101` e da J.R. Ferragens. O
+   contrato nasce com o MESMO número (decisão dele) e é sobrescrito à mão quando
+   houver proposta de verdade.
+
+   🔑 **Derivado, não sorteado, e sem contador.** O número da OS já é único e o
+   destino já está na tela — então o mesmo empréstimo gera SEMPRE o mesmo
+   número, em qualquer aparelho, com ou sem rede. Um contador de verdade
+   ("próximo nº livre") exigiria action nova no GAS e abriria corrida entre dois
+   técnicos offline gerando o mesmo número. Aqui não há o que colidir.
+
+   ⚠ Só preenche campo VAZIO. O que o técnico digitar manda sempre — o botão ↻
+   é a única coisa que sobrescreve, e ele é um toque deliberado. */
+function empIniciais(nome){
+  var t = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  var IGNORAR = ['DE','DA','DO','DAS','DOS','E','LTDA','ME','EPP','SA','S','A','EIRELI','CIA'];
+  var partes = String(t).split(/[^A-Z0-9]+/).filter(function(p){
+    return p && IGNORAR.indexOf(p) < 0;
+  });
+  if(!partes.length) return '';
+  return partes.map(function(p){ return p.charAt(0); }).join('').slice(0,4);
+}
+function empNumeroSugerido(){
+  var os = String(val('f_os')||'').trim();
+  if(!os) return '';
+  var miolo = os.replace(/^[A-Za-z]+[-_ ]*/, '').trim() || os;
+  var ini = empIniciais(empDestinoNome());
+  return 'EMP-' + miolo + (ini ? ('-' + ini) : '');
+}
+/* 🔴 O QUE A BANCADA PEGOU (31/08, 2ª volta): "só preencher campo vazio" NÃO
+   BASTA AQUI. O nº da OS chega pela URL, no boot — antes de existir destino. O
+   primeiro cálculo gravava `EMP-2026-0101` sem iniciais, e a partir daí o campo
+   não estava mais vazio: escolher a J.R. Ferragens depois NUNCA acrescentava o
+   `-JRF`. Na prática o sufixo que o Fernando pediu quase nunca sairia.
+   A regra certa distingue duas coisas que "campo preenchido" confunde: o que o
+   TÉCNICO digitou (intocável) e o que ESTE CÓDIGO sugeriu (pode ser atualizado
+   quando a sugestão muda). `_numAuto` guarda a última sugestão escrita; se o
+   campo ainda é exatamente ela, ninguém digitou por cima e dá para melhorar. */
+let _numAuto = '';
+function empAplicarNumeros(forcar){
+  var num = empNumeroSugerido(); if(!num) return;
+  var mexeu = false;
+  ['f_emp_num','f_contrato'].forEach(function(id){
+    var el = document.getElementById(id); if(!el) return;
+    var atual = el.value.trim();
+    var nosso = (atual === '' || (!!_numAuto && atual === _numAuto));
+    if(forcar || nosso){ if(atual !== num){ el.value = num; mexeu = true; } }
+  });
+  _numAuto = num;
+  if(forcar){ toast('Número gerado: ' + num); scheduleSave(); }
+  else if(mexeu){ scheduleSave(); }
+}
+function empGerarNumeros(){ empAplicarNumeros(true); }
+
 function empRecalcular(){
   empEcoDatas();
+  empAplicarNumeros(false);   // nunca sobrescreve o que o técnico digitou
   var iso = val('f_inicio');
   var vl = empValores();
   var diagPrev = Number(val('f_diag_prev')) || EMP_DIAG_PADRAO;
@@ -2907,6 +3019,13 @@ function empRecalcular(){
           var forte = (c.diag === diagPrev) ? ' style="background:rgba(245,130,32,.12)"' : '';
           return '<tr'+forte+'><td class="n">'+c.diag+' dias</td><td class="n">'+c.livre+' dias</td><td class="n">'
                + (iso ? esc(c.limite) : (c.totalLivre + ' dias')) + '</td></tr>'; }).join('');
+  }
+  var numNota = document.getElementById('empNumNota');
+  if(numNota){
+    var _sug = empNumeroSugerido();
+    numNota.innerHTML = _sug
+      ? ('Sugestão a partir da OS e do destino: <b>' + esc(_sug) + '</b>. Os dois campos nascem com ela e você <b>pode sobrescrever</b> — havendo proposta de verdade no Omie, o número dela manda.')
+      : 'Assim que houver nº da OS e destino, os dois campos são preenchidos sozinhos.';
   }
   var cenNota = document.getElementById('empCenNota');
   if(cenNota){
