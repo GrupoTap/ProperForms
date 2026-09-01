@@ -1756,7 +1756,7 @@ Laudo.prototype.fecharRodapes = function(){
    MOTOR DE DIAGNÓSTICO + UI + CONTRATO
    ═══════════════════════════════════════════════════════════════════════════ */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
-const KEY = 'fb9e6bd8b112a4a50eb30fbcedc7681fc29c331af4600584656ade9dace002da';
+const KEY = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 const MAX_IMG_PX = 1200, IMG_QUALITY = 0.82;
 const TIPO_FORM = 'diagnostico';
 const PCF_PIPELINE_URL = 'https://grupotap.github.io/ProperTech/index.html';
@@ -2242,6 +2242,8 @@ function enfileirarFoto(f){
     body:{ action:'salvarFotoForm', os:state.ident.os||_osId, cliente:state.ident.cliente||'',
            secao:'diagnostico', legenda:f.legenda||'', nomeArquivo:f.photoId+'.jpg',
            base64:f.dataUrl.split(',')[1], mimeType:'image/jpeg', categoria:'foto_diagnostico',
+           // 01/09 — id da OS e autor (o PDF já usava id_os; a foto usava o número)
+           os_id:_osId, createdBy:((state.ident&&state.ident.tecnico)||''),
            entity_type:'os', foto_uid:f.foto_uid, client_ts:f.client_ts } });
 }
 
@@ -2310,6 +2312,24 @@ async function enviar(){
     observacao: state.obs,
     assinaturas: state.assinaturas.map(function(s){ return {papel:s.papel, nome:s.nome}; })
   };
+  // ══════════════════════════════════════════════════════════════════════
+  // 01/09/2026 — O PDF ENTRA NA FILA ANTES DO `saveFormulario`.
+  //
+  // Medido na PGP-2026-0064 (entrega em empréstimo, 31/08): as fotos subiram
+  // 19:52, o `saveFormulario` às 20:55 — e ele FECHA a tarefa L01 pelo
+  // `autoCompletarTarefa`. O PDF só chegou no dia seguinte, 16:57, pela
+  // retomada do `_pdfPendente`. Entre um e outro o pipeline mostrava
+  // "Concluído por: Geovani · Auto ⚙" e NADA dizia que faltava o laudo.
+  //
+  // A fila do ProperSafe é FIFO: enfileirar o PDF primeiro faz a tarefa fechar
+  // depois do laudo ter subido, na ordem em que os dois fatos acontecem.
+  // ⚠ NÃO BLOQUEIA a conclusão quando o PDF falha (regra v129: a coleta vale
+  //   mais que o rito) — mas o fracasso passa a ficar ESCRITO no campos_json,
+  //   e é dele que o PCM V164 tira o chip "concluída sem PDF no Drive".
+  // ══════════════════════════════════════════════════════════════════════
+  var _pdfOk0109 = await enfileirarPdf();
+  payload.pdf = { gerado: !!_pdfOk0109, motivo: _pdfOk0109 ? '' : String(_pdfErroMsg || ''),
+                  pdf_uid: 'pdf_' + _formUid, quando: new Date().toISOString() };
   var _sess = null; try{ _sess = JSON.parse(localStorage.getItem('proper_session')||'null'); }catch(e){}
   var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:TIPO_FORM,
     form_uid:_formUid, origem:_origem||'',
@@ -2319,7 +2339,6 @@ async function enviar(){
     fotos_json: JSON.stringify(state.fotos.map(function(f){ return {foto_uid:f.foto_uid, legenda:f.legenda, url:f.url||''}; })) };
   if (_osId) await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Laudo de diagnóstico' });
   _enviado = true; _sending = false;
-  await enfileirarPdf();
   pintarAvisoPdf();   // 21/08 (P5)
   document.getElementById('okScreen').style.display='block';
   document.getElementById('app').style.display='none';
