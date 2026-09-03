@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<!--
+  ASSINAR — Assinatura remota do cliente · ProperCare · build ASSINAR_V1
+  ═══════════════════════════════════════════════════════════════════════════
+  ASSINAR_V1 — 03/09/2026 — nasce com o GAS v135 e o PCM V165.
+  Caso que motivou: OS PGP-2026-0067 (Herculano Mineração) — o responsável não
+  estava no local e o laudo subiu sem a assinatura do cliente.
+
+  O QUE ESTA PÁGINA É: o link que o PCM gera (✍️ na Gestão de Documentos) e o
+  adm manda por WhatsApp. O cliente abre no celular, LÊ o laudo renderizado
+  aqui mesmo (pdf.js), toca em Assinar, desenha a assinatura (motor de overlay
+  portado do form_corretiva/PCF V63 — etapa nome + etapa paisagem), e a página
+  monta o "TERMO DE CIÊNCIA DO CLIENTE" como página final do MESMO PDF
+  (pdf-lib, no navegador dele — o padrão client-side dos forms). O PDF volta
+  por assinaturaRemotaConcluir e o supersede do GAS v106 troca o ativo no
+  PCM/Portal. O PCM é avisado por notificação.
+
+  🔑 ESTA PÁGINA NÃO CARREGA A API KEY — de propósito. Ela vai para terceiros.
+     A credencial é o token de uso único da URL (?t=...), validado no GAS
+     (fail-closed: toda recusa é "Link inválido ou expirado.").
+  🔑 IDEMPOTENTE NO REENVIO: o GAS deriva pdf_uid do token ('assrem_'+token),
+     então tocar em "Tentar de novo" nunca duplica arquivo.
+  ⚠ CDNs: pdf.js 3.11.174 (render) + pdf-lib 1.17.1 (termo). Sem CDN não há
+    modo offline — quem abre este link está online (veio do WhatsApp).
+  ⚠ Fontes standard do pdf-lib são WinAnsi: nome do assinante é higienizado
+    para Latin-1 antes de desenhar (emoji no nome não derruba o termo).
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Assinatura de Laudo — Proper Compressores</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--orange:#f97316;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.4;padding:16px 16px 120px;max-width:640px;margin:0 auto}
+  h1{font-size:20px;font-weight:700;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .card h2{font-size:15px;margin-bottom:10px;color:#cbd5e1}
+  .kv{display:flex;gap:8px;font-size:13px;padding:3px 0}
+  .kv .k{color:var(--muted);flex:none;min-width:78px}
+  .kv .v{font-weight:600;word-break:break-word}
+  .pill-info{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:2px 8px;display:inline-block;margin-bottom:8px}
+  .btn-primary{width:100%;background:var(--accent);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
+  .btn-primary:disabled{opacity:.5}
+  .btn-sign{width:100%;background:#243349;border:1px solid var(--border);color:#fff;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  .ok-msg{text-align:center;padding:32px 16px}
+  .ok-msg .big{font-size:44px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--border);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;font-size:13px;z-index:99}
+  #toast.show{opacity:1}
+
+  /* ── O laudo, página a página ── */
+  #pdfPages{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+  #pdfPages canvas{width:100%;height:auto;display:block;border-radius:8px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  .pg-count{text-align:center;font-size:11px;color:var(--muted);margin-bottom:4px}
+
+  /* ── Barra fixa de ação (só enquanto dá para assinar) ── */
+  #barAssinar{position:fixed;left:0;right:0;bottom:0;background:rgba(15,23,42,.96);border-top:1px solid var(--border);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0));display:none;z-index:90}
+  #barAssinar.show{display:block}
+  #barAssinar .inner{max-width:640px;margin:0 auto}
+  #barAssinar .decl{font-size:11px;color:var(--muted);text-align:center;margin-bottom:6px}
+  #barAssinar button{width:100%;background:var(--orange);border:0;color:#fff;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+  #barAssinar button:disabled{opacity:.55}
+
+  .center{text-align:center;padding:40px 16px}
+  .spin{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;margin-bottom:12px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ── ASSINATURA — overlay full-screen (motor portado do form_corretiva /
+     PCF V63): etapa 1 = nome (retrato); etapa 2 = assinatura em PAISAGEM,
+     palco rotacionado 90° via CSS quando a tela é retrato (iOS-safe). ── */
+  .pgp-sign-overlay{ position:fixed; inset:0; z-index:100000; background:#0d1117; display:none;
+    color:#fff; -webkit-user-select:none; user-select:none; touch-action:none; overflow:hidden }
+  .pgp-sign-overlay.open{ display:block }
+  .pgp-sign-name{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px calc(20px + env(safe-area-inset-right,0)) calc(24px + env(safe-area-inset-bottom,0)) calc(20px + env(safe-area-inset-left,0)); gap:14px; text-align:center }
+  .pgp-sign-name h3{ font-family:sans-serif; font-weight:700; font-size:22px; margin:0; color:#fff }
+  .pgp-sign-name p{ font-size:14px; color:#c3ccd6; margin:0; max-width:340px; line-height:1.4 }
+  .pgp-sign-name input{ width:100%; max-width:360px; font-size:18px; padding:14px 14px; border-radius:12px; border:2px solid #30363d;
+    background:#161b22; color:#fff; outline:none; text-align:center; font-family:inherit }
+  .pgp-sign-name input:focus{ border-color:var(--orange) }
+  .pgp-sign-name .pgp-sign-row{ display:flex; gap:10px; width:100%; max-width:360px; margin-top:6px }
+  .pgp-sign-btn{ flex:1; font-family:sans-serif; font-weight:700; font-size:16px; padding:14px 10px; border-radius:12px;
+    border:2px solid #30363d; background:#161b22; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:.5px }
+  .pgp-sign-btn.primary{ background:var(--orange); border-color:var(--orange); color:#fff }
+  .pgp-sign-btn:disabled{ opacity:.45; pointer-events:none }
+  .pgp-sign-stage{ position:absolute; inset:0; display:none; flex-direction:column; background:#0d1117 }
+  .pgp-sign-stage.show{ display:flex }
+  .pgp-sign-stage.is-rotated{ transform-origin:top left; transform:rotate(90deg) translate(0,-100%);
+    width:100vh; height:100vw }
+  .pgp-sign-top{ flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; min-height:40px }
+  .pgp-sign-top .lbl{ font-family:sans-serif; font-weight:700; font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pgp-sign-top .hint{ font-size:12px; color:#8b949e; white-space:nowrap }
+  .pgp-sign-canvas-wrap{ flex:1; position:relative; background:#fff; margin:10px; border-radius:10px; overflow:hidden;
+    box-shadow:inset 0 0 0 2px #30363d }
+  .pgp-sign-canvas-wrap::before{ content:'Assine aqui'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:#d0d4dc; font-family:sans-serif; font-weight:700; font-size:26px; letter-spacing:1px; pointer-events:none }
+  .pgp-sign-canvas-wrap.inked::before{ display:none }
+  .pgp-sign-canvas-wrap::after{ content:''; position:absolute; left:8%; right:8%; bottom:22%; border-bottom:2px dashed #c8ccd4; pointer-events:none }
+  .pgp-sign-canvas{ position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:crosshair; display:block }
+  .pgp-sign-bottom{ flex:none; display:flex; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0)); background:#161b22; border-top:1px solid #30363d }
+  .pgp-sign-bottom .pgp-sign-btn{ padding:12px 8px; font-size:15px }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="center" id="loading"><div class="spin"></div><div class="sub">Carregando o laudo…</div></div>
+</div>
+
+<!-- OVERLAY DE ASSINATURA (montado 1x) -->
+<div class="pgp-sign-overlay" id="pgpSignOverlay" aria-hidden="true">
+  <div class="pgp-sign-name" id="pgpSignNameStep">
+    <h3 id="pgpSignTitle">Assinatura</h3>
+    <p id="pgpSignSub">Digite o seu nome completo e toque em Avançar.</p>
+    <input id="pgpSignNameInput" type="text" placeholder="Nome completo" autocomplete="name"
+           autocapitalize="words" data-lpignore="true" data-1p-ignore>
+    <div class="pgp-sign-row">
+      <button type="button" class="pgp-sign-btn" id="pgpSignCancelBtn">Cancelar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignNextBtn">Avançar ✍️</button>
+    </div>
+  </div>
+  <div class="pgp-sign-stage" id="pgpSignStage">
+    <div class="pgp-sign-top">
+      <span class="lbl" id="pgpSignStageLbl">Assinatura</span>
+      <span class="hint">👆 Assine com o dedo ou caneta</span>
+    </div>
+    <div class="pgp-sign-canvas-wrap" id="pgpSignCanvasWrap">
+      <canvas class="pgp-sign-canvas" id="pgpSignCanvas"></canvas>
+    </div>
+    <div class="pgp-sign-bottom">
+      <button type="button" class="pgp-sign-btn" id="pgpSignBackBtn">← Voltar</button>
+      <button type="button" class="pgp-sign-btn" id="pgpSignClearBtn">↺ Limpar</button>
+      <button type="button" class="pgp-sign-btn primary" id="pgpSignConfirmBtn">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="barAssinar">
+  <div class="inner">
+    <div class="decl">Ao assinar, você declara ciência do serviço descrito neste laudo.</div>
+    <button id="btnAssinar" onclick="iniciarAssinatura()">✍️ Li o laudo — Assinar</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script>
+'use strict';
+var BUILD = 'ASSINAR_V1';
+// O MESMO /exec dos forms. SEM API key nesta página — a credencial é o token.
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
+
+var TOKEN = (function(){ try { return new URLSearchParams(location.search).get('t') || ''; } catch(e){ return ''; } })();
+var _meta = null;          // resposta do assinaturaRemotaAbrir
+var _pdfBytes = null;      // Uint8Array do PDF original
+var _pdfAssinadoB64 = null;// base64 do PDF com o termo (para retry sem redesenhar)
+var _assinatura = null;    // { nome, dataUrl, w, h }
+
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+function b64ToBytes(b64){
+  var bin = atob(b64), out = new Uint8Array(bin.length);
+  for (var i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes){
+  var CH = 0x8000, parts = [];
+  for (var i=0;i<bytes.length;i+=CH) parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i+CH)));
+  return btoa(parts.join(''));
+}
+// WinAnsi das fontes standard do pdf-lib: fora do Latin-1 vira '?', nunca erro.
+// Tipográficos comuns (— – … aspas curvas) viram equivalentes ASCII antes —
+// um rótulo de máquina com travessão não pode virar "Compressor ? Chiaperini".
+function latin1(s){
+  return String(s||'')
+    .replace(/[‘’ʼ]/g,"'").replace(/[“”]/g,'"')
+    .replace(/…/g,'...').replace(/[–—]/g,'-').replace(/[   ]/g,' ')
+    .replace(/[^ -~ -ÿ]/g,'?');
+}
+
+async function gasPost(payload){
+  var r = await fetch(GAS_URL, { method:'POST', body: JSON.stringify(payload) });
+  var tx = await r.text();
+  try { return JSON.parse(tx); }
+  catch(e){ throw new Error('O servidor respondeu fora do esperado. Tente de novo.'); }
+}
+
+function telaErro(msg, comRetry){
+  document.getElementById('barAssinar').classList.remove('show');
+  document.getElementById('app').innerHTML =
+    '<div class="ok-msg"><div class="big">⚠️</div><h1>Não foi possível abrir</h1>'
+    + '<p class="sub" style="margin-top:8px">'+esc(msg)+'</p>'
+    + (comRetry ? '<button class="btn-primary" style="max-width:320px" onclick="location.reload()">↻ Tentar de novo</button>' : '')
+    + '<p class="sub" style="margin-top:16px">Se o problema continuar, avise quem lhe enviou este link.</p></div>';
+}
+
+function telaJaAssinado(d){
+  document.getElementById('barAssinar').classList.remove('show');
+  var quando = d.assinado_em ? new Date(d.assinado_em).toLocaleString('pt-BR') : '';
+  document.getElementById('app').innerHTML =
+    '<div class="ok-msg"><div class="big">✅</div><h1>Documento já assinado</h1>'
+    + '<p class="sub" style="margin-top:8px">'+esc(d.file_name||'O laudo')+(d.os_numero?' (OS '+esc(d.os_numero)+')':'')
+    + ' já foi assinado'+(d.assinado_nome?' por <b>'+esc(d.assinado_nome)+'</b>':'')+(quando?' em '+esc(quando):'')+'.</p>'
+    + '<p class="sub" style="margin-top:12px">A Proper Compressores já recebeu o documento. Este link não pode ser usado de novo.</p></div>';
+}
+
+function telaConcluida(nome){
+  document.getElementById('barAssinar').classList.remove('show');
+  document.getElementById('app').innerHTML =
+    '<div class="ok-msg"><div class="big">✅</div><h1>Assinatura enviada!</h1>'
+    + '<p class="sub" style="margin-top:8px">Obrigado, <b>'+esc(nome)+'</b>. O laudo assinado já está com a equipe da Proper Compressores.</p>'
+    + '<button class="btn-sign" style="max-width:320px;margin-top:16px" onclick="baixarCopia()">⬇️ Baixar uma cópia (PDF)</button></div>';
+}
+
+function baixarCopia(){
+  try {
+    var bytes = b64ToBytes(_pdfAssinadoB64);
+    var blob = new Blob([bytes], { type:'application/pdf' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (_meta && _meta.file_name) ? _meta.file_name.replace(/\.pdf$/i,'') + '_assinado.pdf' : 'laudo_assinado.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch(e){ toast('Não consegui gerar o download: ' + e.message); }
+}
+
+// ── Abertura: token → laudo na tela ─────────────────────────────────────────
+async function abrir(){
+  if (!TOKEN){ telaErro('Este endereço está incompleto — falta o código do link. Abra exatamente o link que você recebeu.', false); return; }
+  var d;
+  try { d = await gasPost({ action:'assinaturaRemotaAbrir', token: TOKEN }); }
+  catch(e){ telaErro('Sem conexão com o servidor. Verifique a internet e tente de novo.', true); return; }
+  if (!d || d.status !== 'ok'){ telaErro((d && d.error) || 'Link inválido ou expirado.', false); return; }
+  if (d.ja_assinado){ telaJaAssinado(d); return; }
+  _meta = d;
+  _pdfBytes = b64ToBytes(d.pdf_base64);
+
+  var app = document.getElementById('app');
+  app.innerHTML =
+    '<span class="pill-info">Proper Compressores · assinatura de laudo</span>'
+    + '<h1>Leia e assine o laudo</h1>'
+    + '<p class="sub">Confira o relatório abaixo. Depois toque em <b>Assinar</b> no rodapé — a assinatura é feita aqui mesmo, na tela do celular.</p>'
+    + '<div class="card"><h2>📄 Documento</h2>'
+    + '<div class="kv"><span class="k">Arquivo</span><span class="v">'+esc(d.file_name)+'</span></div>'
+    + (d.os_numero ? '<div class="kv"><span class="k">OS</span><span class="v">'+esc(d.os_numero)+'</span></div>' : '')
+    + (d.cliente ? '<div class="kv"><span class="k">Cliente</span><span class="v">'+esc(d.cliente)+'</span></div>' : '')
+    + (d.maquina ? '<div class="kv"><span class="k">Máquina</span><span class="v">'+esc(d.maquina)+'</span></div>' : '')
+    + '</div>'
+    + '<div class="pg-count" id="pgCount"></div>'
+    + '<div id="pdfPages"><div class="center"><div class="spin"></div><div class="sub">Preparando as páginas…</div></div></div>';
+
+  try { await renderizarPdf(); }
+  catch(e){
+    document.getElementById('pdfPages').innerHTML =
+      '<div class="card"><p class="sub">Não consegui mostrar o laudo aqui ('+esc(e.message)+'), mas você ainda pode assiná-lo. '
+      + 'Se quiser ler antes, peça o PDF a quem lhe enviou este link.</p></div>';
+  }
+  document.getElementById('barAssinar').classList.add('show');
+}
+
+async function renderizarPdf(){
+  if (!window.pdfjsLib) throw new Error('leitor de PDF não carregou');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var doc = await pdfjsLib.getDocument({ data: _pdfBytes.slice() }).promise;
+  var wrap = document.getElementById('pdfPages');
+  wrap.innerHTML = '';
+  var cont = document.getElementById('pgCount');
+  if (cont) cont.textContent = doc.numPages + ' página' + (doc.numPages===1?'':'s');
+  var alvoPx = Math.min(1400, Math.max(640, (wrap.clientWidth || 600) * Math.min(2, window.devicePixelRatio || 1)));
+  for (var n=1; n<=doc.numPages; n++){
+    var page = await doc.getPage(n);
+    var vp1 = page.getViewport({ scale: 1 });
+    var scale = alvoPx / vp1.width;
+    var vp = page.getViewport({ scale: scale });
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+    wrap.appendChild(canvas);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  }
+}
+
+// ── Motor de assinatura (portado do form_corretiva / PCF V63) ───────────────
+var _pgpSignCtx = null, _pgpSignRotated = false, _pgpSignHasInk = false, _pgpSignNome = '', _pgpSignBound = false;
+function pgpSignToLocal(clientX, clientY){
+  var canvas = document.getElementById('pgpSignCanvas');
+  var r = canvas.getBoundingClientRect();
+  if (_pgpSignRotated) return { x: clientY - r.top, y: r.right - clientX };
+  return { x: clientX - r.left, y: clientY - r.top };
+}
+function pgpSignMarkInk(){ _pgpSignHasInk = true; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.add('inked'); }
+function pgpSignResetInk(){ _pgpSignHasInk = false; var w=document.getElementById('pgpSignCanvasWrap'); if(w) w.classList.remove('inked'); }
+function pgpSignSetupStage(){
+  var stage=document.getElementById('pgpSignStage'), wrap=document.getElementById('pgpSignCanvasWrap'), canvas=document.getElementById('pgpSignCanvas');
+  if(!stage||!wrap||!canvas) return;
+  var portrait = window.innerHeight > window.innerWidth;
+  stage.classList.toggle('is-rotated', portrait);
+  _pgpSignRotated = portrait;
+  void wrap.offsetWidth;
+  var cw = Math.max(40, wrap.clientWidth), ch = Math.max(40, wrap.clientHeight);
+  var dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  canvas.width = Math.round(cw*dpr); canvas.height = Math.round(ch*dpr);
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cw,ch);
+  ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#111111';
+  _pgpSignCtx = ctx;
+}
+function pgpSignBindCanvasOnce(){
+  if(_pgpSignBound) return;
+  var canvas = document.getElementById('pgpSignCanvas'); if(!canvas) return;
+  _pgpSignBound = true;
+  var drawing=false, lastP=null;
+  canvas.addEventListener('pointerdown', function(ev){
+    if(!_pgpSignCtx) return; ev.preventDefault(); drawing=true;
+    try{ canvas.setPointerCapture(ev.pointerId); }catch(e){}
+    var p=pgpSignToLocal(ev.clientX,ev.clientY); lastP=p;
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(p.x,p.y); _pgpSignCtx.lineTo(p.x+0.1,p.y+0.1); _pgpSignCtx.stroke();
+    pgpSignMarkInk();
+  });
+  canvas.addEventListener('pointermove', function(ev){
+    if(!drawing||!_pgpSignCtx) return; ev.preventDefault();
+    var p=pgpSignToLocal(ev.clientX,ev.clientY);
+    _pgpSignCtx.beginPath(); _pgpSignCtx.moveTo(lastP.x,lastP.y); _pgpSignCtx.lineTo(p.x,p.y); _pgpSignCtx.stroke(); lastP=p;
+  });
+  function end(ev){ if(!drawing) return; drawing=false; lastP=null; try{ canvas.releasePointerCapture(ev.pointerId); }catch(e){} }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+}
+function pgpSignTrim(canvas){
+  var ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height, data;
+  try{ data=ctx.getImageData(0,0,W,H).data; }catch(e){ return null; }
+  var minX=W,minY=H,maxX=0,maxY=0,found=false;
+  for(var y=0;y<H;y++){ for(var x=0;x<W;x++){ var i=(y*W+x)*4;
+    if(data[i]<230||data[i+1]<230||data[i+2]<230){ found=true; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } } }
+  if(!found) return null;
+  var pad=Math.round(10*(window.devicePixelRatio||1));
+  minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(W-1,maxX+pad); maxY=Math.min(H-1,maxY+pad);
+  var tw=maxX-minX+1, th=maxY-minY+1;
+  var out=document.createElement('canvas'); out.width=tw; out.height=th;
+  var octx=out.getContext('2d'); octx.fillStyle='#ffffff'; octx.fillRect(0,0,tw,th);
+  octx.drawImage(canvas,minX,minY,tw,th,0,0,tw,th);
+  return { dataUrl: out.toDataURL('image/png'), w:tw, h:th };
+}
+function pgpColetarAssinatura(cfg){
+  cfg = cfg || {};
+  return new Promise(function(resolve){
+    pgpSignBindCanvasOnce();
+    var ov=document.getElementById('pgpSignOverlay'), nameStep=document.getElementById('pgpSignNameStep'), stage=document.getElementById('pgpSignStage');
+    var nameInput=document.getElementById('pgpSignNameInput'), nextBtn=document.getElementById('pgpSignNextBtn'), cancelBtn=document.getElementById('pgpSignCancelBtn');
+    var backBtn=document.getElementById('pgpSignBackBtn'), clearBtn=document.getElementById('pgpSignClearBtn'), confirmBtn=document.getElementById('pgpSignConfirmBtn');
+    if(!ov){ resolve(null); return; }
+    document.getElementById('pgpSignTitle').textContent = cfg.titulo || 'Assinatura';
+    document.getElementById('pgpSignSub').textContent = cfg.sub || 'Digite o nome e toque em Avançar.';
+    document.getElementById('pgpSignStageLbl').textContent = cfg.stageLbl || cfg.titulo || 'Assinatura';
+    nameInput.value = cfg.nomePrefill || ''; nameInput.style.borderColor='';
+    ov.classList.add('open'); ov.setAttribute('aria-hidden','false');
+    stage.classList.remove('show','is-rotated'); nameStep.style.display='flex';
+    setTimeout(function(){ try{ nameInput.focus(); }catch(e){} }, 60);
+    var done=false;
+    function cleanup(){
+      nextBtn.removeEventListener('click',onNext); cancelBtn.removeEventListener('click',onCancel); backBtn.removeEventListener('click',onBack);
+      clearBtn.removeEventListener('click',onClear); confirmBtn.removeEventListener('click',onConfirm); nameInput.removeEventListener('keydown',onKey);
+      window.removeEventListener('resize',onResize);
+      ov.classList.remove('open'); ov.setAttribute('aria-hidden','true'); stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; _pgpSignCtx=null;
+    }
+    function finish(v){ if(done) return; done=true; cleanup(); resolve(v); }
+    function goStage(){
+      var nome=(nameInput.value||'').trim();
+      if(!nome){ nameInput.style.borderColor='#e5534b'; try{ nameInput.focus(); }catch(e){} return; }
+      _pgpSignNome=nome; nameStep.style.display='none'; stage.classList.add('show');
+      requestAnimationFrame(function(){ pgpSignSetupStage(); pgpSignResetInk(); });
+    }
+    function onNext(){ goStage(); }
+    function onKey(e){ if(e.key==='Enter'){ e.preventDefault(); goStage(); } }
+    function onBack(){ stage.classList.remove('show','is-rotated'); nameStep.style.display='flex'; setTimeout(function(){ try{ nameInput.focus(); }catch(e){} },50); }
+    function onClear(){ pgpSignSetupStage(); pgpSignResetInk(); }
+    function onCancel(){ finish(null); }
+    function onConfirm(){
+      if(!_pgpSignHasInk){ toast('Faça a assinatura antes de confirmar.'); return; }
+      var canvas=document.getElementById('pgpSignCanvas');
+      var t=pgpSignTrim(canvas);
+      if(!t) t={ dataUrl:canvas.toDataURL('image/png'), w:canvas.width, h:canvas.height };
+      finish({ nome:_pgpSignNome, dataUrl:t.dataUrl, w:t.w, h:t.h, ts:Date.now() });
+    }
+    function onResize(){ if(stage.classList.contains('show') && !_pgpSignHasInk) pgpSignSetupStage(); }
+    nextBtn.addEventListener('click',onNext); cancelBtn.addEventListener('click',onCancel); backBtn.addEventListener('click',onBack);
+    clearBtn.addEventListener('click',onClear); confirmBtn.addEventListener('click',onConfirm); nameInput.addEventListener('keydown',onKey);
+    window.addEventListener('resize',onResize);
+  });
+}
+
+// ── Assinar: coleta → termo (pdf-lib) → envio ───────────────────────────────
+async function iniciarAssinatura(){
+  var sig = await pgpColetarAssinatura({
+    titulo:'Assinatura do Responsável', sub:'Digite o seu nome completo e toque em Avançar para assinar na tela.',
+    stageLbl:'Responsável pelo cliente — assine abaixo', nomePrefill:(_assinatura&&_assinatura.nome)||''
+  });
+  if (!sig) return;
+  _assinatura = sig;
+  var btn = document.getElementById('btnAssinar');
+  btn.disabled = true; btn.textContent = '⏳ Preparando o documento…';
+  try {
+    _pdfAssinadoB64 = await montarPdfComTermo(sig);
+  } catch(e){
+    btn.disabled = false; btn.textContent = '✍️ Li o laudo — Assinar';
+    toast('Não consegui montar o termo: ' + e.message);
+    return;
+  }
+  await enviarAssinado(sig.nome);
+}
+
+async function enviarAssinado(nome){
+  var btn = document.getElementById('btnAssinar');
+  btn.disabled = true; btn.textContent = '⏳ Enviando…';
+  var d = null;
+  try {
+    d = await gasPost({ action:'assinaturaRemotaConcluir', token: TOKEN, nome: nome,
+                        pdf_base64: _pdfAssinadoB64,
+                        dispositivo: String(navigator.userAgent||'').slice(0,200) });
+  } catch(e){ d = null; }
+  if (d && d.status === 'ok'){ telaConcluida(nome); return; }
+  btn.disabled = false; btn.textContent = '↻ Tentar enviar de novo';
+  btn.onclick = function(){ enviarAssinado(nome); };
+  toast((d && d.error) || 'Falha no envio. Verifique a internet e toque para tentar de novo.');
+}
+
+// O TERMO DE CIÊNCIA — página A4 final no MESMO PDF (paleta do laudo:
+// laranja #F26522, cinza #3D3D3D). Posição fixa, independente do conteúdo
+// das páginas anteriores — por isso um termo, e não um carimbo por cima da
+// linha de assinatura (as páginas do laudo são imagens de html2canvas; não
+// há coordenada confiável para carimbar em cima).
+async function montarPdfComTermo(sig){
+  if (!window.PDFLib) throw new Error('biblioteca de PDF não carregou');
+  var PDF = window.PDFLib;
+  var doc = await PDF.PDFDocument.load(_pdfBytes);
+  var page = doc.addPage([595.28, 841.89]); // A4 em pontos, como o laudo
+  var W = 595.28, H = 841.89, M = 48;
+  var helv  = await doc.embedFont(PDF.StandardFonts.Helvetica);
+  var helvB = await doc.embedFont(PDF.StandardFonts.HelveticaBold);
+  var cinza  = PDF.rgb(0x3D/255, 0x3D/255, 0x3D/255);
+  var laranja= PDF.rgb(0xF2/255, 0x65/255, 0x22/255);
+  var claro  = PDF.rgb(.45,.45,.45);
+  var linha  = PDF.rgb(.6,.6,.6);
+
+  // Cabeçalho no sistema visual do laudo
+  page.drawRectangle({ x:M, y:H-90, width:12, height:42, color:laranja });
+  page.drawRectangle({ x:M+12, y:H-90, width:W-2*M-12, height:42, color:cinza });
+  page.drawText('TERMO DE CIÊNCIA DO CLIENTE', { x:M+24, y:H-74, size:14, font:helvB, color:PDF.rgb(1,1,1) });
+  page.drawText('Assinatura eletrônica remota · ProperCare · Proper Compressores', { x:M+24, y:H-86.5, size:7.5, font:helv, color:PDF.rgb(.85,.85,.85) });
+
+  var y = H-120;
+  function campo(rotulo, valor){
+    if (!valor) return;
+    page.drawText(latin1(rotulo), { x:M, y:y, size:9, font:helvB, color:cinza });
+    page.drawText(latin1(String(valor)).slice(0,90), { x:M+120, y:y, size:9, font:helv, color:PDF.rgb(.1,.1,.1) });
+    y -= 16;
+  }
+  var agora = new Date();
+  campo('Documento:', _meta.file_name);
+  campo('Ordem de Serviço:', _meta.os_numero);
+  campo('Cliente:', _meta.cliente);
+  campo('Máquina:', _meta.maquina);
+  campo('Data / hora:', agora.toLocaleString('pt-BR') + ' (horário do aparelho)');
+
+  y -= 10;
+  var decl = 'Declaro que li o laudo que compõe as páginas anteriores deste documento e que estou ciente do serviço '
+           + 'executado, das pendências apontadas e da situação final registrada pelo técnico responsável.';
+  // quebra simples em ~95 chars
+  var palavras = latin1(decl).split(' '), linhaTxt = '';
+  palavras.forEach(function(p){
+    if ((linhaTxt + ' ' + p).trim().length > 95){ page.drawText(linhaTxt.trim(), { x:M, y:y, size:9.5, font:helv, color:PDF.rgb(.15,.15,.15) }); y -= 14; linhaTxt = p; }
+    else linhaTxt = (linhaTxt + ' ' + p);
+  });
+  if (linhaTxt.trim()){ page.drawText(linhaTxt.trim(), { x:M, y:y, size:9.5, font:helv, color:PDF.rgb(.15,.15,.15) }); y -= 14; }
+
+  // Assinatura
+  var pngB64 = String(sig.dataUrl||'').split(',')[1] || '';
+  var png = await doc.embedPng(b64ToBytes(pngB64));
+  var maxW = 240, maxH = 90;
+  var k = Math.min(maxW / png.width, maxH / png.height, 1);
+  var sw = png.width * k, sh = png.height * k;
+  var sx = (W - sw) / 2, sy = y - sh - 26;
+  page.drawImage(png, { x:sx, y:sy, width:sw, height:sh });
+  page.drawLine({ start:{ x:W/2-140, y:sy-6 }, end:{ x:W/2+140, y:sy-6 }, thickness:.7, color:linha });
+  page.drawText(latin1(sig.nome).slice(0,60), { x:W/2-140, y:sy-20, size:10, font:helvB, color:PDF.rgb(.1,.1,.1) });
+  page.drawText('Responsável pelo cliente — assinatura eletrônica coletada remotamente', { x:W/2-140, y:sy-32, size:7.5, font:helv, color:claro });
+
+  // Trilha de auditoria — o suficiente para reconstituir o evento sem expor o token inteiro.
+  var trilha = 'Coletada via link de uso único (token ' + String(TOKEN).slice(0,12) + '…) · enviado ao sistema em '
+             + agora.toISOString() + ' · página ' + BUILD;
+  page.drawText(latin1(trilha).slice(0,140), { x:M, y:64, size:6.5, font:helv, color:claro });
+  page.drawText(latin1(String(navigator.userAgent||'').slice(0,120)), { x:M, y:54, size:6.5, font:helv, color:claro });
+  page.drawLine({ start:{ x:M, y:76 }, end:{ x:W-M, y:76 }, thickness:.5, color:linha });
+
+  var bytes = await doc.save();
+  return bytesToB64(bytes);
+}
+
+abrir();
+</script>
+</body>
+</html>
