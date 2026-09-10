@@ -2610,7 +2610,7 @@ async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa 
   PS.onChange(function(){ psRefreshBadge(); });
   try{ await PS.open(); }catch(e){}
   await restoreDraft();
-  if (!state.ident.data) state.ident.data = new Date().toISOString().slice(0,10);
+  if (!state.ident.data) state.ident.data = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10) /* V-09/09: era UTC — entre 21h e 0h dava o dia seguinte */;
   if (!state.ident.cliente) state.ident.cliente = p.get('cliente')||'';
   if (!state.ident.os) state.ident.os = p.get('os_numero')||'';
   if (!state.ident.tecnico){

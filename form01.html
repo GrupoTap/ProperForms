@@ -609,9 +609,52 @@ function captura(){
   state.avarias = val('f_avarias');
   state.acessorios = val('f_acessorios');
 }
+// ══════════════════════════════════════════════════════════════════════════
+// 09/09/2026 (F1) — O RECEBIMENTO FECHAVA COMPLETAMENTE VAZIO.
+//
+// Medido na OS de ensaio PGP-2026-0074: cliquei em "Concluir recebimento" sem
+// responder NENHUMA das 5 perguntas de integridade e sem UMA foto. O servidor
+// gravou `Status=completo`, `Observacao=(vazio)`, `Respostas_JSON=(vazio)`, e
+// o sistema ainda subiu um PDF em branco para o Drive.
+//
+// 🔑 E o que este formulario diz de si mesmo, no card do pipeline E na propria
+//    secao de fotos: "PROTEGE CONTRA RECLAMACAO POSTERIOR". O cliente liga tres
+//    semanas depois dizendo que a carenagem chegou amassada e a defesa da
+//    Proper e um PDF em branco carimbado de "recebimento registrado".
+//
+// ⚠ POR QUE AVISAR E NAO BLOQUEAR: um bloqueio duro entregue na vespera do
+//   teste da oficina pode deixar a equipe sem conseguir fechar a tarefa, e ai
+//   o remedio para o dia. O padrao aqui e o do "botao consumido" do V167: a
+//   1a batida troca o botao por um aviso que DIZ o que falta, a 2a conclui.
+//   Omissao deixa de ser acidente e vira decisao — que e o que se quer.
+// ⚠ So dispara quando uma dimensao INTEIRA esta vazia (zero foto, ou zero
+//   resposta). Checklist pela metade nao avisa: alerta que dispara no caso
+//   normal e ruido, e ruido gasta o alerta.
+// ══════════════════════════════════════════════════════════════════════════
+var _f1AvisoVazioDado = false;
+function _f1FaltasDoRecebimento(){
+  var faltas = [];
+  try { if (!Object.keys(state.checklist || {}).length) faltas.push('nenhuma resposta de integridade'); } catch(e) {}
+  try { if (!(((state.fotos || {}).chegada) || []).length) faltas.push('nenhuma foto'); } catch(e) {}
+  return faltas;
+}
+
 async function enviar(){
   captura();
   const btn = document.getElementById('btnEnviar');
+  // F1 — a batida de aviso (ver bloco acima). Sai antes de qualquer trava de
+  // envio, entao o botao continua limpo e clicavel.
+  if (btn && !_f1AvisoVazioDado) {
+    var _faltas = _f1FaltasDoRecebimento();
+    if (_faltas.length) {
+      _f1AvisoVazioDado = true;
+      btn.textContent = '⚠ ' + _faltas.join(' e ') + ' — tocar de novo para concluir assim mesmo';
+      btn.style.background = '#b45309';
+      btn.style.fontSize = '14px';
+      try { if (navigator.vibrate) navigator.vibrate(40); } catch(e) {}
+      return;
+    }
+  }
   // 13/08 (perf): o disabled+texto ja existia; a classe .is-busy soma o spinner e a
   // trava de duplo-toque. A barra explica o que esta acontecendo — o POST tem ate
   // 3 tentativas com backoff (700/1400 ms), ou seja, pode demorar bastante.
@@ -1307,7 +1350,7 @@ function preencherResponsavelSessao(){
   if (p.get('cliente')) document.getElementById('f_cliente').value = p.get('cliente');
   if (p.get('os_numero')) document.getElementById('f_os').value = p.get('os_numero');
   if (_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: ' + (p.get('os_numero')||_osId); }
-  document.getElementById('f_data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('f_data').value = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10) /* V-09/09: era UTC — entre 21h e 0h dava o dia seguinte */;
   preencherResponsavelSessao();
   mostrarBotaoVoltarOS();   // 24/08 (F3)
   armarGuardaVoltar();      // 24/08 (F3)

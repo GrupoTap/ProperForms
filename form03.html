@@ -1469,7 +1469,7 @@ function preencherResponsavelSessao(){
   if(p.get('cliente')) setIfEmpty('i_cliente',p.get('cliente'));
   if(p.get('os_numero')) setIfEmpty('i_os',p.get('os_numero'));
   prefillFromUrl(p);                 // cabeçalho por URL (prioridade)
-  if(!val('i_data')) document.getElementById('i_data').value=new Date().toISOString().slice(0,10);
+  if(!val('i_data')) document.getElementById('i_data').value=new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10) /* V-09/09: era UTC — entre 21h e 0h dava o dia seguinte */;
   if(_osId){ const pill=document.getElementById('osPill'); pill.style.display=''; pill.textContent='OS vinculada: '+(p.get('os_numero')||_osId); }
   preencherResponsavelSessao();
   carregarMaquinasOS();              // preenche o que a URL não trouxe

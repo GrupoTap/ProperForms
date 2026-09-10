@@ -1181,7 +1181,7 @@ function addBlock(tipo, d, restoring, alvo){
     el = blkShell(uid,'escolha','<div class="esc" id="esc-'+uid+'"></div>', null, d.titulo);
   } else if(tipo==='data'){
     bd(uid).modo = d.modo || 'data';
-    var _hoje = new Date().toISOString().slice(0,10);
+    var _hoje = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10) /* V-09/09: era UTC — entre 21h e 0h dava o dia seguinte */;
     el = blkShell(uid,'data',
       '<div class="row2">'
       + '<div class="c-data"><label>Data</label><input type="date" class="b-data" value="'+attr(d.data!=null?d.data:_hoje)+'" onchange="scheduleSave()"></div>'
@@ -3478,7 +3478,7 @@ function wireInputs(){
   var restaurou=false; try{ restaurou=await restoreDraft(); }catch(e){}
   if(restaurou){ toast(_sending?'Retomando os envios desta OS':'Rascunho restaurado'); }
   else {
-    document.getElementById('f_data').value=new Date().toISOString().slice(0,10);
+    document.getElementById('f_data').value=new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10) /* V-09/09: era UTC — entre 21h e 0h dava o dia seguinte */;
     document.getElementById('f_hora').value=new Date().toTimeString().slice(0,5);
   }
   if(p.get('cliente') && !val('f_cliente')) document.getElementById('f_cliente').value=p.get('cliente');
