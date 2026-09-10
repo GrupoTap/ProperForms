@@ -1,6 +1,27 @@
 <!DOCTYPE html>
 <!--
 ════════════════════════════════════════════════════════════════════════════
+form05.html — 10/09/2026 — O TERMO VIRAVA UMA "MÁQUINA" SEPARADA NA GESTÃO DE DOCUMENTOS.
+100% ADITIVO: nenhum id, name, action ou função existente renomeado/removido.
+
+Caso: OS PGP-2026-0059. O termo foi salvo com o MESMO Maquina_ID dos outros
+laudos, mas com Maquina_Label "Chiaperini COPA20" — enquanto o Recebimento e o
+Diagnóstico gravaram "Chiaperini COPA20 · Série CH03070802 · Compressor 3". A
+árvore da Gestão de Documentos agrupava pelo texto e abria dois grupos para
+UMA máquina. Conferido nos 14 formulários publicados: este era o ÚNICO que
+montava o rótulo com `equipStr` (marca + modelo) em vez de `maqLabel`
+(marca + modelo · Série · TAG). A doença dos IRMÃOS (06/09), mais uma vez.
+(1) `maquina_label` do salvarPdfDrive = `maqLabel(m)` — cópia LITERAL da
+    função do form01, para os dois não poderem divergir no formato.
+(2) `createdBy` passa a ir no salvarPdfDrive: o responsável pelo recebimento
+    (campo f_resp) ou, sem ele, o nome da sessão. A coluna "Por" deixava o
+    termo como o único documento da OS sem autor.
+⚠ O PCM V176 também agrupa pelo Maquina_ID — é ele que arruma os termos JÁ
+  gravados; este arquivo só impede que os próximos nasçam diferentes.
+════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+════════════════════════════════════════════════════════════════════════════
 form05.html — 13/08/2026 (b) — O PDF ABRIA SOZINHO E O BOOT DEMORAVA 3 MINUTOS.
 100% ADITIVO: nenhum id, name, action ou função existente renomeado/removido.
 
@@ -323,6 +344,15 @@ function val(id){ const e=document.getElementById(id); return e ? e.value.trim()
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
 function fmtData(iso){ if(!iso) return ''; try{ var d=new Date(iso); if(isNaN(d)) return String(iso).slice(0,10).split('-').reverse().join('/'); return d.toLocaleDateString('pt-BR'); }catch(e){ return ''; } }
 function equipStr(m){ return m ? [m.brand, m.model].filter(Boolean).join(' ') : ''; }
+// 10/09/2026 — cópia LITERAL do maqLabel do form01 (e dos outros 12 irmãos):
+// o rótulo gravado no anexo tem de ter o MESMO formato em todo formulário.
+function maqLabel(m){
+  var base = [m.brand, m.model].filter(Boolean).join(' ');
+  var extra = [];
+  if (m.serial) extra.push('Série ' + m.serial);
+  if (m.tag) extra.push(m.tag);
+  return (base || 'Máquina') + (extra.length ? ' · ' + extra.join(' · ') : '');
+}
 
 function renderDados(){
   var m = state.maquina || {}, os = state.os || {};
@@ -541,9 +571,11 @@ async function gerar(){
       pgpEsperaLonga('📤 Enviando o termo ao Drive…');   // 13/08 (perf)
       var base64 = _pdfDoc.output('datauristring').split(',')[1];
       var pdfPayload = { action:'salvarPdfDrive', os_id:_osId, os_numero:_osNumero, cliente:cliente,
-        maquina_id: m.id || '', maquina_label: (equipStr(m) || m.tag || ''),
+        maquina_id: m.id || '', maquina_label: (m.id || m.brand || m.model ? maqLabel(m) : (m.tag || '')),   // 10/09 (1)
         base64: base64, fileName: _pdfName, categoria:'pdf_termo_desmontagem', caption:'Termo de Desmontagem (Form 05)',
-        pdf_uid: _pdfUid };                                  // 29/07 (F-01b)
+        pdf_uid: _pdfUid,                                    // 29/07 (F-01b)
+        createdBy: resp || (function(){ try { var _s = JSON.parse(localStorage.getItem('proper_session') || 'null');
+                     return (_s && _s.tecnico && _s.tecnico.nome) || ''; } catch(e){ return ''; } })() };   // 10/09 (2)
       var d1 = await gasPostJson(pdfPayload);                // 29/07 (F-12): parse seguro + retry
       if (!d1 || d1.status !== 'ok') throw new Error((d1 && d1.error) || 'falha ao salvar PDF');
     }catch(e){ _liberarBtn(); toast('Erro ao salvar no Drive: ' + e.message); return; }   // 13/08 (perf)
