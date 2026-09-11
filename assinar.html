@@ -151,7 +151,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>
 'use strict';
-var BUILD = 'ASSINAR_V1';
+var BUILD = 'ASSINAR_V2';
+// ── v2 · 11/09/2026 (S3 da rodada Campo e Documentos) ───────────────────────
+// 🔴 A página NÃO MONTA MAIS o PDF oficial. Até a v1 o termo era montado AQUI,
+//    no navegador de quem tinha o link, e o arquivo inteiro voltava ao sistema
+//    como o documento oficial — quem tivesse o link podia devolver outro
+//    conteúdo (achado A3 da spec do Bloco S). Agora ela manda SÓ a assinatura,
+//    o nome e o "li e concordo" para a Edge `documento`, que monta o PDF no
+//    SERVIDOR a partir do original, com o código SHA-256 dele na folha.
+// ⚠ Transição: se a Edge ainda não estiver no ar (404/sem rede com ela), a página
+//   cai no caminho antigo — que o GAS v140 só aceita com o BLOCO_S desligado.
+var EDGE_DOC_URL = 'https://mxczeemglrehadjualvi.supabase.co/functions/v1/documento';
 // O MESMO /exec dos forms. SEM API key nesta página — a credencial é o token.
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbz_qSb4Ib6VoZs4TE15EYp9qO5sSEhrjadY71yK0Sd4vqnu4msidsObXnQtkCGXpIqq/exec';
 
@@ -395,14 +405,20 @@ function pgpColetarAssinatura(cfg){
 }
 
 // ── Assinar: coleta → termo (pdf-lib) → envio ───────────────────────────────
+// v2 — nome e sobrenome (a folha do servidor exige; é o que identifica quem assinou).
+function _v2NomeOk(n){ var p=String(n||'').trim().split(/\s+/).filter(function(x){ return x.replace(/[^A-Za-zÀ-ÿ]/g,'').length>=2; }); return p.length>=2; }
 async function iniciarAssinatura(){
   var sig = await pgpColetarAssinatura({
     titulo:'Assinatura do Responsável', sub:'Digite o seu nome completo e toque em Avançar para assinar na tela.',
     stageLbl:'Responsável pelo cliente — assine abaixo', nomePrefill:(_assinatura&&_assinatura.nome)||''
   });
   if (!sig) return;
+  if (!_v2NomeOk(sig.nome)) { toast('Digite o nome completo — nome e sobrenome.'); _assinatura = sig; return iniciarAssinatura(); }
   _assinatura = sig;
   var btn = document.getElementById('btnAssinar');
+  // v2 — o caminho novo: só a assinatura vai; o servidor monta e devolve a cópia.
+  var rEdge = await enviarAssinadoEdge(sig);
+  if (rEdge !== 'fallback') return;
   btn.disabled = true; btn.textContent = '⏳ Preparando o documento…';
   try {
     _pdfAssinadoB64 = await montarPdfComTermo(sig);
@@ -412,6 +428,32 @@ async function iniciarAssinatura(){
     return;
   }
   await enviarAssinado(sig.nome);
+}
+
+// v2 — envia SÓ a assinatura para a Edge. Devolve 'ok' | 'erro' | 'fallback'
+// ('fallback' = a Edge não respondeu como Edge: transição, cai no caminho antigo).
+async function enviarAssinadoEdge(sig){
+  var btn = document.getElementById('btnAssinar');
+  btn.disabled = true; btn.textContent = '⏳ Enviando a assinatura…';
+  var r = null, d = null;
+  try {
+    r = await fetch(EDGE_DOC_URL + '/assinar-link', { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ token: TOKEN, nome: sig.nome, aceite: true, assinatura_png: String(sig.dataUrl||'').split(',')[1] || '',
+                             aparelho: (('ontouchstart' in window) || navigator.maxTouchPoints > 0) ? 'celular' : 'computador' }) });
+    try { d = await r.json(); } catch(e){ d = null; }
+  } catch(e){ r = null; }
+  if (!r || (!d && (r.status === 404 || r.status >= 500))) return 'fallback';
+  if (r.ok && d && d.ok){
+    if (d.pdf_b64) _pdfAssinadoB64 = d.pdf_b64;
+    telaConcluida(sig.nome);
+    if (!d.pdf_b64){ var bt = document.querySelector('.btn-sign'); if (bt) bt.style.display = 'none'; }
+    return 'ok';
+  }
+  if (r.status === 409 && d && d.estado === 'assinado'){ telaJaAssinado({ file_name: _meta && _meta.file_name, os_numero: _meta && _meta.os_numero }); return 'ok'; }
+  btn.disabled = false; btn.textContent = '↻ Tentar de novo';
+  btn.onclick = function(){ enviarAssinadoEdge(sig); };
+  toast((d && d.erro) || 'Falha no envio. Verifique a internet e tente de novo.');
+  return 'erro';
 }
 
 async function enviarAssinado(nome){

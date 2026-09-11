@@ -1,5 +1,17 @@
 <!DOCTYPE html>
 <!--
+  ════════════════════════════════════════════════════════════════════════
+  11/09/2026 — v140 · RODADA CAMPO E DOCUMENTOS (par do GAS v140)
+  G-6  a hora de início vem da PRESENÇA registrada pelo PCF (chegada pelo GPS
+       ou à mão), pedida no MESMO getMaquinasByOS do boot (com_presenca). Mudar
+       a hora pede motivo; o PDF imprime "(chegada GPS, a 80 m)" ou "(editado: …)".
+  L-4  (empréstimo e locação) com o bloco L ligado, o destino é o cliente da OS.
+  ⚠ Bloco comum IDÊNTICO nos 5 formulários de campo — ver "v140 · RODADA CAMPO".
+  ⚠ Nada muda com o GAS antigo ou com os blocos desligados: sem `presenca` e sem
+    `blocos` na resposta, o formulário se comporta exatamente como antes.
+  ════════════════════════════════════════════════════════════════════════
+-->
+<!--
   ════════════════════════════════════════════════════════════════════════════
   form_entrega_tecnica.html — 01/09/2026 — ENTREGA TÉCNICA DE MÁQUINA (ProperCare)
 
@@ -1888,7 +1900,7 @@ async function marcarPdfErro(msg){
 // Lê o DOM (ordem + valores) e reconstrói state.blocos / state.assinaturas.
 function captura(){
   state.identificacao = { tecnico:val('f_tecnico'), cliente:val('f_cliente'), os:val('f_os'), equipamento:val('f_equip'), modelo:val('f_modelo') };
-  state.atendimento = { data:val('f_data'), hora:val('f_hora') };
+  state.atendimento = { data:val('f_data'), hora:val('f_hora'), presenca:_v140PresEstado() };   // v140 (G-6)
   /* ⚠ LIDOS NO TOPO. Herança de uma correção de 31/08: a versão anterior lia os
      valores DEPOIS de já os usar dez linhas acima — `var` iça a declaração mas
      não o valor, e estourava em TODA captura. Aqui a garantia e as pendências
@@ -1961,7 +1973,7 @@ function setV(id,v){ var e=document.getElementById(id); if(e && v!=null) e.value
 function hydrateUI(){
   var i=state.identificacao||{}, at=state.atendimento||{};
   setV('f_tecnico',i.tecnico); setV('f_cliente',i.cliente); setV('f_os',i.os); setV('f_equip',i.equipamento); setV('f_modelo',i.modelo);
-  setV('f_data',at.data); setV('f_hora',at.hora);
+  setV('f_data',at.data); setV('f_hora',at.hora); _v140PresRestaurar(at.presenca);
   var lo=state.locacao||{}, te=state.termo||{};
   var en=state.entrega||{}, mq=state.maquina||{}, pt=state.partida||{}, ga=state.garantia||{}, rp=state.repasse||{};
   setV('f_local',en.local||lo.local); setV('f_contrato',en.contrato||lo.contrato); setV('f_ent_num',en.numero);
@@ -2090,6 +2102,66 @@ async function enviar(){
 
 // ══ MOTOR DE ENVIO (sender) + finalização + painel da fila (padrão corretiva) ══
 var _psUiTimer = null;   // 13/08 (perf): coalescencia das atualizacoes de UI da fila
+/* ══ v140 · RODADA CAMPO (11/09/2026) — presença (G-6) e frota (L-4) ═══════════
+   🔑 BLOCO IDÊNTICO nos 5 formulários de campo (corretiva, genérica, locação,
+      empréstimo, entrega técnica). A bancada compara o texto entre os cinco:
+      conserto que entra num irmão e não nos outros é o defeito que mais se
+      repetiu neste projeto (comparador de irmãos, 06/09).
+   G-6 · A hora de início vem da PRESENÇA (a chegada que o PCF registrou, pelo
+      GPS ou à mão). Mudar a hora pede MOTIVO, e o PDF diz "(editado: …)".
+      Sem presença (bloco G desligado, OS sem chegada, rascunho antigo), nada
+      muda: o campo nasce com a hora do aparelho, como sempre.
+   L-4 · Com o bloco L ligado, a OS de empréstimo/locação é do cliente que
+      RECEBE a máquina — o destino é o cliente da OS (gancho por formulário,
+      `window._v140FrotaHook`, definido só nos dois que precisam).
+   ════════════════════════════════════════════════════════════════════════════ */
+var _v140Pres = null;
+var _v140Blocos = {};
+function _v140HHMM(iso){ try{ var d=new Date(iso); if(isNaN(d.getTime())) return ''; return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }catch(e){ return ''; } }
+function _v140IdTecnico(){ try{ var s=JSON.parse(localStorage.getItem('proper_session')||'null'); return (s&&s.tecnico&&(s.tecnico.id||s.tecnico.nome))||''; }catch(e){ return ''; } }
+function _v140PresencaAplicar(presenca, blocos){
+  _v140Blocos = blocos || {};
+  if(!_v140Blocos.G || !presenca || !presenca.inicio) return;
+  var at = (typeof state!=='undefined' && state && state.atendimento) || {};
+  if(at.presenca && at.presenca.hora){ _v140Pres = at.presenca; return; }   // rascunho restaurado: vale o que estava
+  var el = document.getElementById('f_hora'); if(!el) return;
+  if(el.dataset.v140Tocado === '1') return;                                   // o técnico já mexeu: não atropela
+  var h = _v140HHMM(presenca.inicio); if(!h) return;
+  _v140Pres = { inicio: presenca.inicio, fonte: presenca.inicio_fonte || '', distancia_m: (presenca.inicio_distancia_m==null ? '' : presenca.inicio_distancia_m),
+                hora: h, editado: false, motivo: '' };
+  el.value = h;
+  try{ scheduleSave(); }catch(e){}
+  try{ toast(presenca.inicio_fonte==='gps' ? '📍 Hora de início: a chegada registrada pelo GPS ('+h+')' : '🕘 Hora de início: a chegada registrada ('+h+')'); }catch(e){}
+}
+function _v140HoraMudou(el){
+  el.dataset.v140Tocado = '1';
+  if(!_v140Pres || !_v140Pres.hora) return;
+  if(el.value === _v140Pres.hora){ _v140Pres.editado=false; _v140Pres.motivo=''; try{ scheduleSave(); }catch(e){} return; }
+  var m = window.prompt('A hora registrada pela presença foi '+_v140Pres.hora+'. Por que mudar para '+el.value+'?') || '';
+  m = String(m).trim();
+  if(m.length < 3){ el.value = _v140Pres.hora; _v140Pres.editado=false; _v140Pres.motivo=''; try{ toast('Mantida a hora registrada ('+_v140Pres.hora+'). Para mudar, diga o motivo.'); }catch(e){} return; }
+  _v140Pres.editado = true; _v140Pres.motivo = m.slice(0,120);
+  try{ scheduleSave(); }catch(e){}
+}
+function _v140PresEstado(){ return _v140Pres ? JSON.parse(JSON.stringify(_v140Pres)) : null; }
+function _v140PresRestaurar(p){ if(p && p.hora) _v140Pres = p; }
+function _v140PresNota(at){
+  var p = at && at.presenca; if(!p || !p.hora) return '';
+  if(p.editado) return ' (editado: ' + String(p.motivo||'').slice(0,60) + ')';
+  if(p.fonte === 'gps') return ' (chegada GPS' + ((p.distancia_m!=='' && p.distancia_m!=null) ? ', a ' + Math.round(Number(p.distancia_m)) + ' m' : '') + ')';
+  return ' (chegada registrada)';
+}
+function _v140PosBoot(data){
+  _v140PresencaAplicar(data && data.presenca, data && data.blocos);
+  if(typeof window._v140FrotaHook === 'function'){ try{ window._v140FrotaHook((data && data.blocos) || {}, data && data.os); }catch(e){} }
+}
+(function(){
+  function liga(){ var el=document.getElementById('f_hora'); if(!el || el.dataset.v140Liga) return; el.dataset.v140Liga='1';
+    el.addEventListener('input', function(){ el.dataset.v140Tocado='1'; });
+    el.addEventListener('change', function(){ _v140HoraMudou(el); }); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', liga); else liga();
+})();
+/* ══ fim do bloco comum v140 ══ */
 function registrarSender(){
   PS.setSender(async function(job){
     try{
@@ -2355,7 +2427,7 @@ function tpMontarFluxo(photosByKey){
   function push(a){ a.forEach(function(x){ flow.push(x); }); }
 
   // ── capa/cabeçalho ──
-  var dataHora = tpData(at.data) + (at.hora ? (' · ' + at.hora) : '');
+  var dataHora = tpData(at.data) + (at.hora ? (' · ' + at.hora) : '') + _v140PresNota(at);   // v140 (G-6)
   flow.push({ html:
       '<div class="tp-mast">'
     +   '<div class="tp-mast-logo"><img src="'+LOGO_DATAURL+'" alt="Proper"></div>'
@@ -2770,8 +2842,9 @@ async function carregarMaquinasOS(){
   // quebra nada. saveMachine (usado pela corretiva para devolver a maquina com o
   // horimetro novo) nao toca MACHINE_PARTS — conferido linha a linha no v96 —,
   // logo remover parts do objeto nao apaga peca nenhuma.
-    const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId });
+    const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId, com_presenca:true, id_tecnico:_v140IdTecnico() });   // v140: + presença
     try{ pgpPreencherClienteDaOS(data && data.os); }catch(_eCli){}   // 21/08 (cabeçalho do cliente)
+    try{ _v140PosBoot(data); }catch(_e140){}   // v140 (G-6 / L-4)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
     if(machines.length===1){ aplicarMaquina(machines[0]); }
@@ -4119,7 +4192,7 @@ function lvDocEntregaTecnica(photosByKey){
   var pendCad = state.cadastro_pendente || [];
   var modo = (ET_MODOS.indexOf(en.modo) >= 0) ? en.modo : 'oficina';
   var ehNovo = (modo === 'novo');
-  var dataHora = lvData(at.data) + (at.hora ? ' · ' + at.hora : '');
+  var dataHora = lvData(at.data) + (at.hora ? ' · ' + at.hora : '') + _v140PresNota(at);   // v140 (G-6)
   var blocos = state.blocos || [];
   var sigs = (state.assinaturas || []).filter(function(a){ return a && (a.nome || a.dataUrl); });
 
