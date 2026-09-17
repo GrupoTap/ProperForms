@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════
+  17/09/2026 — NOMENCLATURA: "EMPRÉSTIMO" → "CESSÃO REMUNERADA"
+  Clientes entendiam "empréstimo" como gratuito e contestavam a taxa. Todo
+  texto VISÍVEL (tela, termo de aceite, PDF, nome do PDF, legendas, avisos)
+  passou a dizer "cessão remunerada" / "máquina cedida".
+  ⚠ NADA DE CHAVE MUDOU: arquivo continua form_emprestimo.html, subtipo
+    'emprestimo_entrega', categorias foto_/pdf_emprestimo, state.emprestimo,
+    chave do rascunho e tipo 'emprestimo' da custódia — tudo igual, para não
+    quebrar OS, rascunhos e documentos já gravados.
+  ════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════
   11/09/2026 — v140 · RODADA CAMPO E DOCUMENTOS (par do GAS v140)
   G-6  a hora de início vem da PRESENÇA registrada pelo PCF (chegada pelo GPS
        ou à mão), pedida no MESMO getMaquinasByOS do boot (com_presenca). Mudar
@@ -176,7 +188,7 @@ form_generica.html — 27/07/2026 — OS GENÉRICA: construtor de OS em campo (P
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#0f172a">
-<title>Empréstimo de Máquina — ProperCare</title>
+<title>Cessão Remunerada de Máquina — ProperCare</title>
 <style>
   :root{--bg:#0f172a;--surface:#111a2e;--card:#1e293b;--elev:#243349;--border:#334155;
     --text:#f1f5f9;--muted:#94a3b8;--accent:#3b82f6;--brand:#f58220;--brand2:#e85d1f;--orange:#f58220;
@@ -566,7 +578,7 @@ function pgpBootAviso(msg){
 </head>
 <body>
 <div id="app">
-  <h1>🔄 Empréstimo de Máquina</h1>
+  <h1>🔄 Cessão Remunerada de Máquina</h1>
   <div class="sub">A máquina da Proper vai ao cliente para que a dele venha à oficina. Os blocos já vêm prontos: preencha, apague o que não se aplica e acrescente o que a situação pedir.</div>
   <div id="osPill" class="pill-info" style="display:none"></div>
 
@@ -592,7 +604,7 @@ function pgpBootAviso(msg){
   </div>
 
   <div class="card">
-    <h2>🔧 Máquina emprestada — a que está saindo</h2>
+    <h2>🔧 Máquina cedida — a que está saindo</h2>
     <div class="chips" id="mqOrigemChips">
       <button type="button" class="chip on" data-mqorigem="cadastrada" onclick="empMqOrigem(this)">Já cadastrada no PCM</button>
       <button type="button" class="chip" data-mqorigem="campo" onclick="empMqOrigem(this)">Não cadastrada — vou digitar</button>
@@ -619,8 +631,8 @@ function pgpBootAviso(msg){
   </div>
 
   <div class="card">
-    <h2>🤝 Empréstimo — partes e destino</h2>
-    <div><label>Proprietário do equipamento emprestado</label><input type="text" id="f_proprietario" placeholder="De quem é a máquina que está saindo"></div>
+    <h2>🤝 Cessão remunerada — partes e destino</h2>
+    <div><label>Proprietário do equipamento cedido</label><input type="text" id="f_proprietario" placeholder="De quem é a máquina que está saindo"></div>
 
     <div class="emp-sec">
       <div class="t">Destino — quem fica com a máquina</div>
@@ -650,7 +662,7 @@ function pgpBootAviso(msg){
       <div><label>Local de instalação (planta / endereço)</label><input type="text" id="f_local" placeholder="Onde a máquina foi deixada e instalada"></div>
       <div class="row2">
         <div><label>Contrato / Proposta nº</label><input type="text" id="f_contrato"></div>
-        <div><label>Nº do empréstimo</label><input type="text" id="f_emp_num"></div>
+        <div><label>Nº da cessão remunerada</label><input type="text" id="f_emp_num"></div>
       </div>
       <button type="button" class="btn-sign" style="margin-top:8px;font-size:13.5px;padding:10px" onclick="empGerarNumeros()">↻ Gerar os dois pelo nº da OS</button>
       <div class="parte-nota" id="empNumNota"></div>
@@ -664,23 +676,23 @@ function pgpBootAviso(msg){
         <div><label>Nº de série</label><input type="text" id="f_mc_serie" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" name="mc_serie_nofill"></div>
       </div>
       <div><label>Motivo da retirada / defeito relatado</label><textarea id="f_mc_motivo" placeholder="O que levou a máquina do cliente para a oficina"></textarea></div>
-      <div class="parte-nota">É esta máquina que dá início à contagem do <b>diagnóstico</b>. Sem ela o empréstimo não tem prazo — e sem prazo não há conversão em aluguel.</div>
+      <div class="parte-nota">É esta máquina que dá início à contagem do <b>diagnóstico</b>. Sem ela a cessão remunerada não tem prazo — e sem prazo não há conversão em aluguel.</div>
     </div>
 
-    <div class="parte-nota">O <b>Cliente</b> lá em cima é o da OS — quem a Proper está atendendo. Aqui vai <b>de quem é a máquina</b> e <b>quem ficou com ela</b>: no empréstimo essas duas costumam ser empresas diferentes.</div>
+    <div class="parte-nota">O <b>Cliente</b> lá em cima é o da OS — quem a Proper está atendendo. Aqui vai <b>de quem é a máquina</b> e <b>quem ficou com ela</b>: na cessão remunerada essas duas costumam ser empresas diferentes.</div>
   </div>
 
   <div class="card">
     <h2>📅 Prazos e regra comercial</h2>
     <div class="row3">
-      <div><label>Entrega do empréstimo <span class="fmt">(dd/mm/aaaa)</span></label><input type="date" id="f_inicio" onchange="empRecalcular()"><div class="eco" id="eco_f_inicio"></div></div>
+      <div><label>Entrega da cessão remunerada <span class="fmt">(dd/mm/aaaa)</span></label><input type="date" id="f_inicio" onchange="empRecalcular()"><div class="eco" id="eco_f_inicio"></div></div>
       <div><label>Diagnóstico previsto (dias)</label><input type="number" id="f_diag_prev" min="1" max="180" step="1" value="15" onchange="empRecalcular()" oninput="empRecalcular()"></div>
       <div><label>Previsão de devolução <span class="fmt">(dd/mm/aaaa)</span></label><input type="date" id="f_previsao" onchange="empEcoDatas()"><div class="eco" id="eco_f_previsao"></div></div>
     </div>
     <div class="emp-sec">
-      <div class="t">Valores deste empréstimo</div>
+      <div class="t">Valores desta cessão remunerada</div>
       <div class="row3">
-        <div><label>Empréstimo (R$)</label><input type="text" id="f_vl_taxa" inputmode="decimal" value="2800" oninput="empRecalcular()"></div>
+        <div><label>Cessão remunerada (R$)</label><input type="text" id="f_vl_taxa" inputmode="decimal" value="2800" oninput="empRecalcular()"></div>
         <div><label>Diária após conversão (R$)</label><input type="text" id="f_vl_diaria" inputmode="decimal" value="280" oninput="empRecalcular()"></div>
         <div><label>Mensal após conversão (R$)</label><input type="text" id="f_vl_mensal" inputmode="decimal" value="2800" oninput="empRecalcular()"></div>
       </div>
@@ -713,7 +725,7 @@ function pgpBootAviso(msg){
   <div id="stack"></div>
 
   <div class="card" id="termoCard">
-    <h2>✅ Termo de aceite do empréstimo — vai impresso no PDF</h2>
+    <h2>✅ Termo de aceite da cessão remunerada — vai impresso no PDF</h2>
     <div class="termo-txt" id="termoTexto"></div>
     <label>Ressalvas do cliente (opcional — sai no PDF logo abaixo do termo)</label>
     <textarea id="f_ressalva" placeholder="Ex.: cliente informou que vai reforçar a ventilação da sala em 15 dias"></textarea>
@@ -727,9 +739,9 @@ function pgpBootAviso(msg){
 <div id="okScreen" style="display:none">
   <div class="ok-msg">
     <div class="big" id="okBig">✅</div>
-    <h1 style="margin-top:10px" id="okTitle">Empréstimo registrado</h1>
+    <h1 style="margin-top:10px" id="okTitle">Cessão remunerada registrada</h1>
     <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
-    <div class="sub" style="margin-top:6px;font-size:12px">O termo de empréstimo assinado foi para a Gestão de Documentos da OS.</div>
+    <div class="sub" style="margin-top:6px;font-size:12px">O termo de cessão remunerada assinado foi para a Gestão de Documentos da OS.</div>
     <div class="sub" id="okStatus" style="margin-top:10px"></div>
     <!-- ══ 21/08 (P5) — O PDF QUE NUNCA CHEGOU ═══════════════════════════════
          Falhar a geração do PDF produzia UM toast de 2,5 s e a pendência ficava
@@ -760,7 +772,7 @@ function pgpBootAviso(msg){
 <div class="dock" id="dock">
   <div class="dock-row">
     <button class="fab" onclick="abrirGaveta()">＋ Adicionar item</button>
-    <button class="b-fin" id="btnEnviar" onclick="enviar()">✓ Concluir empréstimo</button>
+    <button class="b-fin" id="btnEnviar" onclick="enviar()">✓ Concluir cessão remunerada</button>
   </div>
 </div>
 
@@ -1156,7 +1168,7 @@ function empCalc(D, A, v){
   A = Math.max(0, Math.round(Number(A) || 0));
   var livre = empJanelaLivre(D);
   var excedente = Math.max(0, A - livre);
-  var aluguel = 0, regime = 'empréstimo', meses = 0;
+  var aluguel = 0, regime = 'cessão remunerada', meses = 0;
   if (excedente > 0){
     if (excedente <= EMP_DIAS_DIARIA){ aluguel = excedente * v.diaria; regime = 'aluguel diário'; }
     else { meses = Math.ceil(excedente / 30); aluguel = meses * v.mensal; regime = 'aluguel mensal'; }
@@ -1184,17 +1196,17 @@ function empDiaSoma(iso, dias){
    número, que é o pior defeito possível num documento que o cliente assina. */
 function empTermoTexto(v){
   v = v || empValores();
-  return 'O CLIENTE declara que recebeu nesta data, a título de EMPRÉSTIMO, o equipamento identificado '
+  return 'O CLIENTE declara que recebeu nesta data, a título de CESSÃO REMUNERADA, o equipamento identificado '
   + 'neste documento, de propriedade da PROPER, em substituição temporária à sua própria máquina, que segue para '
-  + 'diagnóstico na oficina da Proper. O empréstimo tem valor de ' + empMoeda(v.taxa) + ', devido na entrega. '
-  + 'O prazo do empréstimo compreende o período de diagnóstico da máquina do CLIENTE somado ao prazo de aprovação '
+  + 'diagnóstico na oficina da Proper. A cessão remunerada tem valor de ' + empMoeda(v.taxa) + ', devido na entrega. '
+  + 'O prazo da cessão remunerada compreende o período de diagnóstico da máquina do CLIENTE somado ao prazo de aprovação '
   + 'da proposta: o CLIENTE dispõe de ' + EMP_APROV_MIN + ' dias para aprovar a proposta e, quando o diagnóstico '
-  + 'terminar antes, esse prazo é ampliado até completar ' + EMP_TOTAL_LIVRE + ' dias de empréstimo. Atraso do '
-  + 'diagnóstico da PROPER não reduz o prazo de aprovação do CLIENTE. Ultrapassado esse prazo, o empréstimo '
+  + 'terminar antes, esse prazo é ampliado até completar ' + EMP_TOTAL_LIVRE + ' dias de cessão remunerada. Atraso do '
+  + 'diagnóstico da PROPER não reduz o prazo de aprovação do CLIENTE. Ultrapassado esse prazo, a cessão remunerada '
   + 'converte-se automaticamente em ALUGUEL, cobrado a ' + empMoeda(v.diaria) + ' por dia excedente; a partir do '
   + (EMP_DIAS_DIARIA+1) + 'º dia excedente o valor devido passa a ser a mensalidade de ' + empMoeda(v.mensal)
   + ', que SUBSTITUI as diárias e cobre 30 dias corridos contados do primeiro dia excedente. O CLIENTE responde pela '
-  + 'guarda, pela operação correta e pela integridade do equipamento emprestado, e pelas condições do local de '
+  + 'guarda, pela operação correta e pela integridade do equipamento cedido, e pelas condições do local de '
   + 'instalação aqui registradas — rede elétrica, aterramento, ventilação, espaço livre e piso —, devolvendo-o no '
   + 'mesmo estado, ressalvado o desgaste natural de uso.';
 }
@@ -1997,13 +2009,13 @@ async function enviar(){
   // 03/08 — guardas BRANDAS da entrega (avisam, nao travam: campo manda mais que regra).
   var _nFotos = 0;
   Object.keys(_fotosByBlock).forEach(function(k){ _nFotos += (_fotosByBlock[k]||[]).length; });
-  if(!_nFotos && !confirm('Nenhuma foto foi registrada neste empréstimo.\n\nSem foto da máquina e do ambiente o termo perde força se houver reclamação depois. Concluir mesmo assim?')) return;
+  if(!_nFotos && !confirm('Nenhuma foto foi registrada nesta cessão remunerada.\n\nSem foto da máquina e do ambiente o termo perde força se houver reclamação depois. Concluir mesmo assim?')) return;
   // 31/08 — a guarda do destino trocou de campo junto com a tela. Ela lê o NOME
   // RESOLVIDO (cliente da OS, escolhido na lista ou digitado), não um id fixo:
   // era assim que a versão anterior perguntava por `f_locatario`, campo que este
   // formulário não tem mais — a guarda teria disparado em TODA conclusão.
   if(!empDestinoNome() && !confirm('Não há destino definido — ninguém consta como quem está recebendo a máquina.\n\nÉ quem assina o termo. Concluir mesmo assim?')) return;
-  if(!val('f_inicio') && !confirm('A data de entrega do empréstimo está vazia.\n\nSem ela o prazo de aprovação e a conversão em aluguel não têm de onde contar. Concluir mesmo assim?')) return;
+  if(!val('f_inicio') && !confirm('A data de entrega da cessão remunerada está vazia.\n\nSem ela o prazo de aprovação e a conversão em aluguel não têm de onde contar. Concluir mesmo assim?')) return;
   if(!(val('f_mc_marca')||val('f_mc_modelo')||val('f_mc_serie')) && !confirm('A máquina do cliente que vem para a oficina não foi identificada.\n\nÉ ela que dá início à contagem do diagnóstico. Concluir mesmo assim?')) return;
   const btn=document.getElementById('btnEnviar');
   // 13/08 (perf): disabled+texto ja existiam; .is-busy soma o spinner e a trava de
@@ -2012,7 +2024,7 @@ async function enviar(){
   if(btn && btn.dataset.pgpBusy==='1') return;
   if(btn) btn.dataset.pgpBusy='1';
   btn.disabled=true; btn.textContent='Concluindo…'; if(btn) btn.classList.add('is-busy');
-  pgpEsperaLonga('📤 Concluindo o empréstimo…');
+  pgpEsperaLonga('📤 Concluindo a cessão remunerada…');
   await ensureDraftSaved();
   // ══════════════════════════════════════════════════════════════════════
   // 01/09/2026 — O PDF ENTRA NA FILA ANTES DO `saveFormulario`.
@@ -2044,13 +2056,13 @@ async function enviar(){
     var body = { action:'saveFormulario', os_id:_osId, tarefa_id:_tarefaId, tipo_formulario:TIPO_FORM, form_uid:_formUid,
       tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
       tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
-    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados do empréstimo' });
+    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados da cessão remunerada' });
   }
   _sending=true; await ensureDraftSaved();      // sela a instância; a fila cuida do resto
   document.getElementById('app').style.display='none';
   document.getElementById('dock').style.display='none';
   pgpEsperaLonga(null);   // 13/08 (perf): terminou — o badge da fila assume daqui
-  if(btn){ btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; btn.disabled=false; btn.textContent='✓ Concluir empréstimo'; }
+  if(btn){ btn.classList.remove('is-busy'); delete btn.dataset.pgpBusy; btn.disabled=false; btn.textContent='✓ Concluir cessão remunerada'; }
   document.getElementById('okScreen').style.display='';
   atualizarOkScreen();
   PS.pump();
@@ -2182,14 +2194,14 @@ async function atualizarOkScreen(){
   }catch(eW){}
   if(!_osId){ if(okSub) okSub.textContent='Conteúdo guardado no aparelho. Sem OS vinculada, os dados não ficam no sistema.'; }
   if(pend+dead===0 && !_pdfPendente){
-    if(big) big.textContent='✅'; if(title) title.textContent='Empréstimo registrado';
+    if(big) big.textContent='✅'; if(title) title.textContent='Cessão remunerada registrada';
     if(_osId&&okSub) okSub.textContent='A tarefa foi concluída e o servidor confirmou tudo (dados, fotos e PDF).';
     if(okStatus) okStatus.textContent='';
   } else if(dead>0){
     if(big) big.textContent='⚠️'; if(title) title.textContent='Concluída — envios a revisar';
     if(okStatus) okStatus.innerHTML='<b style="color:#fca5a5">'+dead+'</b> envio(s) travado(s). Nada foi perdido — toque em <b>Ver envios</b> para reenviar.';
   } else {
-    if(big) big.textContent='📤'; if(title) title.textContent='Empréstimo registrado — enviando';
+    if(big) big.textContent='📤'; if(title) title.textContent='Cessão remunerada registrada — enviando';
     if(okStatus) okStatus.textContent='Enviando em segundo plano ('+pend+(_pdfPendente?' + PDF':'')+' pendente). Pode fechar o app — retoma sozinho quando houver internet.';
   }
   // 12/08 — SAÍDA PARA O PIPELINE. O gatilho do auto-retorno aqui NÃO é o
@@ -2415,10 +2427,10 @@ function tpMontarFluxo(photosByKey){
   ]));
 
   // ── 2. partes e contrato ──
-  sec('Partes do empréstimo');
+  sec('Partes da cessão remunerada');
   push(tpTabela('', [
     '<tr><td class="kw">Proprietário do equipamento</td><td colspan="3">'+tpOu(lo.proprietario)+'</td></tr>',
-    '<tr><td class="kw">Recebeu a máquina em empréstimo</td><td colspan="3">'+tpOu(lo.locatario)+'</td></tr>',
+    '<tr><td class="kw">Recebeu a máquina em cessão remunerada</td><td colspan="3">'+tpOu(lo.locatario)+'</td></tr>',
     '<tr><td class="kw">Local de instalação</td><td colspan="3">'+tpOu(lo.local)+'</td></tr>',
     '<tr><td class="kw">Contrato / Proposta</td><td>'+tpOu(lo.contrato)+'</td><td class="k">Período</td><td>'
       + tpOu([tpData(lo.inicio), tpData(lo.previsao)].filter(Boolean).join(' até ')) + '</td></tr>'
@@ -2478,7 +2490,7 @@ function tpMontarFluxo(photosByKey){
     });
   });
   if(cels.length){
-    sec('Registro fotográfico do empréstimo');
+    sec('Registro fotográfico da cessão remunerada');
     for(var c=0;c<cels.length;c+=2){
       var par = cels[c] + (cels[c+1] || '<div class="tp-fcel"></div>');
       flow.push({ html:'<div class="tp-fotos">'+par+'</div>', keep:false });
@@ -2705,10 +2717,10 @@ async function enfileirarPdf(){
     var base64=await buildPdfBase64();
     var body={ action:'salvarPdfDrive', os_id:_osId, os_numero:_num, cliente:i.cliente||'SemCliente',
       maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:(_maqAtual?maqLabel(_maqAtual):(i.equipamento||'')),
-      base64:base64, fileName:'Termo_Emprestimo_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_emprestimo',
-      caption:'Termo de empréstimo de máquina', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
+      base64:base64, fileName:'Termo_Cessao_Remunerada_'+(_num||_osId||'s_os')+'.pdf', categoria:'pdf_emprestimo',
+      caption:'Termo de cessão remunerada de máquina', createdBy:(i.tecnico||(_sess&&_sess.tecnico&&_sess.tecnico.nome)||''),
       pdf_uid:'pdf_'+_formUid };
-    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF do termo de empréstimo' });
+    await PS.enqueue({ draftId:_draftId, kind:'salvarPdfDrive', url:GAS_URL, body:body, label:'PDF do termo de cessão remunerada' });
     _pdfPendente=false; await marcarPdfPendente(false); await marcarPdfErro('');
     return true;
   }catch(e){
@@ -2984,14 +2996,14 @@ function empMontarPedidosCadastro(){
     out.push({ escopo:'cliente', entidade_nome:empDestinoNome(),
       campos:{ Nome:empDestinoNome(), CNPJ:val('f_dest_cnpj'), Cidade:val('f_dest_cidade'),
                Telefone:val('f_dest_fone'), Contato:val('f_dest_contato') },
-      justificativa:'Recebeu máquina em empréstimo na OS ' + (val('f_os')||'') + ' e não estava cadastrado no PCM.' });
+      justificativa:'Recebeu máquina em cessão remunerada na OS ' + (val('f_os')||'') + ' e não estava cadastrado no PCM.' });
   }
   if(_mqOrigem === 'campo' && (val('f_mq_marca') || val('f_mq_modelo') || val('f_mq_serie'))){
     out.push({ escopo:'maquina', entidade_nome:[val('f_mq_marca'),val('f_mq_modelo')].filter(Boolean).join(' '),
       campos:{ Marca:val('f_mq_marca'), Modelo:val('f_mq_modelo'), Serie:val('f_mq_serie'),
                TAG:val('f_mq_tag'), Ano:val('f_mq_ano'), Potencia_HP:val('f_mq_hp'),
                Pressao_bar:val('f_mq_bar'), Horimetro:val('f_mq_horim'), Cliente:'PROPER LOCAÇÃO' },
-      justificativa:'Máquina emprestada na OS ' + (val('f_os')||'') + ', com dados levantados em campo.' });
+      justificativa:'Máquina cedida na OS ' + (val('f_os')||'') + ', com dados levantados em campo.' });
   }
   return out;
 }
@@ -3100,14 +3112,14 @@ function empRecalcular(){
     v.className = 'emp-verd ' + (r.converteu ? (r.regime==='aluguel mensal' ? 'no' : 'al') : 'ok');
     v.textContent = r.converteu
       ? ('⚠ Converte em ' + r.regime.toUpperCase() + ' — ' + r.excedente + ' dia' + (r.excedente>1?'s':'') + ' além do prazo')
-      : ('✅ Segue como empréstimo — dentro do prazo (sobram ' + (r.livre - r.A) + ' dia' + ((r.livre-r.A)===1?'':'s') + ')');
+      : ('✅ Segue como cessão remunerada — dentro do prazo (sobram ' + (r.livre - r.A) + ' dia' + ((r.livre-r.A)===1?'':'s') + ')');
   }
   var det = document.getElementById('empDetalhe');
   if(det){
     var linhas = [
       ['Prazo do cliente para aprovar', r.livre + ' dias  (máx(' + EMP_APROV_MIN + ', ' + EMP_TOTAL_LIVRE + ' − ' + r.D + '))'],
-      ['Total do empréstimo', r.total + ' dias'],
-      ['Valor do empréstimo', empMoeda(r.taxa)]
+      ['Total da cessão remunerada', r.total + ' dias'],
+      ['Valor da cessão remunerada', empMoeda(r.taxa)]
     ];
     if(r.converteu){
       linhas.push(['Dias excedentes', String(r.excedente)]);
@@ -3123,7 +3135,7 @@ function empRecalcular(){
   if(tb){
     var cen = empCenarios(iso);
     tb.innerHTML = '<tr><th>Se o diagnóstico levar</th><th>o cliente aprova em até</th><th>'
-      + (iso ? 'ou seja, até' : 'total de empréstimo') + '</th></tr>'
+      + (iso ? 'ou seja, até' : 'total de cessão remunerada') + '</th></tr>'
       + cen.map(function(c){
           var forte = (c.diag === diagPrev) ? ' style="background:rgba(245,130,32,.12)"' : '';
           return '<tr'+forte+'><td class="n">'+c.diag+' dias</td><td class="n">'+c.livre+' dias</td><td class="n">'
@@ -3139,13 +3151,13 @@ function empRecalcular(){
   var cenNota = document.getElementById('empCenNota');
   if(cenNota){
     cenNota.textContent = 'As primeiras linhas coincidem de propósito: enquanto o diagnóstico couber em '
-      + EMP_APROV_MIN + ' dias, a data-limite é sempre o ' + EMP_TOTAL_LIVRE + 'º dia do empréstimo.';
+      + EMP_APROV_MIN + ' dias, a data-limite é sempre o ' + EMP_TOTAL_LIVRE + 'º dia da cessão remunerada.';
   }
   var rg = document.getElementById('empRegraTxt');
   if(rg){
-    rg.innerHTML = '<b>A regra.</b> Empréstimo de <b>'+empMoeda(vl.taxa)+'</b> na entrega, aprovando ou não. '
+    rg.innerHTML = '<b>A regra.</b> Cessão remunerada de <b>'+empMoeda(vl.taxa)+'</b> na entrega, aprovando ou não. '
       + 'O cliente nunca tem menos de <b>'+EMP_APROV_MIN+' dias</b> para aprovar — atraso do nosso diagnóstico não come o prazo dele — '
-      + 'e, quando o diagnóstico termina antes, ele usa a sobra até fechar <b>'+EMP_TOTAL_LIVRE+' dias</b> de empréstimo. '
+      + 'e, quando o diagnóstico termina antes, ele usa a sobra até fechar <b>'+EMP_TOTAL_LIVRE+' dias</b> de cessão remunerada. '
       + 'Passou disso: <b>'+empMoeda(vl.diaria)+'/dia</b> nos '+EMP_DIAS_DIARIA+' primeiros dias excedentes e, do '
       + (EMP_DIAS_DIARIA+1)+'º em diante, a mensalidade de <b>'+empMoeda(vl.mensal)+'</b> <b>no lugar</b> das diárias '
       + '(nunca se paga mais que a mensalidade no primeiro mês).';
@@ -3159,10 +3171,10 @@ function empRecalcular(){
 // partida, nao amarra. Todos os blocos usam os tipos que a generica ja conhece,
 // entao captura/PDF/campos_json nao ganharam caso novo nenhum.
 const SEED_LOCACAO = [
-  { tipo:'foto', legenda:'Máquina emprestada — vista geral antes da saída' },
-  { tipo:'foto', legenda:'Placa de identificação da máquina emprestada — modelo e nº de série' },
-  { tipo:'foto', legenda:'Horímetro da máquina emprestada na saída' },
-  { tipo:'foto', legenda:'Máquina emprestada posicionada no cliente' },
+  { tipo:'foto', legenda:'Máquina cedida — vista geral antes da saída' },
+  { tipo:'foto', legenda:'Placa de identificação da máquina cedida — modelo e nº de série' },
+  { tipo:'foto', legenda:'Horímetro da máquina cedida na saída' },
+  { tipo:'foto', legenda:'Máquina cedida posicionada no cliente' },
   { tipo:'foto', legenda:'Ambiente de instalação — ventilação e espaço livre em volta' },
   { tipo:'foto', legenda:'Máquina do CLIENTE que vem para a oficina — vista geral' },
   { tipo:'foto', legenda:'Placa de identificação da máquina do CLIENTE' },
@@ -3182,7 +3194,7 @@ const SEED_LOCACAO = [
   { tipo:'pr', pergunta:'Cliente ciente do prazo e da conversão em aluguel?' },
   { tipo:'pr', pergunta:'Máquina do cliente liberada para retirada nesta visita?' },
 
-  { tipo:'med', grandeza:'Horímetro da máquina emprestada na saída', unidade:'h' },
+  { tipo:'med', grandeza:'Horímetro da máquina cedida na saída', unidade:'h' },
   { tipo:'med', grandeza:'Horímetro da máquina do cliente na retirada', unidade:'h' },
   { tipo:'med', grandeza:'Corrente — fase R (após partida)', unidade:'A' },
   { tipo:'med', grandeza:'Corrente — fase S (após partida)', unidade:'A' },
@@ -4123,19 +4135,19 @@ function lvDocEmprestimo(photosByKey){
   var fotos = blocos.filter(function(b){ return b.tipo === 'foto'; });
 
   var destino = em.destino || lo.locatario || i.cliente || '—';
-  var doc = lvNovoDoc('Termo de Empréstimo de Máquina', 'Entrega, partida e prazos registrados em campo');
-  var L = new Laudo(doc, { titulo:'Termo de Empréstimo de Máquina', tecnico:i.tecnico || '—', data:lvData(at.data) }, {
+  var doc = lvNovoDoc('Termo de Cessão Remunerada de Máquina', 'Entrega, partida e prazos registrados em campo');
+  var L = new Laudo(doc, { titulo:'Termo de Cessão Remunerada de Máquina', tecnico:i.tecnico || '—', data:lvData(at.data) }, {
     cabecalho: function(L, primeira){
       return lvCabMarca(L, primeira, {
         marca:'PROPERCARE · PROPER COMPRESSORES',
-        subtitulo:'Termo de Empréstimo de Máquina',
-        titulo:'Termo de Empréstimo de Máquina',
+        subtitulo:'Termo de Cessão Remunerada de Máquina',
+        titulo:'Termo de Cessão Remunerada de Máquina',
         ref:'OS ' + (i.os || '—'),
         dir:destino,
         img:(typeof LOGO_DATAURL !== 'undefined') ? LOGO_DATAURL : null
       });
     },
-    rodapeEsq:'Termo de Empréstimo · ' + destino + (at.data ? ' · ' + lvData(at.data) : ''),
+    rodapeEsq:'Termo de Cessão Remunerada · ' + destino + (at.data ? ' · ' + lvData(at.data) : ''),
     rodapeEsq2:'Proper Compressores · Divinópolis/MG'
   });
   var n = 0;
@@ -4147,16 +4159,16 @@ function lvDocEmprestimo(photosByKey){
     ['Equipamento / TAG', i.equipamento], ['Modelo / Série', i.modelo]
   ], { pularVazio:false, kw:46 });
 
-  L.h1(++n, 'Partes do empréstimo');
+  L.h1(++n, 'Partes da cessão remunerada');
   L.kv([
     ['Proprietário do equipamento', em.proprietario || lo.proprietario],
-    ['Recebeu a máquina em empréstimo', destino],
+    ['Recebeu a máquina em cessão remunerada', destino],
     ['CNPJ do destinatário', em.destino_cnpj],
     ['Cidade / UF', em.destino_cidade],
     ['Contato no destinatário', [em.destino_contato, em.destino_telefone].filter(Boolean).join(' · ')],
     ['Local de instalação', em.local || lo.local],
     ['Contrato / Proposta', em.contrato || lo.contrato],
-    ['Nº do empréstimo', em.numero]
+    ['Nº da cessão remunerada', em.numero]
   ], { pularVazio:true, kw:60 });
   if (em.destino_cadastrado === false){
     L.p('⚠ Destinatário ainda NÃO cadastrado no PCM na data desta entrega — pedido de cadastro registrado na seção final deste documento.',
@@ -4167,7 +4179,7 @@ function lvDocEmprestimo(photosByKey){
      digitados em campo quando não existe — as duas origens são impressas com o
      mesmo peso, mas a origem fica escrita, porque "dado de campo" e "dado de
      cadastro" não valem o mesmo numa discussão futura. */
-  L.h1(++n, 'Máquina emprestada (saiu da Proper)');
+  L.h1(++n, 'Máquina cedida (saiu da Proper)');
   L.kv([
     ['Marca / Modelo', [mq.marca, mq.modelo].filter(Boolean).join(' ') || i.modelo],
     ['Nº de série', mq.serie],
@@ -4194,12 +4206,12 @@ function lvDocEmprestimo(photosByKey){
      cliente assina sabendo, em DATAS, até quando pode aprovar sem virar aluguel.
      Os números saem de `empCalc`/`empJanelaLivre` — as MESMAS funções do
      simulador da tela. Não há segunda conta escrita à mão. ── */
-  L.h1(++n, 'Prazos e regra comercial do empréstimo');
+  L.h1(++n, 'Prazos e regra comercial da cessão remunerada');
   var _diagPrev = pz.diag_previsto || EMP_DIAG_PADRAO;
   var _livrePrev = empJanelaLivre(_diagPrev);
   L.kv([
-    ['Entrega do empréstimo', lvData(pz.inicio || lo.inicio)],
-    ['Valor do empréstimo (devido na entrega)', empMoeda(_vlPdf.taxa)],
+    ['Entrega da cessão remunerada', lvData(pz.inicio || lo.inicio)],
+    ['Valor da cessão remunerada (devido na entrega)', empMoeda(_vlPdf.taxa)],
     ['Diagnóstico previsto', _diagPrev + ' dias'],
     ['Prazo de aprovação previsto', _livrePrev + ' dias após o envio da proposta'],
     ['Previsão de devolução', lvData(pz.previsao_devolucao || lo.previsao)]
@@ -4209,7 +4221,7 @@ function lvDocEmprestimo(photosByKey){
   var temData = cen.some(function(c){ return !!c.limite; });
   L.tabela(
     [{t:'Se o diagnóstico levar'}, {t:'o cliente aprova em até', align:'center'},
-     {t:(temData ? 'ou seja, até' : 'total de empréstimo'), align:'center'}],
+     {t:(temData ? 'ou seja, até' : 'total de cessão remunerada'), align:'center'}],
     [70, 55, 55],
     cen.map(function(c){
       return [ c.diag + ' dias',
@@ -4222,12 +4234,12 @@ function lvDocEmprestimo(photosByKey){
      iguais num documento que o cliente assina leem-se como erro de sistema. A
      linha abaixo transforma a repetição no que ela de fato é: a regra. */
   L.p('Enquanto o diagnóstico couber em ' + EMP_APROV_MIN + ' dias, a data-limite é sempre o '
-      + EMP_TOTAL_LIVRE + 'º dia do empréstimo — por isso as primeiras linhas coincidem. Ela só se afasta quando o '
+      + EMP_TOTAL_LIVRE + 'º dia da cessão remunerada — por isso as primeiras linhas coincidem. Ela só se afasta quando o '
       + 'diagnóstico passa de ' + EMP_APROV_MIN + ' dias, e aí o CLIENTE mantém os ' + EMP_APROV_MIN + ' dias dele.',
       { size:7, cor:LV_COR.suave, gap:2 });
   L.caixa('Atraso do diagnóstico da PROPER não reduz o prazo do CLIENTE: ele nunca tem menos de '
     + EMP_APROV_MIN + ' dias para aprovar. Quando o diagnóstico termina antes, o CLIENTE usa a sobra até fechar '
-    + EMP_TOTAL_LIVRE + ' dias de empréstimo. Ultrapassado esse prazo, o empréstimo converte-se em ALUGUEL: '
+    + EMP_TOTAL_LIVRE + ' dias de cessão remunerada. Ultrapassado esse prazo, a cessão remunerada converte-se em ALUGUEL: '
     + empMoeda(_vlPdf.diaria) + ' por dia nos ' + EMP_DIAS_DIARIA + ' primeiros dias excedentes e, a partir do '
     + (EMP_DIAS_DIARIA + 1) + 'º, a mensalidade de ' + empMoeda(_vlPdf.mensal)
     + ' NO LUGAR das diárias, cobrindo 30 dias corridos contados do primeiro dia excedente.',
@@ -4239,7 +4251,7 @@ function lvDocEmprestimo(photosByKey){
       verificacoes.map(function(b){ return [b.pergunta || '—', {txt:lvRespTexto(b.resposta), align:'center'}]; }), { statusCol:1 });
   }
   if (itensEntregues.length){
-    L.h1(++n, 'Itens entregues com a máquina emprestada');
+    L.h1(++n, 'Itens entregues com a máquina cedida');
     L.tabela([{t:'Item'}, {t:'Entregue', align:'center'}], [140, 40],
       itensEntregues.map(function(b){
         var lab = String(b.pergunta || '').replace(ENTREGUE, '').replace(/\?\s*$/, '').trim();
@@ -4256,7 +4268,7 @@ function lvDocEmprestimo(photosByKey){
       }));
   }
   if (fotos.length){
-    L.h1(++n, 'Registro fotográfico do empréstimo');
+    L.h1(++n, 'Registro fotográfico da cessão remunerada');
     var fs = [], _vazios = 0;
     fotos.forEach(function(b){
       var leg = String(b.legenda || '').trim() || 'Foto do serviço';
@@ -4277,7 +4289,7 @@ function lvDocEmprestimo(photosByKey){
     L.figuras(fs, { numerar:true });
     if (_vazios){
       L.p(_vazios + ' ponto' + (_vazios>1?'s':'') + ' fotográfico' + (_vazios>1?'s':'')
-          + ' sem foto anexada — o registro visual deste empréstimo está incompleto.',
+          + ' sem foto anexada — o registro visual desta cessão remunerada está incompleto.',
           { size:7, cor:LV_COR.laranja, gap:2 });
     }
   }
