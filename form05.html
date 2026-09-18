@@ -1985,5 +1985,390 @@ PGPX.init({
       if(!d || d.ok !== true) throw new Error((d && d.error) || 'falha no upload'); }); }
 });
 </script>
+<!-- ████ INICIO BLOCOS PADRAO UX (PWAIT + CFX) ████ -->
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PWAIT v1 — A ESPERA FICA VISÍVEL, SEMPRE (+ GUARDA DE BOTÃO)
+     Pedido do Fernando em 17/09/2026: "sempre programar pensando em otimizar
+     tempo de abertura das telas e spinner sempre que for necessário aguardar, ou
+     mensagens avisando e deixando o usuário ciente da espera".
+     O problema que ele resolve: o `_comLoadingBtn_` (PCM v77 / PCF v55) só cobre
+     o BOTÃO que alguém se lembrou de embrulhar. Toda chamada disparada por
+     troca de tela, por refresh de 2º plano ou por um botão esquecido acontecia
+     em silêncio — e no GAS cada chamada custa ~3,5 s fixos (medição de 28/08).
+     Como funciona: PWAIT não pede wiring por tela. Ele CONTA as chamadas em voo
+     (fetch, XMLHttpRequest e o <script> do JSONP dos formulários) e mostra:
+       · barra viva no topo enquanto houver qualquer chamada;
+       · aos 3,5 s, um aviso discreto "aguardando o servidor…";
+       · aos 9 s, o aviso vira explicação ("o Google Sheets às vezes demora…").
+     NUNCA bloqueia a tela e NUNCA interfere na resposta: o wrapper devolve a
+     mesma promessa e repropaga o mesmo erro.
+     ADITIVO: nenhum id, função ou classe existente muda. Tudo em try/catch.
+     ── A GUARDA DE BOTÃO (mesma sentada, antes de qualquer publicação) ────
+     A varredura de paridade mediu **46 botões que gravam sem trava de duplo
+     clique** em 19 arquivos. Consertar 46 call sites é trabalho que envelhece:
+     o 47º nasce sem trava. Então a trava passou a ser MECANISMO, não hábito.
+     `PWAIT.guarda()` escuta clique e submit na fase de CAPTURA e, 130 ms depois
+     do clique, pergunta uma coisa só: **o número de chamadas em voo SUBIU?**
+     Se subiu, aquele clique gerou rede — o botão fica ocupado (⏳ no texto,
+     desabilitado) até a contagem voltar ao que era antes dele. Um 2º clique
+     nesse meio-tempo é ENGOLIDO na captura, antes de chegar ao app.
+     🔑 A atribuição é por DELTA, não por "tem chamada em voo": senão um
+        refresh de 2º plano (o PCM faz vários) desabilitaria botão à toa.
+     ⚠ Fora da guarda, de propósito: pílula/chip/toggle/olho/burger, botão com
+       `aria-pressed` ou `role=switch`, botão de rótulo curto (ícone, seta) e
+       qualquer um com `data-pw-off`. Marcar Ok/NOK/N.A. batendo o dedo não
+       pode esperar por nada.
+     ⚠ BLOCO ÚNICO: copiado BYTE A BYTE nos fronts; a varredura reprova divergência.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+#pwBar{position:fixed;top:0;left:0;height:3px;width:0;z-index:99500;pointer-events:none;
+  background:linear-gradient(90deg,var(--pw-a),var(--pw-b));box-shadow:0 0 8px var(--pw-a);
+  transition:width .22s ease,opacity .3s ease;opacity:0;border-radius:0 3px 3px 0}
+#pwBar.pw-on{opacity:1}
+#pwMsg{position:fixed;z-index:99501;left:50%;transform:translateX(-50%);top:10px;max-width:calc(100vw - 24px);
+  background:var(--pw-bg);color:var(--pw-fg);border:1px solid var(--pw-line);border-radius:999px;
+  padding:7px 15px;font-size:12.5px;font-family:inherit;box-shadow:0 8px 26px rgba(0,0,0,.3);
+  display:none;align-items:center;gap:9px;line-height:1.35}
+#pwMsg.pw-on{display:flex}
+#pwMsg .pw-sp{width:13px;height:13px;flex:none;border-radius:50%;border:2px solid var(--pw-line);
+  border-top-color:var(--pw-a);animation:pwSpin .8s linear infinite}
+@keyframes pwSpin{to{transform:rotate(360deg)}}
+#pwOv{position:fixed;inset:0;z-index:99400;background:rgba(0,0,0,.42);display:none;
+  align-items:center;justify-content:center;padding:20px}
+#pwOv.pw-on{display:flex}
+#pwOv .pw-cx{background:var(--pw-bg);color:var(--pw-fg);border:1px solid var(--pw-line);border-radius:14px;
+  padding:22px 26px;text-align:center;max-width:340px;font-family:inherit;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+#pwOv .pw-sp2{width:30px;height:30px;margin:0 auto 12px;border-radius:50%;
+  border:3px solid var(--pw-line);border-top-color:var(--pw-a);animation:pwSpin .8s linear infinite}
+#pwOv .pw-t{font-size:14px;font-weight:600}
+#pwOv .pw-s{font-size:12px;opacity:.75;margin-top:6px}
+button.is-busy{opacity:.72;cursor:progress}
+button[data-pw-busy="1"]{opacity:.72;cursor:progress}
+.pw-esq{padding:10px 0}
+.pw-esq i{display:block;height:13px;border-radius:6px;margin:8px 0;
+  background:linear-gradient(90deg,var(--pw-line) 25%,var(--pw-hov) 50%,var(--pw-line) 75%);
+  background-size:400% 100%;animation:pwShim 1.3s linear infinite}
+@keyframes pwShim{0%{background-position:100% 0}100%{background-position:0 0}}
+@media print{#pwBar,#pwMsg,#pwOv{display:none!important}}
+</style>
+<script>
+(function(){
+'use strict';
+try{
+  if(window.PWAIT) return;
+  var VER='PWAIT_V1';
+  var T_AVISO=3500;      // a espera deixa de ser invisível
+  var T_EXPLICA=9000;    // a espera passa a ser explicada
+  var voo=0, t0=0, bar=null, msg=null, ov=null, tA=null, tE=null, raf=null, prog=0;
+
+  function tokens(){
+    try{
+      var cs=getComputedStyle(document.body);
+      var m=/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(cs.backgroundColor||'');
+      var lum=m? (0.299*+m[1]+0.587*+m[2]+0.114*+m[3]) : 255;
+      var claro=lum>=140, r=document.documentElement.style;
+      r.setProperty('--pw-a', claro?'#2563eb':'#f58220');
+      r.setProperty('--pw-b', claro?'#22c55e':'#fbbf24');
+      r.setProperty('--pw-bg', claro?'#ffffff':(m?'rgb('+Math.min(255,+m[1]+16)+','+Math.min(255,+m[2]+18)+','+Math.min(255,+m[3]+24)+')':'#1e293b'));
+      r.setProperty('--pw-fg', cs.color||'inherit');
+      r.setProperty('--pw-line', claro?'#dfe3ea':'rgba(255,255,255,.2)');
+      r.setProperty('--pw-hov', claro?'#f4f6f9':'rgba(255,255,255,.08)');
+    }catch(e){}
+  }
+  function el(id,cls,html){
+    var d=document.getElementById(id);
+    if(d) return d;
+    d=document.createElement('div'); d.id=id; if(cls)d.className=cls; if(html)d.innerHTML=html;
+    (document.body||document.documentElement).appendChild(d);
+    return d;
+  }
+  function montar(){
+    tokens();
+    bar=el('pwBar');
+    msg=el('pwMsg','','<span class="pw-sp"></span><span data-pw-txt>aguardando o servidor…</span>');
+    ov=el('pwOv','','<div class="pw-cx"><div class="pw-sp2"></div><div class="pw-t" data-pw-ovt>Aguarde…</div><div class="pw-s" data-pw-ovs></div></div>');
+  }
+  function pinta(){
+    if(!bar) return;
+    if(voo>0){
+      bar.classList.add('pw-on');
+      prog=prog+ (92-prog)*0.06 + 0.4;           // nunca chega a 100 sozinha
+      if(prog>93) prog=93;
+      bar.style.width=prog.toFixed(1)+'%';
+      raf=requestAnimationFrame(pinta);
+    }else{
+      bar.style.width='100%';
+      setTimeout(function(){ if(voo===0){ bar.classList.remove('pw-on'); bar.style.width='0'; prog=0; } },240);
+    }
+  }
+  function aviso(txt){
+    if(!msg) return;
+    var s=msg.querySelector('[data-pw-txt]'); if(s) s.textContent=txt;
+    msg.classList.add('pw-on');
+  }
+  function some(){ if(msg) msg.classList.remove('pw-on'); }
+
+  function sobe(){
+    voo++;
+    if(voo===1){
+      t0=Date.now(); prog=2;
+      if(!bar) montar();
+      cancelAnimationFrame(raf); raf=requestAnimationFrame(pinta);
+      clearTimeout(tA); clearTimeout(tE);
+      tA=setTimeout(function(){ if(voo>0) aviso('aguardando o servidor…'); },T_AVISO);
+      tE=setTimeout(function(){ if(voo>0) aviso('ainda aguardando — o Google Sheets às vezes leva alguns segundos. Não feche a tela.'); },T_EXPLICA);
+    }
+  }
+  function desce(){
+    voo=Math.max(0,voo-1);
+    if(voo===0){ clearTimeout(tA); clearTimeout(tE); some(); pinta(); }
+  }
+
+  // ── 1) fetch ──
+  try{
+    if(window.fetch && !window.fetch.__pw){
+      var f0=window.fetch.bind(window);
+      var f1=function(){
+        sobe();
+        var p;
+        try{ p=f0.apply(null,arguments); }catch(e){ desce(); throw e; }
+        return p.then(function(r){ desce(); return r; }, function(e){ desce(); throw e; });
+      };
+      f1.__pw=1; window.fetch=f1;
+    }
+  }catch(e){}
+
+  // ── 2) XMLHttpRequest ──
+  try{
+    var XP=window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+    if(XP && !XP.__pw){
+      var s0=XP.send;
+      XP.send=function(){
+        var fim=false, self=this;
+        function ok(){ if(!fim){ fim=true; desce(); } }
+        try{
+          sobe();
+          self.addEventListener('loadend',ok);
+        }catch(e){ ok(); }
+        try{ return s0.apply(self,arguments); }catch(e){ ok(); throw e; }
+      };
+      XP.__pw=1;
+    }
+  }catch(e){}
+
+  // ── 3) JSONP dos formulários: <script src="…/exec?…"> ──
+  // Os forms falam com o GAS por tag <script>, não por fetch. Sem isto, o
+  // "Salvar" de um formulário em campo ficaria exatamente como está hoje:
+  // 20 s de espera com um botão cinza e nenhuma palavra na tela.
+  try{
+    var mo=new MutationObserver(function(recs){
+      for(var i=0;i<recs.length;i++){
+        var ns=recs[i].addedNodes;
+        for(var j=0;j<ns.length;j++){
+          var n=ns[j];
+          if(!n||n.tagName!=='SCRIPT'||!n.src||n.__pw) continue;
+          if(!/script\.google\.com|googleusercontent|supabase/.test(n.src)) continue;
+          n.__pw=1; sobe();
+          var fim=false;
+          var pronto=function(){ if(!fim){ fim=true; desce(); } };
+          n.addEventListener('load',pronto); n.addEventListener('error',pronto);
+          setTimeout(pronto,120000);          // rede que nunca responde não deixa a barra presa
+        }
+      }
+    });
+    mo.observe(document.documentElement,{childList:true,subtree:true});
+  }catch(e){}
+
+
+  // ── 4) GUARDA DE BOTÃO: spinner + trava de duplo clique, sem tocar em call site ──
+  function podeGuardar(b){
+    try{
+      if(!b||!b.tagName) return false;
+      if(b.hasAttribute('data-pw-off')) return false;
+      if(b.closest&&b.closest('[data-pw-off]')) return false;
+      var c=' '+String(b.className||'')+' ';
+      if(/pill|chip|toggle|olho|burger|ecard|-tab|tab-/i.test(c)) return false;
+      if(b.hasAttribute('aria-pressed')) return false;
+      if(String(b.getAttribute('role')||'')==='switch') return false;
+      var t=(b.textContent||'').trim();
+      if(b.type!=='submit' && t.length<4) return false;    // ícone, pílula, seta
+      return true;
+    }catch(e){ return false; }
+  }
+  function ocupar(b,base){
+    if(b.dataset.pwBusy==='1') return;
+    var txt=b.textContent, dis=!!b.disabled, filhos=!!b.querySelector('*');
+    b.dataset.pwBusy='1';
+    b.classList.add('is-busy');
+    if(!filhos && txt && txt.trim().length>3) b.textContent='⏳ '+txt.trim();
+    try{ b.disabled=true; }catch(e){}
+    var t0=Date.now();
+    var iv=setInterval(function(){
+      if(voo<=base || Date.now()-t0>60000){
+        clearInterval(iv);
+        try{
+          b.classList.remove('is-busy');
+          if(!filhos && txt) b.textContent=txt;
+          b.disabled=dis;
+        }catch(e){}
+        delete b.dataset.pwBusy;
+      }
+    },140);
+  }
+  function vigiar(b){
+    var base=voo;
+    setTimeout(function(){ if(voo>base) ocupar(b,base); },130);   // só se ESTE clique gerou rede
+  }
+  function noClique(ev){
+    try{
+      var el=ev.target; if(!el||!el.closest) return;
+      var b=el.closest('button,input[type=submit]'); if(!b) return;
+      if(b.dataset.pwBusy==='1'){                                  // 2º clique: engolido aqui
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        aviso('esse botão já está processando — aguarde a resposta do servidor.');
+        return;
+      }
+      if(podeGuardar(b)) vigiar(b);
+    }catch(e){}
+  }
+  function noSubmit(ev){
+    try{
+      var f=ev.target; if(!f||f.tagName!=='FORM') return;
+      var b=f.querySelector('button[type=submit],input[type=submit],button:not([type])');
+      if(!b) return;
+      if(b.dataset.pwBusy==='1'){ ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+      vigiar(b);
+    }catch(e){}
+  }
+
+  window.PWAIT={
+    versao:VER,
+    guarda:function(){ try{ document.addEventListener('click',noClique,true); document.addEventListener('submit',noSubmit,true); }catch(e){} },
+    podeGuardar:podeGuardar,
+    emVoo:function(){ return voo; },
+    // espera com mensagem própria, para trecho que NÃO é chamada de rede
+    // (gerar PDF, desenhar canvas, montar 2.000 linhas)
+    tela:function(titulo,sub){
+      if(!ov) montar();
+      var a=ov.querySelector('[data-pw-ovt]'), b=ov.querySelector('[data-pw-ovs]');
+      if(a) a.textContent=titulo||'Aguarde…';
+      if(b) b.textContent=sub||'';
+      ov.classList.add('pw-on');
+      return function(){ ov.classList.remove('pw-on'); };
+    },
+    fim:function(){ if(ov) ov.classList.remove('pw-on'); },
+    // só mostra a tela de espera se o trecho passar de `atraso` ms (sem piscada)
+    demorado:function(fn,titulo,sub,atraso){
+      var fechar=null, tt=setTimeout(function(){ fechar=window.PWAIT.tela(titulo,sub); },atraso==null?350:atraso);
+      var pronto=function(){ clearTimeout(tt); if(fechar) fechar(); };
+      var r;
+      try{ r=fn(); }catch(e){ pronto(); throw e; }
+      if(r&&typeof r.then==='function') return r.then(function(v){ pronto(); return v; },function(e){ pronto(); throw e; });
+      pronto(); return r;
+    },
+    // par do _comLoadingBtn_ do PCM/PCF, para os fronts que não têm o helper
+    btn:function(btnEl,fn){
+      if(!btnEl) return fn();
+      var txt=btnEl.textContent, dis=btnEl.disabled;
+      btnEl.disabled=true; btnEl.classList.add('is-busy'); btnEl.textContent='⏳ Processando…';
+      var volta=function(){ btnEl.disabled=dis; btnEl.classList.remove('is-busy'); btnEl.textContent=txt; };
+      var r;
+      try{ r=fn(); }catch(e){ volta(); throw e; }
+      if(r&&typeof r.then==='function') return r.then(function(v){ volta(); return v; },function(e){ volta(); throw e; });
+      volta(); return r;
+    },
+    // esqueleto: a tela mostra a FORMA do conteúdo antes do dado chegar
+    esqueleto:function(alvo,linhas){
+      var t=typeof alvo==='string'? document.getElementById(alvo)||document.querySelector(alvo) : alvo;
+      if(!t) return;
+      var n=linhas||6, h='<div class="pw-esq">';
+      for(var i=0;i<n;i++) h+='<i style="width:'+(96-(i%4)*13)+'%"></i>';
+      t.innerHTML=h+'</div>';
+    }
+  };
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',montar);
+  else montar();
+  window.PWAIT.guarda();
+}catch(e){ try{ console.error('[PWAIT] nao iniciou; a espera segue invisivel',e); }catch(_){} }
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     ERRO v1 — ERRO NUNCA ACONTECE EM SILÊNCIO
+     Par do PCM V108 (item 8), que criou este tratador no PCM depois do incidente
+     v39: um ReferenceError no boot deixava o app quebrado SEM DEIXAR RASTRO.
+     Em 17/09/2026 a varredura de paridade mostrou que a lição nunca viajou:
+     PCM, PCF e Hub tinham o tratador; **Portal do Cliente, Mural, Ficha de
+     Rotores e os 14 formulários não tinham nenhum** — e o Portal é a tela que
+     o CLIENTE olha.
+     O que faz:
+       · `window.onerror` e `unhandledrejection`, os dois, com anti-repetição
+         (o mesmo erro não aparece duas vezes em 15 s, no máximo 1 aviso / 4 s);
+       · traduz falha de rede para a frase que importa:
+         "Sem conexão — a alteração NÃO foi gravada.";
+       · usa o `toast()` do app quando existe; quando não existe, desenha o
+         próprio aviso (Portal e Mural não têm toast).
+     ⚠ NÃO entra em front que já tem tratador próprio (PCM, PCF, Hub): dois
+       tratadores = aviso em dobro. Quem controla isso é a lista do aplicador,
+       e a varredura confere que TODO front tem UM.
+     ⚠ BLOCO ÚNICO: copiado BYTE A BYTE; a varredura reprova divergência.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+#perrToast{position:fixed;z-index:99600;left:50%;transform:translateX(-50%);bottom:20px;
+  max-width:calc(100vw - 28px);background:#b42318;color:#fff;border-radius:10px;padding:11px 16px;
+  font:13.5px/1.45 inherit;box-shadow:0 10px 32px rgba(0,0,0,.35);display:none;text-align:left}
+#perrToast.perr-on{display:block}
+@media print{#perrToast{display:none!important}}
+</style>
+<script>
+(function(){
+'use strict';
+try{
+  if(window.__PERR) return;
+  window.__PERR='ERRO_V1';
+  var vistos={}, ultimo=0;
+
+  function proprio(txt){
+    var el=document.getElementById('perrToast');
+    if(!el){
+      el=document.createElement('div'); el.id='perrToast';
+      (document.body||document.documentElement).appendChild(el);
+    }
+    el.textContent=txt;
+    el.className='perr-on';
+    setTimeout(function(){ if(el.textContent===txt) el.className=''; },7000);
+  }
+  function mostrar(tipo,msg,detalhe){
+    try{
+      var agora=Date.now();
+      var chave=tipo+'|'+String(msg).slice(0,120);
+      if(vistos[chave] && agora-vistos[chave]<15000) return;   // não repete o mesmo em 15 s
+      vistos[chave]=agora;
+      try{ console.error('[ERRO_V1]['+tipo+']',msg,detalhe||''); }catch(e){}
+      if(agora-ultimo<4000) return;                            // no máx. 1 aviso a cada 4 s
+      ultimo=agora;
+      var t=String(msg||'erro desconhecido');
+      if(/OFFLINE|Failed to fetch|NetworkError|Load failed|Sem conex/i.test(t))
+        t='Sem conexão — a alteração NÃO foi gravada.';
+      if(typeof window.toast==='function'){ try{ window.toast('⚠ '+t,'error'); return; }catch(e){} }
+      proprio('⚠ '+t);
+    }catch(e){ /* o tratador de erro nunca pode ser a causa de um erro */ }
+  }
+  window.addEventListener('error',function(ev){
+    if(ev && ev.target && ev.target!==window && ev.target.tagName) return;   // 404 de <img>/<script>
+    mostrar('erro',(ev&&ev.message)||'falha no script',
+            ev&&ev.filename? (ev.filename+':'+ev.lineno):'');
+  });
+  window.addEventListener('unhandledrejection',function(ev){
+    var r=ev&&ev.reason;
+    mostrar('promessa',(r&&r.message)||String(r||'promessa rejeitada'), r&&r.stack);
+  });
+  window.__perrUltimos=function(){ return vistos; };
+}catch(e){}
+})();
+</script>
+
+<!-- ████ FIM BLOCOS PADRAO UX ████ -->
 </body>
 </html>
