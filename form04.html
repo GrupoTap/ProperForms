@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  26/09/2026 — PCF ESTÁVEL · lado do formulário (bloco PFX V1 + PMAQ V1)
+  · Volta ao PCF com os_numero + voltou_de + t: o PCF V113 abre DIRETO a OS,
+    espera este envio e diz a verdade sobre a tarefa (prints 2/3 de 24/09).
+  · "＋ Adicionar item" ganha ⏱ Horímetro total, 🔩 Contador de peça e 🕒 Regime
+    de trabalho, com a máquina da OS — o GAS v148 aplica no cadastro.
+  · Horas em HORAS + MINUTOS (medição com unidade "h"), nunca decimal.
+  · (sem fila ProperSafe neste formulário: só a volta e os itens de máquina)
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   21/08/2026 — CABEÇALHO DO CLIENTE VINDO DA OS (rev. interna +1)
   CAUSA: o campo Cliente deste formulário só era preenchido quando a URL trazia
     ?cliente=. Aberto pelo pipeline sem esse parâmetro, ele ficava vazio — e o
@@ -97,6 +108,21 @@ form04.html — 13/07/2026 — Peritagem Elétrica STANDALONE (separado do perit
     tomado · na volta só desfaz o que ela escreveu e só SOLTA o `disabled`.
   ZERO GAS, ZERO SQL. Só o bloco muda — nenhuma linha do app foi tocada.
   Bancada: _testes/NEWFILE_T_CFX_PWAIT.mjs
+  ══════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ══════════════════════════════════════════════════════════════════════
+  form04 — PWAIT v3: A ESPERA APARECE, MAS NÃO ATRAPALHA     26/09/2026
+  ══════════════════════════════════════════════════════════════════════
+  Fernando, 24/09 (PCF, prints 1 e 11): "mensagens PWAIT irritantes,
+  cortadas". A pílula ficava no TOPO, por cima do cabeçalho, com frase
+  longa cortada — e aparecia até para refresh de 2º plano.
+  ⇒ v3: pílula no RODAPÉ, uma linha, sem receber toque, acima da barra
+    fixa de baixo · mensagem só para a espera que alguém PEDIU (chamada
+    até 1,5 s depois de um toque) · PWAIT.silencioso(fn) · frases curtas.
+    A guarda de botão do v2 não mudou.
+  ZERO GAS, ZERO SQL neste arquivo por causa do bloco.
+  Bancada: _testes/NEWFILE_T_PWAIT_V3.mjs
   ══════════════════════════════════════════════════════════════════════
 -->
 <title>Form 04 — Peritagem Elétrica</title>
@@ -738,7 +764,7 @@ function lerRetornoDaUrl() {
 
 function destinoDeVolta() {
   if (_retornoUrl) return _retornoUrl;                       // veio do PCM (aba nova)
-  if (_osId) return PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId);
+  if (_osId) return PCF_PIPELINE_URL + '?modo=pipeline&os_id=' + encodeURIComponent(_osId) + (window.PFX ? PFX.volta() : '');   // 26/09 — os_numero + voltou_de (PCF V113)
   return '';                                                 // avulso: não há pipeline
 }
 
@@ -2383,6 +2409,14 @@ function lvDocPeritagem(){
    ══════════════════════════════════════════════════════════════════════════ */
 window.PGPX = (function(){
   'use strict';
+  /* ── PGPX v2 · 26/09/2026 (PCF ESTÁVEL, pedidos 4 e 5 de 24/09) ──────────
+     + ⏱ Horímetro total · 🔩 Contador de peça · 🕒 Regime de trabalho no menu:
+       quem desenha e guarda esses três é o PMAQ (bloco PFX, byte a byte nos 13
+       forms); o PGPX só os oferece, hospeda o `#pmaqHost` no próprio cartão e
+       junta o que o PMAQ captura ao `captura()` — o hospedeiro não muda.
+     + Medição com unidade "h" pede HORAS e MINUTOS (nunca decimal).
+     O init ganha, opcionais: `maquinas()` (a lista que o form já tem) e
+     `postar(body)` (para buscar a lista se o form ainda não a tiver). */
   var O = {};              // opções do init
   var ITENS = [];          // o estado, na ordem em que o técnico montou
   var _seq = 0, _montado = false, _chaveRasc = '';
@@ -2391,8 +2425,14 @@ window.PGPX = (function(){
     { id:'item', ico:'🧾', rot:'Item de lista',  sub:'Ok / NOK / N.A. + observação + foto' },
     { id:'obs',  ico:'📝', rot:'Observação',     sub:'texto livre' },
     { id:'med',  ico:'📏', rot:'Medição',        sub:'grandeza, valor e unidade' },
-    { id:'foto', ico:'📷', rot:'Foto',           sub:'com legenda' }
+    { id:'foto', ico:'📷', rot:'Foto',           sub:'com legenda' },
+    { id:'horimetro',     ico:'⏱', rot:'Horímetro total',    sub:'horas e minutos · atualiza a máquina', maq:true },
+    { id:'contador_peca', ico:'🔩', rot:'Contador de peça',   sub:'horímetro de peça · atualiza a máquina', maq:true },
+    { id:'regime',        ico:'🕒', rot:'Regime de trabalho', sub:'dias e horários · atualiza a máquina', maq:true }
   ];
+  function ehMaq(t){ for(var i=0;i<TIPOS.length;i++) if(TIPOS[i].id===t) return !!TIPOS[i].maq; return false; }
+  function ehHora(u){ return /^(h|hr|hrs|hs|hora|horas)$/i.test(String(u||'').trim()); }
+  function pad2(n){ n=parseInt(n,10); if(!isFinite(n)||n<0) n=0; return (n<10?'0':'')+n; }
   var CONDS = ['Ok','NOK','N.A.'];
 
   function uid(){ _seq++; return 'x' + Date.now().toString(36) + _seq.toString(36); }
@@ -2457,16 +2497,24 @@ window.PGPX = (function(){
             + '<b>' + t.ico + ' ' + esc(t.rot) + '</b><span>' + esc(t.sub) + '</span></button>'; }).join('')
       + '</div>'
       + '<div id="pgpxLista"></div>'
+      + '<div id="pmaqHost"></div>'
       + '</div>'
       + '<input type="file" id="pgpxFile" accept="image/*" capture="environment" style="display:none">';
     $('#pgpxFile').addEventListener('change', _arquivoEscolhido);
     _montado = true;
     render();
+    // v2 — os itens de MÁQUINA moram no PMAQ, dentro deste cartão.
+    try{ if(window.PMAQ) PMAQ.init({ tipo:O.tipo, host:'#pmaqHost', contexto:O.contexto, maquinas:O.maquinas, postar:O.postar }); }
+    catch(e){ try{ console.warn('[PGPX] PMAQ não iniciou:', e); }catch(_c){} }
   }
 
   function menu(){ var m=$('#pgpxMenu'); if(m) m.classList.toggle('open'); }
 
   function novo(tipo){
+    if(ehMaq(tipo)){
+      var mm=$('#pgpxMenu'); if(mm) mm.classList.remove('open');
+      try{ return window.PMAQ ? PMAQ.novo(tipo) : ''; }catch(e){ return ''; }
+    }
     var it = { uid:uid(), tipo:tipo, titulo:'', cond:'', texto:'', valor:'', unidade:'', fotos:[] };
     ITENS.push(it);
     var m=$('#pgpxMenu'); if(m) m.classList.remove('open');
@@ -2484,6 +2532,23 @@ window.PGPX = (function(){
   }
 
   function campo(u, k, v){ var it=acha(u); if(it){ it[k]=v; salvar(); } }
+  // v2 — unidade "h" troca o campo Valor por Horas + Minutos (e volta).
+  function unid(u, v){
+    var it=acha(u); if(!it) return; it.unidade=v;
+    if(ehHora(v) && (it.horas===undefined || it.horas==='') && String(it.valor||'').trim()){
+      var x = (window.PFX && PFX._lerHm) ? PFX._lerHm(it.valor) : { h:'', m:'' };
+      it.horas = x.h; it.minutos = x.m; it.valor = it.horas ? (parseInt(it.horas,10)+':'+pad2(it.minutos||0)) : '';
+    }
+    repintar(u); salvar();
+  }
+  function hm(u, k, el){
+    var it=acha(u); if(!it) return;
+    var v=String(el.value||'').replace(/\D/g,'').slice(0, k==='minutos'?2:7);
+    if(k==='minutos' && v!=='' && parseInt(v,10)>59) v='59';
+    if(el.value!==v) el.value=v;
+    it[k]=v; it.valor = it.horas ? (parseInt(it.horas,10)+':'+pad2(it.minutos||0)) : '';
+    salvar();
+  }
   function cond(u, v){ var it=acha(u); if(!it) return; it.cond=v; render(); salvar(); }
 
   function htmlItem(it){
@@ -2497,7 +2562,15 @@ window.PGPX = (function(){
         +  '<div class="pgpx-row2"><div><label>Valor</label><input type="text" inputmode="decimal" value="'+attr(it.valor)+'"'
         +  ' placeholder="0,0" oninput="PGPX.campo(\''+it.uid+'\',\'valor\',this.value)"></div>'
         +  '<div><label>Unidade</label><input type="text" value="'+attr(it.unidade)+'" placeholder="mm"'
-        +  ' oninput="PGPX.campo(\''+it.uid+'\',\'unidade\',this.value)"></div></div>';
+        +  ' oninput="PGPX.campo(\''+it.uid+'\',\'unidade\',this.value)" onchange="PGPX.unid(\''+it.uid+'\',this.value)"></div></div>';
+      if(ehHora(it.unidade)){
+        // v2 — hora é HORA E MINUTO. O campo "Valor" some e o valor vira "1234:30".
+        h = h.replace('<div><label>Valor</label>', '<div style="display:none"><label>Valor</label>');
+        h += '<div class="pgpx-row2"><div><label>Horas</label><input type="text" inputmode="numeric" value="'+attr(it.horas)+'" placeholder="0"'
+          +  ' oninput="PGPX.hm(\''+it.uid+'\',\'horas\',this)"></div>'
+          +  '<div><label>Minutos</label><input type="text" inputmode="numeric" maxlength="2" value="'+attr(it.minutos)+'" placeholder="00"'
+          +  ' oninput="PGPX.hm(\''+it.uid+'\',\'minutos\',this)"></div></div>';
+      }
     } else {
       h += '<label>'+(it.tipo==='foto'?'Legenda (o que a foto mostra)':'Título do item')+'</label>'
         +  '<input type="text" value="'+attr(it.titulo)+'" placeholder="'
@@ -2632,10 +2705,12 @@ window.PGPX = (function(){
       return true;
     }catch(e){ return false; }
   }
-  function limpar(){ ITENS = []; try{ localStorage.removeItem(chave()); }catch(e){} render(); }
+  function limpar(){ ITENS = []; try{ localStorage.removeItem(chave()); }catch(e){} render();
+    try{ if(window.PMAQ) PMAQ.limpar(); }catch(e){} }
 
   /* ── SAÍDA ────────────────────────────────────────────────────────────── */
   function temConteudo(){
+    try{ if(window.PMAQ && PMAQ.temConteudo()) return true; }catch(e){}
     return ITENS.some(function(it){
       return String(it.titulo||'').trim() || String(it.texto||'').trim()
           || String(it.valor||'').trim() || it.cond || (it.fotos||[]).length; });
@@ -2643,6 +2718,11 @@ window.PGPX = (function(){
   /* O que entra no campos_json. A foto vai como REFERÊNCIA (uid, legenda, url),
      nunca em base64 — o byte já subiu pelo salvarFotoForm. */
   function captura(){
+    var mq = [];
+    try{ mq = window.PMAQ ? PMAQ.captura() : []; }catch(e){ mq = []; }
+    return capturaPropria().concat(mq);
+  }
+  function capturaPropria(){
     return ITENS.filter(function(it){
       return String(it.titulo||'').trim() || String(it.texto||'').trim()
           || String(it.valor||'').trim() || it.cond || (it.fotos||[]).length;
@@ -2650,6 +2730,8 @@ window.PGPX = (function(){
       return { uid:it.uid, tipo:it.tipo, titulo:String(it.titulo||'').trim(),
                condicao:it.cond||'', texto:String(it.texto||'').trim(),
                valor:String(it.valor||'').trim(), unidade:String(it.unidade||'').trim(),
+               horas:(it.tipo==='med' && ehHora(it.unidade) && it.horas!==undefined && it.horas!=='') ? parseInt(it.horas,10) : undefined,
+               minutos:(it.tipo==='med' && ehHora(it.unidade) && it.horas!==undefined && it.horas!=='') ? parseInt(it.minutos||0,10) : undefined,
                fotos:(it.fotos||[]).map(function(f){
                  return { foto_uid:f.fid, legenda:f.legenda, url:f.url||'', status:f.status||'' }; }) };
     });
@@ -2667,8 +2749,10 @@ window.PGPX = (function(){
      e `figuras` SEM opções). Por isso só métodos do denominador comum. */
   function pdf(L, opt){
     opt = opt || {};
-    var itens = captura();
-    if(!itens.length || !L) return;
+    var itens = capturaPropria();
+    // v2 — a seção de MÁQUINA (PMAQ) vem depois da dos itens extras, com ou sem eles.
+    var _maqPdf = function(){ try{ if(window.PMAQ && L) PMAQ.pdf(L, opt.n ? { n:opt.n + (itens.length ? 1 : 0) } : {}); }catch(e){} };
+    if(!itens.length || !L){ _maqPdf(); return; }
     var titulo = opt.titulo || 'Itens acrescentados pelo técnico';
     try{
       if(!opt.n && typeof L.banda === 'function') L.banda(titulo);
@@ -2692,6 +2776,7 @@ window.PGPX = (function(){
 
       var fs = fotosPdf();
       if(fs.length) L.figuras(fs);
+      _maqPdf();
     }catch(e){
       // Uma seção extra NUNCA pode derrubar o laudo inteiro: o resto do PDF
       // vale mais do que ela.
@@ -2707,7 +2792,7 @@ window.PGPX = (function(){
     return API;
   }
 
-  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto,
+  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto, unid:unid, hm:hm, versao:'PGPX_V2',
               captura:captura, restaurar:restaurar, limpar:limpar, temConteudo:temConteudo,
               pdf:pdf, fotosPdf:fotosPdf, render:render,
               visivel:function(v){ var c=$('#pgpxCard'); if(c) c.style.display = v===false ? 'none' : ''; },
@@ -2718,6 +2803,8 @@ window.PGPX = (function(){
 /* ── ligação deste formulário com o PGPX (a única parte que muda entre os 7) ── */
 PGPX.init({
   tipo: 'form04',
+  maquinas: function(){ return (typeof _maquinas!=='undefined' && _maquinas) || []; },   // 26/09 — PGPX v2 / PMAQ
+  postar: function(b){ return gasPostJson(b); },
   sub: 'Componente, leitura ou achado da peritagem elétrica que o roteiro não previu. Entra no PDF e no registro da OS.',
   contexto: function(){ return { os: curOs(), cliente: val('i_cliente'), os_id:_osId, tarefa_id:_tarefaId,
     maquina_id:(_maqAtual&&_maqAtual.id)||'', maquina_label:'', createdBy:(state.identificacao&&state.identificacao.tecnico)||'' }; },
@@ -2725,6 +2812,571 @@ PGPX.init({
       if(!d || d.ok !== true) throw new Error((d && d.error) || 'falha no upload'); }); }
 });
 </script>
+<!-- ████ INICIO PFX V1 (PCF ESTÁVEL · formulários) ████ -->
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   PFX V1 + PMAQ V1 — 26/09/2026 — O PCF ESTÁVEL, LADO DOS FORMULÁRIOS
+   🔑 BLOCO ÚNICO, BYTE A BYTE nos 13 formulários de campo (a bancada compara).
+   ──────────────────────────────────────────────────────────────────────────
+   PFX (transporte e volta):
+     • `PFX.volta()`      → sufixo da URL de volta ao PCF: os_numero, voltou_de
+                            (a tarefa que acabou de ser feita) e t (anti-cache).
+                            O PCF V113 usa isso para abrir DIRETO a OS, esperar a
+                            fila do formulário e dizer a verdade sobre a tarefa
+                            (prints 2 e 3 de 24/09: tela errada, coleta velha).
+     • `PFX.post(u,i,ms)` → fetch com PRAZO (AbortController). O envio da fila
+                            não fica mais pendurado para sempre numa rede ruim.
+     • `PFX.pedirSync()`  → pede ao service worker do PCF (escopo /ProperTech/)
+                            um Background Sync: no Android o envio termina com o
+                            app FECHADO (print 9). No iPhone não existe — e a
+                            tela diz isso, em vez de prometer.
+     • `PFX.textoFechar()`→ a frase honesta da tela final.
+     • Horas em h:min nos blocos de MEDIÇÃO com unidade "h" (pedido 5 de 24/09).
+   PMAQ ("＋ Adicionar item" → dados da MÁQUINA, pedido 4 de 24/09):
+     ⏱ Horímetro total · 🔩 Contador de peça · 🕒 Regime de trabalho.
+     Opcionais — o técnico escolhe. Vão no campos_json.itens_extras com
+     `maquina_id`, e o GAS v148 aplica no cadastro com os MESMOS escritores da
+     preventiva (guarda de regressão do horímetro, âncora da peça no servidor).
+     Horas SEMPRE em horas + minutos (nunca decimal).
+     Acoplamento com o hospedeiro: `PMAQ.init({...})`, `captura()`, `pdf(L,opt)`,
+     `limpar()` — nos 7 forms com PGPX quem chama é o próprio PGPX (zero linha
+     nova no hospedeiro); nos 6 de blocos, a gaveta chama `PMAQ.novo(tipo)`.
+   ⚠ ADITIVO e inteiramente em try/catch: um erro aqui nunca derruba o form.
+   ══════════════════════════════════════════════════════════════════════════ */
+window.PFX = (function(){
+  'use strict';
+  var API = { versao:'PFX_V1' };
+  function q(){ try{ return new URLSearchParams(location.search); }catch(e){ return null; } }
+
+  API.volta = function(){
+    var s = '';
+    try{
+      var p = q();
+      var num = p && (p.get('os_numero') || '');
+      var tar = p && (p.get('tarefa_id') || '');
+      if(num) s += '&os_numero=' + encodeURIComponent(num);
+      s += '&voltou_de=' + encodeURIComponent(tar || 'form');
+      s += '&t=' + Date.now();
+    }catch(e){}
+    return s;
+  };
+
+  // fetch com prazo. Devolve um objeto com a MESMA forma que o sender usa
+  // (`.status` e `.text()`), com o corpo já lido DENTRO do prazo — a leitura do
+  // corpo também pendura em rede ruim, não só a conexão.
+  API.post = function(url, init, ms){
+    ms = ms || 60000;
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var tmo = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(e){} }, ms);
+    var op = Object.assign({}, init || {}); if(ctl) op.signal = ctl.signal;
+    return fetch(url, op).then(function(r){
+      return r.text().then(function(t){
+        clearTimeout(tmo);
+        return { status:r.status, ok:r.ok, text:function(){ return Promise.resolve(t); } };
+      });
+    }, function(e){
+      clearTimeout(tmo);
+      throw (e && e.name === 'AbortError') ? new Error('sem resposta em ' + Math.round(ms/1000) + ' s (rede lenta)') : e;
+    });
+  };
+
+  // ── Background Sync pelo service worker do PCF ─────────────────────────
+  // `_syncOk` só vira true quando: o navegador tem SyncManager, o PCF tem SW
+  // registrado, e o PCF V113+ já rodou neste aparelho (é ele quem grava a
+  // configuração que o SW usa, em proper_pcf_idb/cfg::gas). Antes disso a tela
+  // NÃO promete que o envio continua com o app fechado.
+  var _syncOk = false;
+  function _cfgPcfExiste(){
+    return new Promise(function(res){
+      try{
+        if(!window.indexedDB) return res(false);
+        var rq = indexedDB.open('proper_pcf_idb');
+        // 🔒 Nunca CRIAR o banco do PCF daqui: um banco v1 vazio criado pelo form
+        //    impediria o upgrade do PCF (ele abriria sem as stores).
+        rq.onupgradeneeded = function(e){ try{ e.target.transaction.abort(); }catch(_e){} };
+        rq.onerror = function(){ res(false); };
+        rq.onblocked = function(){ res(false); };
+        rq.onsuccess = function(e){
+          var db = e.target.result;
+          try{
+            if(!db.objectStoreNames.contains('photos')){ db.close(); return res(false); }
+            var g = db.transaction('photos','readonly').objectStore('photos').get('cfg::gas');
+            g.onsuccess = function(){ var c = g.result; try{ db.close(); }catch(_e){} res(!!(c && c.url)); };
+            g.onerror = function(){ try{ db.close(); }catch(_e){} res(false); };
+          }catch(e2){ try{ db.close(); }catch(_e){} res(false); }
+        };
+      }catch(e){ res(false); }
+    });
+  }
+  function _reg(){
+    try{
+      if(!('serviceWorker' in navigator) || !navigator.serviceWorker.getRegistration) return Promise.resolve(null);
+      return navigator.serviceWorker.getRegistration('/ProperTech/').catch(function(){ return null; });
+    }catch(e){ return Promise.resolve(null); }
+  }
+  API.verificarSync = function(){
+    return _reg().then(function(r){
+      if(!r || !r.sync || typeof window.SyncManager === 'undefined') return false;
+      return _cfgPcfExiste();
+    }).then(function(ok){ _syncOk = !!ok; return _syncOk; }).catch(function(){ _syncOk = false; return false; });
+  };
+  API.syncOk = function(){ return _syncOk; };
+  API.pedirSync = function(){
+    try{
+      _reg().then(function(r){
+        if(r && r.sync && r.sync.register) return r.sync.register('proper-outbox');
+      }).catch(function(){});
+    }catch(e){}
+  };
+  API.textoFechar = function(){
+    return _syncOk
+      ? 'Pode fechar o app — o envio continua sozinho quando houver internet.'
+      : 'Deixe esta tela aberta até terminar: neste aparelho o envio pausa com o app fechado. Se fechar, ele continua quando você abrir o PCF de novo.';
+  };
+  try{ API.verificarSync(); }catch(e){}
+  // (auditoria 26/09) o técnico troca de app ou fecha no meio do envio: pede o
+  // Background Sync de novo NESTA hora — é quando a aba pode ser congelada.
+  try{
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'hidden') API.pedirSync(); });
+    window.addEventListener('pagehide', function(){ API.pedirSync(); });
+  }catch(e){}
+
+  // ── h:min nos blocos de MEDIÇÃO com unidade "h" (motor de blocos) ────────
+  // Não mexe no motor: o `.b-val` continua sendo o campo que a captura, o
+  // rascunho e o PDF leem. Com unidade "h", ele fica escondido e recebe
+  // "1234:30" dos dois campos Horas/Min. Rascunho antigo em decimal ("1234,5")
+  // é convertido na primeira abertura (1234,5 h = 1234 h 30 min).
+  function _pad2(n){ n = parseInt(n,10); if(!isFinite(n) || n < 0) n = 0; return (n < 10 ? '0' : '') + n; }
+  function _lerHm(v){
+    var s = String(v == null ? '' : v).trim(); if(!s) return { h:'', m:'' };
+    var m1 = s.match(/^(\d+)\s*[:h]\s*(\d{1,2})/i); if(m1) return { h:String(parseInt(m1[1],10)), m:_pad2(Math.min(59, parseInt(m1[2],10))) };
+    var s2 = s.replace(/\s/g,''), n = NaN;
+    if(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s2)) n = parseFloat(s2.replace(/\./g,'').replace(',', '.'));   // "12.500" = milhar pt-BR
+    else if(/^\d+([.,]\d+)?$/.test(s2)) n = parseFloat(s2.replace(',', '.'));                           // "1234,5" = decimal
+    if(!isFinite(n)) return { h:s.replace(/\D/g,''), m:'' };
+    var h = Math.floor(n), mi = Math.round((n - h) * 60); if(mi === 60){ h++; mi = 0; }
+    return { h:String(h), m:_pad2(mi) };
+  }
+  function _hmAplicar(sel){
+    try{
+      var corpo = sel.closest('.cbody') || sel.closest('.blk'); if(!corpo) return;
+      var val = corpo.querySelector('.b-val'); if(!val) return;
+      var ehH = String(sel.value || '').trim() === 'h';
+      var box = corpo.querySelector('.pfx-hm');
+      if(ehH && !box){
+        box = document.createElement('div'); box.className = 'pfx-hm';
+        box.innerHTML = '<input type="text" inputmode="numeric" class="pfx-hm-h" placeholder="horas" aria-label="Horas">'
+          + '<span>h</span><input type="text" inputmode="numeric" maxlength="2" class="pfx-hm-m" placeholder="min" aria-label="Minutos"><span>min</span>';
+        val.parentNode.insertBefore(box, val.nextSibling);
+        var ih = box.querySelector('.pfx-hm-h'), im = box.querySelector('.pfx-hm-m');
+        var x = _lerHm(val.value); ih.value = x.h; im.value = x.m;
+        var sincroniza = function(){
+          ih.value = ih.value.replace(/\D/g,'').slice(0,7);
+          im.value = im.value.replace(/\D/g,'').slice(0,2);
+          if(im.value !== '' && parseInt(im.value,10) > 59) im.value = '59';
+          val.value = ih.value ? (parseInt(ih.value,10) + ':' + _pad2(im.value || 0)) : '';
+        };
+        ih.addEventListener('input', sincroniza); im.addEventListener('input', sincroniza);
+        im.addEventListener('blur', function(){ if(im.value !== '') im.value = _pad2(im.value); sincroniza(); });
+        if(val.value && !/^\d+:\d{2}$/.test(String(val.value).trim())){
+          sincroniza();
+          try{ val.dispatchEvent(new Event('input', { bubbles:true })); }catch(e){}
+        }
+      }
+      if(box) box.style.display = ehH ? '' : 'none';
+      val.style.display = ehH ? 'none' : '';
+      var lab = val.parentNode && val.parentNode.querySelector('label');
+      if(lab && !lab.dataset.pfxOrig) lab.dataset.pfxOrig = lab.textContent;
+      if(lab) lab.textContent = ehH ? 'Valor (horas e minutos)' : (lab.dataset.pfxOrig || lab.textContent);
+    }catch(e){}
+  }
+  function _hmVarrer(raiz){
+    try{ [].forEach.call((raiz || document).querySelectorAll('select.b-unid'), _hmAplicar); }catch(e){}
+  }
+  function _hmIniciar(){
+    try{
+      var st = document.createElement('style');
+      st.textContent = '.pfx-hm{display:flex;align-items:center;gap:6px}'
+        + '.pfx-hm input{width:100%;min-width:0}.pfx-hm .pfx-hm-m{max-width:64px}'
+        + '.pfx-hm span{font-size:12px;opacity:.75}';
+      document.head.appendChild(st);
+      document.addEventListener('change', function(e){
+        var t = e.target; if(t && t.matches && t.matches('select.b-unid')) _hmAplicar(t);
+      }, true);
+      var stack = document.getElementById('stack');
+      if(stack && window.MutationObserver){
+        new MutationObserver(function(ms){
+          ms.forEach(function(m){ [].forEach.call(m.addedNodes || [], function(n){ if(n.nodeType === 1) _hmVarrer(n); }); });
+        }).observe(stack, { childList:true, subtree:true });
+      }
+      _hmVarrer(document);
+    }catch(e){}
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _hmIniciar);
+  else _hmIniciar();
+  API._lerHm = _lerHm;
+  return API;
+})();
+
+window.PMAQ = (function(){
+  'use strict';
+  var O = {}, ITENS = [], _seq = 0, _montado = false, _maqsBusca = null, _buscando = false;
+  var TIPOS = {
+    horimetro:     { ico:'⏱', rot:'Horímetro total',    sub:'horas e minutos do painel da máquina' },
+    contador_peca: { ico:'🔩', rot:'Contador de peça',   sub:'filtro, óleo, separador… (horímetro de peças)' },
+    regime:        { ico:'🕒', rot:'Regime de trabalho', sub:'dias e horários em que a máquina roda' }
+  };
+  var PECAS = [
+    ['filtro_oleo','Filtro de óleo'], ['filtro_ar_prim','Filtro de ar primário'], ['filtro_ar_secu','Filtro de ar secundário'],
+    ['separador','Separador ar/óleo'], ['oleo_lubrif','Óleo lubrificante'], ['correia','Correia'],
+    ['filtro_ar','Filtro de ar (pistão)'], ['correias','Correias em V (pistão)'], ['outra','Outra peça (digitar o nome)']
+  ];
+  var DIAS = [ ['seg-sex','Seg a Sex'], ['seg-sab','Seg a Sáb'], ['seg-dom','Todos os dias'], ['seg-qui','Seg a Qui'],
+               ['sex','Só sexta'], ['sab','Só sábado'], ['dom','Só domingo'] ];
+  var NDIAS = { 'seg-qui':4, 'seg-sex':5, 'seg-sab':6, 'seg-dom':7, 'sex':1, 'sab':1, 'dom':1 };
+
+  function uid(){ _seq++; return 'm' + Date.now().toString(36) + _seq.toString(36); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+  function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
+  function $(s, r){ return (r || document).querySelector(s); }
+  function acha(u){ for(var i = 0; i < ITENS.length; i++) if(ITENS[i].uid === u) return ITENS[i]; return null; }
+  function ctx(){ try{ return (O.contexto && O.contexto()) || {}; }catch(e){ return {}; } }
+  function url(k){ try{ return new URLSearchParams(location.search).get(k) || ''; }catch(e){ return ''; } }
+  function pad2(n){ n = parseInt(n,10); if(!isFinite(n) || n < 0) n = 0; return (n < 10 ? '0' : '') + n; }
+  function intOu(v){ var s = String(v == null ? '' : v).replace(/\D/g,''); return s === '' ? '' : parseInt(s,10); }
+  function milhar(n){ try{ return Number(n).toLocaleString('pt-BR'); }catch(e){ return String(n); } }
+  function hojeYmd(){ var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+  function hpw(turnos){
+    var t = 0;
+    (turnos || []).forEach(function(x){
+      var nd = x.dias === 'custom' ? ((x.customDays && x.customDays.length) || 0) : (NDIAS[x.dias] || 0);
+      var a = String(x.inicio || '').split(':'), b = String(x.fim || '').split(':');
+      if(a.length < 2 || b.length < 2) return;
+      var d = (Number(b[0]) + Number(b[1])/60) - (Number(a[0]) + Number(a[1])/60); if(d <= 0) d += 24;
+      t += d * nd;
+    });
+    return t > 0 ? Math.round(t * 10) / 10 : 0;
+  }
+  function textoRegime(turnos){
+    return (turnos || []).filter(function(x){ return x && x.dias && x.inicio && x.fim; }).map(function(x){
+      var r = DIAS.filter(function(d){ return d[0] === x.dias; })[0];
+      return (r ? r[1] : (x.dias === 'custom' ? 'Dias escolhidos' : x.dias)) + ' ' + x.inicio + '–' + x.fim;
+    }).join(' · ');
+  }
+
+  // ── máquinas da OS ──────────────────────────────────────────────────────
+  function maqs(){
+    var l = [];
+    try{ l = (O.maquinas && O.maquinas()) || []; }catch(e){ l = []; }
+    if((!l || !l.length) && _maqsBusca) l = _maqsBusca;
+    l = (l || []).filter(function(m){ return m && m.id; });
+    if(!l.length){ var c = ctx(); if(c.maquina_id) l = [{ id:c.maquina_id, _rotulo:c.maquina_label || '' }]; }
+    return l;
+  }
+  function maqPorId(id){ var l = maqs(); for(var i = 0; i < l.length; i++) if(String(l[i].id) === String(id)) return l[i]; return null; }
+  function rotulo(m){
+    if(!m) return '';
+    if(m._rotulo) return m._rotulo;
+    var t = [m.tag ? '[' + m.tag + ']' : '', m.brand || m.marca || '', m.model || m.modelo || '', (m.serial || m.serie) ? '· série ' + (m.serial || m.serie) : '']
+      .filter(Boolean).join(' ').trim();
+    return t || String(m.id);
+  }
+  function buscarMaquinas(){
+    if(_buscando || _maqsBusca || !O.postar) return;
+    var osId = ctx().os_id || url('os_id'); if(!osId) return;
+    _buscando = true;
+    Promise.resolve().then(function(){ return O.postar({ action:'getMaquinasByOS', sem_pecas:true, id_os:osId }); })
+      .then(function(d){ if(d && Array.isArray(d.machines) && d.machines.length){ _maqsBusca = d.machines; repintarTodos(); } })
+      .catch(function(){}).then(function(){ _buscando = false; });
+  }
+
+  // ── CSS e DOM ───────────────────────────────────────────────────────────
+  var CSS = ''
+  + '#pmaqBox{margin:12px 0}'
+  + '#pmaqBox .pmaq-tit{font-size:13px;font-weight:700;color:var(--muted,var(--text-secondary,#94a3b8));margin:0 0 2px;display:none}'
+  + '#pmaqBox.tem .pmaq-tit{display:block}'
+  + '.pmaq-it{background:var(--elev,var(--bg-section,#243349));border:1px solid var(--border,#334155);border-left:3px solid var(--brand,#f58220);'
+  +   'border-radius:10px;padding:10px;margin-top:10px;position:relative;color:var(--text,var(--text-primary,#e2e8f0))}'
+  + '.pmaq-it .pmaq-x{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:8px;border:1px solid var(--border,#334155);'
+  +   'background:transparent;color:var(--muted,#94a3b8);cursor:pointer}'
+  + '.pmaq-selo{font-size:11px;font-weight:700;color:var(--brand,#f58220);letter-spacing:.4px;text-transform:uppercase;padding-right:34px}'
+  + '.pmaq-it label{display:block;font-size:11px;color:var(--muted,var(--text-secondary,#94a3b8));margin:8px 0 3px}'
+  + '.pmaq-it input,.pmaq-it select{width:100%;background:var(--bg,var(--bg-app,#0f172a));border:1px solid var(--border,#334155);'
+  +   'color:var(--text,var(--text-primary,#f1f5f9));border-radius:8px;padding:9px 10px;font-size:15px;font-family:inherit;min-height:42px;box-sizing:border-box}'
+  + '.pmaq-hm{display:grid;grid-template-columns:2fr 1fr;gap:8px}'
+  + '.pmaq-maq{font-size:13px;margin-top:6px}'
+  + '.pmaq-dica{font-size:12px;color:var(--muted,var(--text-secondary,#94a3b8));margin-top:6px;line-height:1.35}'
+  + '.pmaq-dica b{color:var(--text,var(--text-primary,#e2e8f0))}'
+  + '.pmaq-alerta{color:var(--amber,#f59e0b)}'
+  + '.pmaq-falta{font-size:12px;color:var(--red,#f87171);margin-top:6px}'
+  + '.pmaq-pills{display:grid;grid-template-columns:1fr 1fr;gap:6px}'
+  + '.pmaq-pill{padding:10px 6px;border-radius:8px;border:1px solid var(--border,#334155);background:transparent;color:inherit;'
+  +   'font-size:13px;font-weight:600;cursor:pointer;min-height:44px;line-height:1.2}'
+  + '.pmaq-pill.on{background:var(--brand,#f58220);border-color:var(--brand,#f58220);color:#fff}'
+  + '.pmaq-chk{display:flex!important;align-items:center;gap:8px;font-size:13px!important;color:inherit!important;margin-top:10px!important}'
+  + '.pmaq-chk input{width:22px!important;height:22px;min-height:0!important;flex:0 0 auto}'
+  + '.pmaq-turno{display:grid;grid-template-columns:1.4fr 1fr 1fr 34px;gap:6px;align-items:end;margin-top:6px}'
+  + '.pmaq-turno input,.pmaq-turno select{font-size:14px;padding:8px 6px}'
+  + '.pmaq-mini{padding:8px 12px;border-radius:8px;border:1px solid var(--border,#334155);background:transparent;color:inherit;font-size:13px;cursor:pointer;min-height:40px;margin-top:8px}'
+  + '.pmaq-tx{width:34px;height:40px;border-radius:8px;border:1px solid var(--border,#334155);background:transparent;color:var(--muted,#94a3b8);cursor:pointer}';
+
+  function montar(){
+    if(_montado) return true;
+    var host = $(O.host || '#pmaqHost'); if(!host) return false;
+    var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+    host.innerHTML = '<div id="pmaqBox"><div class="pmaq-tit">🔧 Dados da máquina — atualizam o cadastro quando o formulário chegar ao servidor</div><div id="pmaqLista"></div></div>';
+    _montado = true;
+    return true;
+  }
+
+  function linhaMaquina(it){
+    var l = maqs();
+    if(!l.length) return '<div class="pmaq-dica pmaq-alerta">Máquina não identificada nesta OS — o registro vai no PDF, mas não atualiza o cadastro.</div>';
+    if(l.length === 1){
+      if(String(it.maquina_id || '') !== String(l[0].id)) it.maquina_id = String(l[0].id);
+      return '<div class="pmaq-maq">🔧 ' + esc(rotulo(l[0])) + '</div>';
+    }
+    return '<label>Máquina</label><select onchange="PMAQ.maquina(\'' + it.uid + '\',this.value)">'
+      + '<option value="">— escolha a máquina —</option>'
+      + l.map(function(m){ return '<option value="' + attr(m.id) + '"' + (String(m.id) === String(it.maquina_id) ? ' selected' : '') + '>' + esc(rotulo(m)) + '</option>'; }).join('')
+      + '</select>';
+  }
+  function camposHm(it, rotH){
+    return '<div class="pmaq-hm"><div><label>' + esc(rotH || 'Horas') + '</label>'
+      + '<input type="text" inputmode="numeric" value="' + attr(it.horas) + '" placeholder="0" oninput="PMAQ.hm(\'' + it.uid + '\',\'horas\',this)"></div>'
+      + '<div><label>Minutos</label><input type="text" inputmode="numeric" maxlength="2" value="' + attr(it.minutos) + '" placeholder="00"'
+      + ' oninput="PMAQ.hm(\'' + it.uid + '\',\'minutos\',this)" onblur="PMAQ.hmFim(\'' + it.uid + '\',this)"></div></div>';
+  }
+  function htmlItem(it){
+    var t = TIPOS[it.tipo] || TIPOS.horimetro;
+    var h = '<div class="pmaq-it" data-uid="' + it.uid + '">'
+      + '<button type="button" class="pmaq-x" onclick="PMAQ.remover(\'' + it.uid + '\')" aria-label="Remover">✕</button>'
+      + '<div class="pmaq-selo">' + t.ico + ' ' + esc(t.rot) + '</div>'
+      + linhaMaquina(it);
+    if(it.tipo === 'horimetro'){
+      h += camposHm(it, 'Horas do horímetro total');
+    } else if(it.tipo === 'contador_peca'){
+      h += '<label>Peça</label><select onchange="PMAQ.peca(\'' + it.uid + '\',this.value)">'
+        + '<option value="">— escolha a peça —</option>'
+        + PECAS.map(function(p){ return '<option value="' + p[0] + '"' + (it.part_id === p[0] ? ' selected' : '') + '>' + esc(p[1]) + '</option>'; }).join('')
+        + '</select>';
+      if(it.part_id === 'outra') h += '<label>Nome da peça</label><input type="text" value="' + attr(it.nome) + '" placeholder="Ex.: Graxa do rolamento do motor"'
+        + ' oninput="PMAQ.campo(\'' + it.uid + '\',\'nome\',this.value)">';
+      h += '<label>Como o contador desta peça conta?</label><div class="pmaq-pills">'
+        + '<button type="button" class="pmaq-pill' + (it.contador !== 'regressivo' ? ' on' : '') + '" onclick="PMAQ.contador(\'' + it.uid + '\',\'progressivo\')">⬆ Horas desde a troca</button>'
+        + '<button type="button" class="pmaq-pill' + (it.contador === 'regressivo' ? ' on' : '') + '" onclick="PMAQ.contador(\'' + it.uid + '\',\'regressivo\')">⬇ Horas que faltam</button></div>'
+        + '<label class="pmaq-chk"><input type="checkbox"' + (it.acao === 'trocada' ? ' checked' : '') + ' onchange="PMAQ.trocada(\'' + it.uid + '\',this.checked)"> Troquei esta peça agora (o contador foi zerado)</label>'
+        + camposHm(it, it.acao === 'trocada' ? 'Leitura após zerar (opcional)' : 'Leitura do contador (horas)');
+    } else if(it.tipo === 'regime'){
+      h += '<label>Turnos (até 3)</label>';
+      (it.turnos || []).forEach(function(x, i){
+        var opts = DIAS.slice();
+        if(x.dias === 'custom') opts = opts.concat([['custom','Dias escolhidos (' + ((x.customDays || []).length) + ')']]);
+        h += '<div class="pmaq-turno"><div><select onchange="PMAQ.turno(\'' + it.uid + '\',' + i + ',\'dias\',this.value)">'
+          + opts.map(function(d){ return '<option value="' + d[0] + '"' + (x.dias === d[0] ? ' selected' : '') + '>' + esc(d[1]) + '</option>'; }).join('')
+          + '</select></div>'
+          + '<div><input type="time" value="' + attr(x.inicio) + '" onchange="PMAQ.turno(\'' + it.uid + '\',' + i + ',\'inicio\',this.value)" aria-label="Início"></div>'
+          + '<div><input type="time" value="' + attr(x.fim) + '" onchange="PMAQ.turno(\'' + it.uid + '\',' + i + ',\'fim\',this.value)" aria-label="Fim"></div>'
+          + '<button type="button" class="pmaq-tx" onclick="PMAQ.turnoX(\'' + it.uid + '\',' + i + ')" aria-label="Tirar turno">✕</button></div>';
+      });
+      if((it.turnos || []).length < 3) h += '<button type="button" class="pmaq-mini" onclick="PMAQ.turnoNovo(\'' + it.uid + '\')">＋ Turno</button>';
+    }
+    h += '<div class="pmaq-dica" data-dica="1">' + dica(it) + '</div><div class="pmaq-falta" data-falta="1">' + esc(falta(it)) + '</div>';
+    return h + '</div>';
+  }
+  function dica(it){
+    var m = maqPorId(it.maquina_id);
+    if(it.tipo === 'horimetro'){
+      var cad = m ? parseInt(m.hourTotal || m.horimetro || 0, 10) : 0;
+      var s = cad > 0 ? ('No cadastro: <b>' + milhar(cad) + ' h</b>') : '';
+      var h = intOu(it.horas);
+      if(h !== '' && cad > 0 && h < cad) s += '<br><span class="pmaq-alerta">⚠ Menor que o cadastro. Confira o número: o sistema não deixa o horímetro voltar.</span>';
+      if(h !== '' && cad > 0 && h - cad > 5000) s += '<br><span class="pmaq-alerta">⚠ ' + milhar(h - cad) + ' h a mais que o cadastro — confira.</span>';
+      return s;
+    }
+    if(it.tipo === 'regime'){
+      var p = hpw(it.turnos), atual = m && Array.isArray(m.regimeData) && m.regimeData.length ? textoRegime(m.regimeData) : '';
+      return (p ? '≈ <b>' + String(p).replace('.', ',') + ' h por semana</b>' : '') + (atual ? (p ? '<br>' : '') + 'No cadastro: ' + esc(atual) : '');
+    }
+    if(it.tipo === 'contador_peca'){
+      return it.contador === 'regressivo'
+        ? 'Contador que DESCE até a troca: digite as horas que o painel mostra.'
+        : 'Contador que SOBE desde a última troca: digite as horas que o painel mostra.';
+    }
+    return '';
+  }
+  // (auditoria 26/09) item restaurado de rascunho com uma máquina que não está
+  // (mais) na lista desta OS: com UMA máquina, passa a ser ela; com várias, pede
+  // de novo — nunca envia um id que a tela não mostra.
+  function conferirMaquina(it){
+    var l = maqs(); if(!l.length || !it.maquina_id) return;
+    if(maqPorId(it.maquina_id)) return;
+    it.maquina_id = (l.length === 1) ? String(l[0].id) : '';
+  }
+  function falta(it){
+    var f = [];
+    conferirMaquina(it);
+    if(maqs().length > 1 && !it.maquina_id) f.push('a máquina');
+    if(it.tipo === 'horimetro'){ var h = intOu(it.horas); if(h === '' || h <= 0) f.push('as horas'); }
+    if(it.tipo === 'contador_peca'){
+      if(!it.part_id) f.push('a peça');
+      if(it.part_id === 'outra' && !String(it.nome || '').trim()) f.push('o nome da peça');
+      if(it.acao !== 'trocada' && intOu(it.horas) === '') f.push('a leitura');
+    }
+    if(it.tipo === 'regime' && !turnosValidos(it).length) f.push('um turno com dias, início e fim');
+    return f.length ? 'Falta ' + f.join(', ') + ' — sem isso este item não é enviado.' : '';
+  }
+  function turnosValidos(it){ return (it.turnos || []).filter(function(x){ return x && x.dias && x.inicio && x.fim; }); }
+  function completo(it){ return !falta(it); }
+
+  function atualizarRodape(it){
+    var el = $('.pmaq-it[data-uid="' + it.uid + '"]'); if(!el) return;
+    var d = el.querySelector('[data-dica]'), f = el.querySelector('[data-falta]');
+    if(d) d.innerHTML = dica(it);
+    if(f) f.textContent = falta(it);
+  }
+  function render(){
+    if(!montar()) return;
+    var lista = $('#pmaqLista'), box = $('#pmaqBox'); if(!lista) return;
+    var vistos = {};
+    ITENS.forEach(function(it){
+      vistos[it.uid] = 1;
+      if(!lista.querySelector('.pmaq-it[data-uid="' + it.uid + '"]')){
+        var d = document.createElement('div'); d.innerHTML = htmlItem(it); lista.appendChild(d.firstChild);
+      }
+    });
+    [].slice.call(lista.querySelectorAll('.pmaq-it')).forEach(function(el){ if(!vistos[el.dataset.uid]) el.remove(); });
+    if(box) box.classList.toggle('tem', ITENS.length > 0);
+  }
+  function repintar(u){
+    var el = $('.pmaq-it[data-uid="' + u + '"]'), it = acha(u); if(!el || !it) return;
+    var d = document.createElement('div'); d.innerHTML = htmlItem(it); el.parentNode.replaceChild(d.firstChild, el);
+  }
+  function repintarTodos(){ ITENS.forEach(function(it){ repintar(it.uid); }); }
+
+  // ── rascunho próprio (localStorage), por OS + tarefa ───────────────────
+  function chave(){ return 'pmaq::' + (O.tipo || 'form') + '::' + (url('os_id') || ctx().os_id || 'avulsa') + '::' + (url('tarefa_id') || ctx().tarefa_id || ''); }
+  function salvar(){ try{ localStorage.setItem(chave(), JSON.stringify(ITENS)); }catch(e){} }
+  function restaurar(){
+    try{
+      var s = localStorage.getItem(chave()); if(!s) return false;
+      var a = JSON.parse(s); if(!Array.isArray(a) || !a.length) return false;
+      ITENS = a.filter(function(x){ return x && TIPOS[x.tipo]; }); render(); return true;
+    }catch(e){ return false; }
+  }
+
+  // ── ações da tela ───────────────────────────────────────────────────────
+  function novo(tipo){
+    if(!TIPOS[tipo]) return '';
+    if(!montar()){ try{ console.warn('[PMAQ] sem host'); }catch(e){} return ''; }
+    buscarMaquinas();
+    var c = ctx(), l = maqs();
+    var it = { uid:uid(), tipo:tipo, maquina_id:String(c.maquina_id || (l.length === 1 ? l[0].id : '') || ''),
+               horas:'', minutos:'', part_id:'', nome:'', contador:'progressivo', acao:'conferida', turnos:[] };
+    if(tipo === 'regime'){
+      var m = maqPorId(it.maquina_id);
+      it.turnos = (m && Array.isArray(m.regimeData) && m.regimeData.length)
+        ? JSON.parse(JSON.stringify(m.regimeData)).slice(0,3)
+        : [{ dias:'seg-sex', inicio:'07:00', fim:'17:00' }];
+    }
+    ITENS.push(it); render(); salvar();
+    var el = $('.pmaq-it[data-uid="' + it.uid + '"]');
+    if(el){ try{ el.scrollIntoView({ behavior:'smooth', block:'center' }); }catch(e){}
+            var inp = el.querySelector('input[type=text]'); if(inp && tipo === 'horimetro') try{ inp.focus(); }catch(e){} }
+    return it.uid;
+  }
+  function remover(u){
+    var it = acha(u); if(!it) return;
+    if(completo(it) && !confirm('Remover este item?')) return;
+    ITENS = ITENS.filter(function(x){ return x.uid !== u; }); render(); salvar();
+  }
+  function campo(u, k, v){ var it = acha(u); if(!it) return; it[k] = v; salvar(); atualizarRodape(it); }
+  function hm(u, k, el){
+    var it = acha(u); if(!it) return;
+    var v = String(el.value || '').replace(/\D/g,'').slice(0, k === 'minutos' ? 2 : 7);
+    if(k === 'minutos' && v !== '' && parseInt(v,10) > 59) v = '59';
+    if(el.value !== v) el.value = v;
+    it[k] = v; salvar(); atualizarRodape(it);
+  }
+  function hmFim(u, el){ var it = acha(u); if(!it || it.minutos === '') return; it.minutos = pad2(it.minutos); el.value = it.minutos; salvar(); }
+  function maquina(u, v){
+    var it = acha(u); if(!it) return; it.maquina_id = v;
+    if(it.tipo === 'regime'){
+      var m = maqPorId(v);
+      if(m && Array.isArray(m.regimeData) && m.regimeData.length && !it._regimeTocado) it.turnos = JSON.parse(JSON.stringify(m.regimeData)).slice(0,3);
+      repintar(u);
+    } else atualizarRodape(it);
+    salvar();
+  }
+  function peca(u, v){ var it = acha(u); if(!it) return; it.part_id = v; if(v !== 'outra') it.nome = ''; repintar(u); salvar(); }
+  function contador(u, v){ var it = acha(u); if(!it) return; it.contador = v; repintar(u); salvar(); }
+  function trocada(u, on){ var it = acha(u); if(!it) return; it.acao = on ? 'trocada' : 'conferida'; repintar(u); salvar(); }
+  function turno(u, i, k, v){ var it = acha(u); if(!it || !it.turnos[i]) return; it.turnos[i][k] = v; it._regimeTocado = true; if(k === 'dias' && v !== 'custom') delete it.turnos[i].customDays; salvar(); atualizarRodape(it); }
+  function turnoNovo(u){ var it = acha(u); if(!it || it.turnos.length >= 3) return; it.turnos.push({ dias:'sab', inicio:'07:00', fim:'12:00' }); it._regimeTocado = true; repintar(u); salvar(); }
+  function turnoX(u, i){ var it = acha(u); if(!it) return; it.turnos.splice(i, 1); it._regimeTocado = true; repintar(u); salvar(); }
+
+  // ── saída ───────────────────────────────────────────────────────────────
+  function textoHm(h, m){ return milhar(h) + ' h' + (m !== '' && parseInt(m,10) > 0 ? ' ' + pad2(m) + ' min' : ''); }
+  function captura(){
+    ITENS.forEach(conferirMaquina);
+    return ITENS.filter(completo).map(function(it){
+      var m = maqPorId(it.maquina_id), h = intOu(it.horas), mi = intOu(it.minutos);
+      var base = { uid:it.uid, tipo:it.tipo, maquina_id:String(it.maquina_id || ''), maquina_label:rotulo(m), data_leitura:hojeYmd() };
+      if(it.tipo === 'horimetro'){
+        return Object.assign(base, { horas:h, minutos:mi === '' ? 0 : mi, horas_decimal:Math.round((h + (mi === '' ? 0 : mi)/60) * 100) / 100,
+                                     texto:textoHm(h, mi) });
+      }
+      if(it.tipo === 'contador_peca'){
+        var nome = it.part_id === 'outra' ? String(it.nome || '').trim() : (PECAS.filter(function(p){ return p[0] === it.part_id; })[0] || [,''])[1];
+        return Object.assign(base, { part_id:it.part_id === 'outra' ? '' : it.part_id, nome:nome, contador:it.contador || 'progressivo',
+          acao:it.acao === 'trocada' ? 'trocada' : 'conferida', zerado:it.acao === 'trocada',
+          horas:h, minutos:mi === '' ? (h === '' ? '' : 0) : mi,
+          texto:(it.acao === 'trocada' ? 'trocada' + (h !== '' ? ' · após zerar ' + textoHm(h, mi) : '') : 'leitura ' + textoHm(h, mi))
+                + ' (' + (it.contador === 'regressivo' ? 'contador que desce' : 'contador que sobe') + ')' });
+      }
+      var tv = turnosValidos(it).map(function(x){ var o = { dias:x.dias, inicio:x.inicio, fim:x.fim }; if(x.customDays) o.customDays = x.customDays; return o; });
+      return Object.assign(base, { turnos:tv, h_semana:hpw(tv), texto:textoRegime(tv) + ' (≈ ' + String(hpw(tv)).replace('.', ',') + ' h/semana)' });
+    });
+  }
+  function temConteudo(){ return captura().length > 0; }
+  function pendentes(){ return ITENS.filter(function(it){ return !completo(it); }).length; }
+  function limpar(){ ITENS = []; try{ localStorage.removeItem(chave()); }catch(e){} render(); }
+  // Desenha a seção no laudo. Só métodos do denominador comum dos dois motores
+  // de PDF (LV e o Gen-4 do form_diagnostico). Devolve true se desenhou.
+  function pdf(L, opt){
+    opt = opt || {};
+    var its = captura(); if(!its.length || !L) return false;
+    var tit = 'Dados da máquina registrados pelo técnico';
+    try{
+      if(opt.n && typeof L.h1 === 'function') L.h1(opt.n, tit);
+      else if(typeof L.banda === 'function') L.banda(tit);
+      else L.h1(91, tit);
+      L.p('Lidos em campo. Horímetro, contadores de peça e regime atualizam o cadastro da máquina quando este formulário chega ao servidor.',
+          { size:7, cor:(L.C && L.C.suave) || '#6b7280' });
+      var nomes = { horimetro:'Horímetro total', contador_peca:'Contador de peça', regime:'Regime de trabalho' };
+      L.tabela(['Máquina','Registro','Leitura'], [62,40,78], its.map(function(x){
+        return [ x.maquina_label || x.maquina_id || '(não identificada)',
+                 nomes[x.tipo] + (x.tipo === 'contador_peca' && x.nome ? ' — ' + x.nome : ''),
+                 x.texto || '—' ];
+      }));
+      return true;
+    }catch(e){ try{ console.error('[PMAQ] seção do PDF falhou:', e); }catch(_c){} return false; }
+  }
+
+  function init(opts){
+    O = opts || {};
+    var go = function(){ if(montar()) restaurar(); };
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+    return API;
+  }
+  var API = { versao:'PMAQ_V1', init:init, novo:novo, remover:remover, campo:campo, hm:hm, hmFim:hmFim, maquina:maquina,
+              peca:peca, contador:contador, trocada:trocada, turno:turno, turnoNovo:turnoNovo, turnoX:turnoX,
+              captura:captura, temConteudo:temConteudo, pendentes:pendentes, limpar:limpar, pdf:pdf, render:render,
+              restaurar:restaurar, TIPOS:TIPOS, _itens:function(){ return ITENS; }, _hpw:hpw };
+  return API;
+})();
+</script>
+<!-- ████ FIM PFX V1 ████ -->
 <!-- ████ INICIO BLOCOS PADRAO UX (PWAIT + CFX) ████ -->
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PWAIT v1 — A ESPERA FICA VISÍVEL, SEMPRE (+ GUARDA DE BOTÃO)
@@ -2780,6 +3432,24 @@ PGPX.init({
                 escreveu, e `disabled` só é SOLTO (nunca reposto em true).
      ⚠ Dois mecanismos mexendo no mesmo atributo precisam de dono único. Isto
        não é "esquisitice do PCM": qualquer front com trava própria cairia.
+     ── v3 · 26/09/2026 · A ESPERA APARECE, MAS NÃO ATRAPALHA ────────────────
+     Fernando, 24/09 (prints 1 e 11 do PCF): "carregamento longo e mensagens
+     PWAIT irritantes, cortadas". A pílula ficava NO TOPO, por cima do cabeçalho
+     (justo onde estão o número da OS e o botão de voltar), com uma frase longa
+     cortada em duas linhas — e aparecia até para o refresh de 2º plano que
+     ninguém pediu.
+     v3: (a) a pílula desce para o RODAPÉ, uma linha só (reticências), sem
+             receber toque (`pointer-events:none`), acima da barra fixa de baixo
+             quando houver (`--pw-bottom` no :root, ou `data-pw-dock` / #dock /
+             .dock detectados sozinhos);
+         (b) mensagem SÓ para a espera que alguém PEDIU: a chamada que começa
+             até 1,5 s depois de um toque/tecla. Refresh de 2º plano fica só na
+             barra fina do topo — que continua dizendo "tem rede em andamento";
+         (c) `PWAIT.silencioso(fn)`: o que fn dispara de forma síncrona não conta
+             nem para a barra (pré-carga do PCF, pings);
+         (d) frases curtas: "aguardando o servidor…" (3,5 s) e "servidor lento —
+             aguarde, não feche" (9 s).
+     A guarda de botão NÃO mudou (regras do v2 intactas).
      ⚠ BLOCO ÚNICO: copiado BYTE A BYTE nos fronts; a varredura reprova divergência.
      ═══════════════════════════════════════════════════════════════════════════ -->
 <style>
@@ -2787,10 +3457,12 @@ PGPX.init({
   background:linear-gradient(90deg,var(--pw-a),var(--pw-b));box-shadow:0 0 8px var(--pw-a);
   transition:width .22s ease,opacity .3s ease;opacity:0;border-radius:0 3px 3px 0}
 #pwBar.pw-on{opacity:1}
-#pwMsg{position:fixed;z-index:99501;left:50%;transform:translateX(-50%);top:10px;max-width:calc(100vw - 24px);
+#pwMsg{position:fixed;z-index:99501;left:50%;transform:translateX(-50%);top:auto;
+  bottom:calc(var(--pw-bottom,14px) + env(safe-area-inset-bottom,0px));max-width:calc(100vw - 32px);
   background:var(--pw-bg);color:var(--pw-fg);border:1px solid var(--pw-line);border-radius:999px;
-  padding:7px 15px;font-size:12.5px;font-family:inherit;box-shadow:0 8px 26px rgba(0,0,0,.3);
-  display:none;align-items:center;gap:9px;line-height:1.35}
+  padding:5px 12px;font-size:12px;font-family:inherit;box-shadow:0 6px 18px rgba(0,0,0,.28);
+  display:none;align-items:center;gap:8px;line-height:1.3;pointer-events:none;opacity:.94;white-space:nowrap}
+#pwMsg [data-pw-txt]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #pwMsg.pw-on{display:flex}
 #pwMsg .pw-sp{width:13px;height:13px;flex:none;border-radius:50%;border:2px solid var(--pw-line);
   border-top-color:var(--pw-a);animation:pwSpin .8s linear infinite}
@@ -2818,10 +3490,11 @@ button[data-pw-busy="1"]{opacity:.72;cursor:progress}
 'use strict';
 try{
   if(window.PWAIT) return;
-  var VER='PWAIT_V2';
-  var T_AVISO=3500;      // a espera deixa de ser invisível
-  var T_EXPLICA=9000;    // a espera passa a ser explicada
-  var voo=0, t0=0, bar=null, msg=null, ov=null, tA=null, tE=null, raf=null, prog=0;
+  var VER='PWAIT_V3';
+  var T_AVISO=3500;      // a espera PEDIDA deixa de ser invisível
+  var T_EXPLICA=9000;    // a espera PEDIDA passa a ser explicada
+  var T_GESTO=1500;      // v3: chamada que nasce até 1,5 s depois de um toque = alguém está esperando por ela
+  var voo=0, vooG=0, mudo=0, gesto=0, t0=0, bar=null, msg=null, ov=null, tA=null, tE=null, raf=null, prog=0;
 
   function tokens(){
     try{
@@ -2863,38 +3536,69 @@ try{
       setTimeout(function(){ if(voo===0){ bar.classList.remove('pw-on'); bar.style.width='0'; prog=0; } },240);
     }
   }
+  // v3 — a pílula fica ACIMA da barra fixa de baixo, se houver. O front pode
+  // mandar (--pw-bottom no :root); se não mandar, procura a barra sozinho.
+  function rodape(){
+    try{
+      var r=document.documentElement;
+      if(String(getComputedStyle(r).getPropertyValue('--pw-bottom')||'').trim()) return;
+      var d=document.querySelector('[data-pw-dock],#dock,.dock');
+      var h=0;
+      if(d && d.getClientRects().length){                 // (offsetParent é null em position:fixed)
+        var cs=getComputedStyle(d), bb=d.getBoundingClientRect();
+        if((cs.position==='fixed'||cs.position==='sticky') && bb.bottom>=window.innerHeight-4) h=Math.round(bb.height);
+      }
+      if(msg) msg.style.bottom = h ? ('calc(' + (h+10) + 'px + env(safe-area-inset-bottom,0px))') : '';
+    }catch(e){}
+  }
   function aviso(txt){
     if(!msg) return;
     var s=msg.querySelector('[data-pw-txt]'); if(s) s.textContent=txt;
+    rodape();
     msg.classList.add('pw-on');
   }
   function some(){ if(msg) msg.classList.remove('pw-on'); }
 
+  // v3 — sobe() devolve se a chamada é PEDIDA (nasceu logo depois de um gesto);
+  // quem chama guarda e devolve o mesmo valor ao desce(). Só as pedidas falam.
+  function agendarAvisos(){
+    clearTimeout(tA); clearTimeout(tE);
+    tA=setTimeout(function(){ if(vooG>0) aviso('aguardando o servidor…'); },T_AVISO);
+    tE=setTimeout(function(){ if(vooG>0) aviso('servidor lento — aguarde, não feche'); },T_EXPLICA);
+  }
   function sobe(){
+    var pedida = (Date.now()-gesto) <= T_GESTO;
     voo++;
     if(voo===1){
       t0=Date.now(); prog=2;
       if(!bar) montar();
       cancelAnimationFrame(raf); raf=requestAnimationFrame(pinta);
-      clearTimeout(tA); clearTimeout(tE);
-      tA=setTimeout(function(){ if(voo>0) aviso('aguardando o servidor…'); },T_AVISO);
-      tE=setTimeout(function(){ if(voo>0) aviso('ainda aguardando — o Google Sheets às vezes leva alguns segundos. Não feche a tela.'); },T_EXPLICA);
     }
+    if(pedida){ vooG++; if(vooG===1) agendarAvisos(); }
+    return pedida;
   }
-  function desce(){
+  function desce(pedida){
     voo=Math.max(0,voo-1);
-    if(voo===0){ clearTimeout(tA); clearTimeout(tE); some(); pinta(); }
+    if(pedida){ vooG=Math.max(0,vooG-1); if(vooG===0){ clearTimeout(tA); clearTimeout(tE); some(); } }
+    if(voo===0){ clearTimeout(tA); clearTimeout(tE); vooG=0; some(); pinta(); }
   }
+  // o gesto que torna a próxima chamada "pedida" (captura: antes do app)
+  try{
+    ['pointerdown','keydown','submit'].forEach(function(tp){
+      document.addEventListener(tp,function(){ gesto=Date.now(); },true);
+    });
+  }catch(e){}
 
   // ── 1) fetch ──
   try{
     if(window.fetch && !window.fetch.__pw){
       var f0=window.fetch.bind(window);
       var f1=function(){
-        sobe();
+        if(mudo>0) return f0.apply(null,arguments);          // v3: PWAIT.silencioso
+        var pd=sobe();
         var p;
-        try{ p=f0.apply(null,arguments); }catch(e){ desce(); throw e; }
-        return p.then(function(r){ desce(); return r; }, function(e){ desce(); throw e; });
+        try{ p=f0.apply(null,arguments); }catch(e){ desce(pd); throw e; }
+        return p.then(function(r){ desce(pd); return r; }, function(e){ desce(pd); throw e; });
       };
       f1.__pw=1; window.fetch=f1;
     }
@@ -2906,10 +3610,11 @@ try{
     if(XP && !XP.__pw){
       var s0=XP.send;
       XP.send=function(){
-        var fim=false, self=this;
-        function ok(){ if(!fim){ fim=true; desce(); } }
+        var fim=false, self=this, pd=false;
+        if(mudo>0) return s0.apply(self,arguments);          // v3: PWAIT.silencioso
+        function ok(){ if(!fim){ fim=true; desce(pd); } }
         try{
-          sobe();
+          pd=sobe();
           self.addEventListener('loadend',ok);
         }catch(e){ ok(); }
         try{ return s0.apply(self,arguments); }catch(e){ ok(); throw e; }
@@ -2930,9 +3635,11 @@ try{
           var n=ns[j];
           if(!n||n.tagName!=='SCRIPT'||!n.src||n.__pw) continue;
           if(!/script\.google\.com|googleusercontent|supabase/.test(n.src)) continue;
-          n.__pw=1; sobe();
+          n.__pw=1;
+          if(mudo>0) continue;                                  // v3: PWAIT.silencioso
+          var pd=sobe();
           var fim=false;
-          var pronto=function(){ if(!fim){ fim=true; desce(); } };
+          var pronto=(function(pd0){ return function(){ if(!fim){ fim=true; desce(pd0); } }; })(pd);
           n.addEventListener('load',pronto); n.addEventListener('error',pronto);
           setTimeout(pronto,120000);          // rede que nunca responde não deixa a barra presa
         }
@@ -3005,7 +3712,8 @@ try{
       var b=el.closest('button,input[type=submit]'); if(!b) return;
       if(b.dataset.pwBusy==='1'){                                  // 2º clique: engolido aqui
         ev.preventDefault(); ev.stopImmediatePropagation();
-        aviso('esse botão já está processando — aguarde a resposta do servidor.');
+        aviso('já está processando — aguarde');
+        setTimeout(function(){ if(vooG===0) some(); },2500);   // v3: não fica pendurado por causa de refresh de 2º plano
         return;
       }
       if(podeGuardar(b)) vigiar(b);
@@ -3026,6 +3734,16 @@ try{
     guarda:function(){ try{ document.addEventListener('click',noClique,true); document.addEventListener('submit',noSubmit,true); }catch(e){} },
     podeGuardar:podeGuardar,
     emVoo:function(){ return voo; },
+    // v3 — o que fn dispara de forma SÍNCRONA não conta (nem barra, nem aviso):
+    // pré-carga, ping, refresh que o usuário não pediu. Continuações assíncronas
+    // (um fetch dentro de um .then) NÃO herdam o silêncio — embrulhe-as também.
+    // ⚠ O JSONP (<script> dos formulários) também não: quem o conta é um
+    //   MutationObserver, que roda depois de fn já ter voltado.
+    silencioso:function(fn){
+      mudo++;
+      try{ return fn(); } finally{ mudo=Math.max(0,mudo-1); }
+    },
+    emVooPedidas:function(){ return vooG; },
     // espera com mensagem própria, para trecho que NÃO é chamada de rede
     // (gerar PDF, desenhar canvas, montar 2.000 linhas)
     tela:function(titulo,sub){
