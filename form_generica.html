@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  29/09/2026 — REAB_V1 · o formulário diz a verdade sobre a tarefa e deixa CORRIGIR
+  (par do GAS v159 · PCF V118). Chamado da PGP-2026-0094: a tela final dizia
+  "tarefa concluída" com a tarefa ABERTA no servidor, e o rascunho selado não
+  tinha saída. Agora: a tela final lê o que o servidor respondeu; tarefa aberta
+  com o envio feito oferece "Corrigir e reenviar" com tudo preenchido; o envio
+  novo leva correcao_de e SUBSTITUI o anterior; o rascunho confirmado fica
+  guardado 7 dias neste aparelho (arquivo) em vez de apagado.
+  Costuras: bloco REAB depois do módulo ProperSafe · REAB.antes() depois do
+  await PS.open() · REAB.depois() antes das Proteções de salvamento · o texto
+  inicial do okSub deixou de afirmar conclusão. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   26/09/2026 — PCF ESTÁVEL · lado do formulário (bloco PFX V1 + PMAQ V1)
   · Volta ao PCF com os_numero + voltou_de + t: o PCF V113 abre DIRETO a OS,
     espera este envio e diz a verdade sobre a tarefa (prints 2/3 de 24/09).
@@ -586,7 +600,7 @@ function pgpBootAviso(msg){
   <div class="ok-msg">
     <div class="big" id="okBig">✅</div>
     <h1 style="margin-top:10px" id="okTitle">OS genérica registrada</h1>
-    <div class="sub" id="okSub">A tarefa foi concluída no pipeline.</div>
+    <div class="sub" id="okSub">Registrado neste aparelho — enviando ao servidor…</div>
     <div class="sub" id="okStatus" style="margin-top:10px"></div>
     <!-- ══ 21/08 (P5) — O PDF QUE NUNCA CHEGOU ═══════════════════════════════
          Falhar a geração do PDF produzia UM toast de 2,5 s e a pendência ficava
@@ -868,6 +882,569 @@ window.PS = (function(){
     savePhoto:savePhoto, photosOf:photosOf, updatePhoto:updatePhoto, dropPhoto:dropPhoto, dropPhotos:dropPhotos,
     enqueue:enqueue, listJobs:listJobs, jobsOf:jobsOf, dropJobsOf:dropJobsOf, retryJob:retryJob, dropJob:dropJob,
     setSender:setSender, pump:pump, counts:counts };
+})();
+</script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════════
+   REAB_V1 · 29/09/2026 · O FORMULÁRIO DIZ A VERDADE SOBRE A TAREFA — E DEIXA CORRIGIR
+   Par: GAS v159 (formEstadoTarefa · correcao_de · `tarefa` na resposta) · PCF V118 (tstatus na URL).
+   🔑 BLOCO IDÊNTICO nos 7 formulários selados pela fila (generica, corretiva, locacao, emprestimo,
+      entrega_tecnica, exec_pistao, diag_oficina). A bancada compara o texto entre os sete.
+
+   O CHAMADO (29/09, PGP-2026-0094, Geovani): a tarefa constava "em andamento" no PCM e o formulário,
+   ao ser aberto, dizia "A tarefa foi concluída… voltando ao pipeline". Três defeitos empilhados:
+     (a) o servidor não concluiu (tipo do modelo ≠ formulário — conserto no GAS v159 R1) e
+         respondeu "ok" sem dizer isso;
+     (b) a tela final afirma "concluída" por ter ENVIADO, não por o servidor ter concluído;
+     (c) o rascunho SELADO nunca sai: quem esvaziou a fila foi o PCF/service worker (PCF V113), e o
+         `checkFinalize` só roda quando a fila muda NESTA página. Selado para sempre, sem saída,
+         sem como editar — e o "Reabrir tarefa" do PCM prometia "preencher de novo, do zero".
+   O QUE ESTE BLOCO FAZ:
+     V  VERDADE — a tela final lê o job `saveFormulario`: pendente = "ainda não chegou"; chegou com
+        `tarefa.concluida=false` (GAS v159) = "chegou, mas a tarefa NÃO foi concluída: motivo".
+     A  ARQUIVO EM VEZ DE LIXEIRA — quando a fila confirma tudo, o rascunho (e as fotos, com os bytes)
+        fica guardado 7 dias neste aparelho, em vez de ser apagado. É isso que permite corrigir
+        depois de uma reabertura sem refazer do zero. O corpo dos envios (base64) sai na hora.
+        Rascunho avulso (sem OS) segue o caminho antigo: não há tarefa para reabrir.
+     C  CORRIGIR — tarefa ABERTA no servidor (tstatus do PCF, ou formEstadoTarefa) com o envio já
+        feito ⇒ "✏ Corrigir e reenviar": a página RECARREGA (o _formUid é const — só página nova tem uid
+        novo) e volta PREENCHIDA; o próximo envio leva `correcao_de` (o form_uid anterior) e o servidor
+        substitui o envio antigo (não soma). Voltam para edição os itens de máquina (PMAQ) e, na
+        corretiva, os itens do "＋ Adicionar item" (PGPX, guardados no IndexedDB junto do arquivo).
+        Não se oferece corrigir: tarefa do escritório (reenviar não fecha), tarefa concluída/dispensada/
+        incompleta, nem envio de uma instância ANTERIOR da tarefa (Trocar pipeline reusa T01…).
+     S  SEM O ENVIO NESTE APARELHO (outro celular, arquivo vencido) e a tarefa REABERTA pelo escritório
+        depois do último envio ⇒ aviso honesto + o envio novo SUBSTITUI o anterior. Sem reabertura
+        explícita nada se marca sozinho.
+   ⚠ Costuras (as únicas fora deste bloco): `REAB.antes()` logo depois do `await PS.open()` do boot
+     (instala os embrulhos ANTES do restoreDraft — sem corrida com o parser) e `REAB.depois()` antes
+     das "Proteções de salvamento". Nenhum nome do formulário é renomeado.
+   ⚠ Nada aqui bloqueia o boot: toda falha cai no comportamento anterior.
+   ══════════════════════════════════════════════════════════════════════════════ */
+window.REAB = (function(){
+  'use strict';
+  var VERSAO = 'REAB_V1', RET_DIAS = 7;
+  var _inst = false, _estado = null, _estadoEm = 0, _buscando = null, _tStatusUrl = '', T0 = Date.now(), _recarregando = false;
+  var PMAQ_TIPOS = { horimetro:1, contador_peca:1, regime:1 };
+  var ROT = { pendente:'pendente', em_andamento:'em andamento', completo:'concluída', incompleto:'incompleta',
+              com_pendencia:'com pendência', bloqueado:'bloqueada', condicional:'aguardando decisão', dispensado:'dispensada' };
+
+  function $(id){ return document.getElementById(id); }
+  function q(k){ try{ return new URLSearchParams(location.search).get(k) || ''; }catch(e){ return ''; } }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function ls(k, v){
+    try{
+      if(v === undefined){ var s = localStorage.getItem(k); return s ? JSON.parse(s) : null; }
+      if(v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v));
+    }catch(e){ return null; }
+    return null;
+  }
+  function did(){ try{ return _draftId || ''; }catch(e){ return ''; } }
+  function osId(){ try{ return _osId || ''; }catch(e){ return ''; } }
+  function tarId(){ try{ return _tarefaId || ''; }catch(e){ return ''; } }
+  function selado(){ try{ return !!_sending; }catch(e){ return false; } }
+  function pdfPend(){ try{ return !!_pdfPendente; }catch(e){ return false; } }
+  function kArq(id){ return 'reab::arq::' + id; }
+  function kCor(id){ return 'reab::cor::' + id; }
+  function hora(v){
+    var d = new Date(typeof v === 'number' ? v : String(v || ''));
+    if(isNaN(d.getTime())) return '';
+    var p = function(n){ return (n < 10 ? '0' : '') + n; };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function itensDe(cj){
+    try{
+      if(typeof cj === 'string') cj = JSON.parse(cj);
+      if(typeof cj === 'string') cj = JSON.parse(cj);
+      return (cj && Array.isArray(cj.itens_extras)) ? cj.itens_extras : [];
+    }catch(e){ return []; }
+  }
+  function ultimoSf(jobs){
+    var sf = (jobs || []).filter(function(j){ return j && j.kind === 'saveFormulario' && j.body; });
+    sf.sort(function(a, b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+    return sf.length ? sf[sf.length - 1] : null;
+  }
+  function vistoNaTela(id){ var e = $(id); return !!(e && e.style.display !== 'none'); }
+
+  // ── o envio anterior: do job (fila ainda viva) ou do arquivo (fila já confirmada) ──
+  async function infoEnvio(){
+    var id = did(); if(!id) return null;
+    var jobs = []; try{ jobs = await PS.jobsOf(id); }catch(e){ jobs = []; }
+    var sf = ultimoSf(jobs);
+    if(sf) return { origem:'fila', status:sf.status, form_uid:String(sf.body.form_uid || ''),
+                    form_id:(sf.result && sf.result.form_id) || '', tarefa:(sf.result && sf.result.tarefa) || null,
+                    em:sf.updatedAt || sf.createdAt || 0, itens:itensDe(sf.body.campos_json), erro:sf.lastError || '' };
+    var a = ls(kArq(id));
+    if(a) return { origem:'arquivo', status:'done', form_uid:a.form_uid || '', form_id:a.form_id || '', tarefa:a.tarefa || null,
+                   em:a.enviado_em || a.em || 0, itens:a.itens || [] };
+    return null;
+  }
+
+  // ── o que o SERVIDOR diz da tarefa (GAS v159) — fora do caminho do boot ──
+  function buscarEstado(){
+    if(_buscando) return _buscando;
+    if(!osId() || !tarId() || (typeof navigator !== 'undefined' && navigator.onLine === false)) return Promise.resolve(null);
+    var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var tm = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(e){} }, 20000);
+    // 2ª auditoria (N2): leva o form_uid do envio guardado — o servidor diz (com os horários DELE) se o envio
+    // é desta instância da tarefa. O relógio do celular não entra nessa decisão.
+    _buscando = Promise.resolve().then(function(){ return infoEnvio().catch(function(){ return null; }); }).then(function(inf){
+      var corpo = { action:'formEstadoTarefa', os_id:osId(), tarefa_id:tarId() };
+      if(inf && inf.form_uid) corpo.form_uid = inf.form_uid;
+      var faz = function(){ return fetch(GAS_URL, { method:'POST', body:gcBody(corpo), signal:ctl ? ctl.signal : undefined }); };
+      return (window.PWAIT && typeof PWAIT.silencioso === 'function') ? PWAIT.silencioso(faz) : faz();
+    }).then(function(r){ return r.text(); }).then(function(t){
+      var d = null; try{ d = JSON.parse(t); }catch(e){}
+      _estado = (d && d.status === 'ok') ? d : { indisponivel:true, erro:(d && (d.error || d.message)) || 'resposta inválida' };
+      _estadoEm = Date.now();
+      return _estado;
+    }).catch(function(e){ _estado = { indisponivel:true, erro:(e && e.message) || 'sem resposta' }; return _estado; })
+      .then(function(x){ clearTimeout(tm); _buscando = null; return x; });
+    return _buscando;
+  }
+  // O status mais NOVO vence: o do servidor (quando foi lido), o da URL (quando o PCF abriu esta
+  // página) ou o que o próprio envio devolveu (GAS v159) — um envio feito DEPOIS da leitura manda.
+  function statusTarefa(inf){
+    var st = '', em = 0, fonte = '';
+    if(_estado && !_estado.indisponivel && _estado.tarefa){ st = String(_estado.tarefa.status || ''); em = _estadoEm; fonte = 'servidor'; }
+    // 2ª auditoria (N3): o tstatus da URL é o status de QUANDO o PCF abriu esta página — um envio feito
+    // DEPOIS disso (nesta página) o torna velho; sem o servidor, não se afirma nada.
+    else if(_tStatusUrl && !(inf && inf.status === 'done' && (inf.em || 0) >= T0)){ st = _tStatusUrl; em = T0; fonte = 'url'; }
+    if(inf && inf.status === 'done' && inf.tarefa && typeof inf.tarefa.concluida === 'boolean' && (inf.em || 0) > em){
+      st = inf.tarefa.concluida ? 'completo' : (String(inf.tarefa.status || '') || 'em_andamento'); fonte = 'envio';
+    }
+    return { st:st, fonte:fonte };
+  }
+  // B3 (auditoria): 'incompleto' é RESOLVIDO (o Reabrir do PCM é que o devolve) — não oferece correção
+  function tarefaAberta(st){ return !!st && ['completo','dispensado','incompleto'].indexOf(st) < 0; }
+  // A3 (auditoria): o envio guardado aqui é de uma instância ANTERIOR da tarefa ("🔄 Trocar pipeline"
+  // reusa T01, T02…) — só o servidor sabe quando a tarefa atual nasceu.
+  // 2ª auditoria (N2): quem decide é o SERVIDOR (formEstadoTarefa com o form_uid do envio, comparando os
+  // horários dele): o relógio do celular errado não esconde mais o Corrigir. E só envio que CHEGOU (done)
+  // e que o servidor TEM — um envio na fila ou travado nunca é "de outra versão" (descartá-lo perderia dados).
+  function envioDeOutraInstancia(inf){
+    try{
+      if(!inf || inf.status !== 'done' || !inf.form_uid) return false;
+      var c = (_estado && !_estado.indisponivel) ? _estado.consulta : null;
+      return !!(c && c.form_uid === inf.form_uid && c.achado && !c.da_instancia);
+    }catch(e){ return false; }
+  }
+  function ultimoAtivoServidor(){
+    if(!_estado || _estado.indisponivel) return null;
+    return (_estado.formularios || []).filter(function(f){ return f.ativo; })[0] || null;
+  }
+
+  // ── A · arquivo em vez de lixeira ──
+  // `alvo` = outro rascunho (o faxineiro da corretiva arquiva o de OUTRA OS com os dados dele)
+  async function arquivar(jobs, alvo){
+    var id = alvo ? alvo.draftId : did(), os = alvo ? String(alvo.osId || '') : osId(), tar = alvo ? String(alvo.tarefaId || '') : tarId();
+    var sf = ultimoSf(jobs);
+    if(!id || !sf || !os) return false;
+    ls(kArq(id), { v:VERSAO, em:Date.now(), enviado_em:sf.updatedAt || sf.createdAt || Date.now(),
+                   form_uid:String(sf.body.form_uid || ''), form_id:(sf.result && sf.result.form_id) || '',
+                   tarefa:(sf.result && sf.result.tarefa) || null, itens:itensDe(sf.body.campos_json),
+                   tipo:String(sf.body.tipo_formulario || ''), os_id:os, tarefa_id:tar });
+    try{ await PS.dropJobsOf(id); }catch(e){}
+    if(alvo){   // rascunho de outra página: o PGPX dele sai do localStorage para o IndexedDB, sem tocar no PGPX desta tela
+      try{ var ks = chavesPgpx(os, tar); if(ks.length){ var vals = {}; ks.forEach(function(k){ vals[k] = localStorage.getItem(k); });
+        await PS.saveDraft({ draftId:'reab-pgpx::' + id, kind:'reab_pgpx', status:'reab', valores:vals });
+        ks.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} }); } }catch(e){}
+      // 2ª auditoria (N5): os itens de máquina (PMAQ) dessa OS/tarefa também saem do localStorage — o arquivo
+      // leva os itens do envio (itens_ant) e o Corrigir os refaz; sobrando aqui, um formulário novo da mesma
+      // tarefa (Trocar pipeline) reabriria com a troca de peça de ONTEM e o v148 a reaplicaria.
+      try{ chavesLocais('pmaq::', os, tar).forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} }); }catch(e){}
+      return true;
+    }
+    // A8 (auditoria): os itens do "＋ Adicionar item" da corretiva (PGPX) moram no localStorage, com a foto
+    // em base64. O checkFinalize os apagava; agora vão para o IndexedDB junto do arquivo (cota grande) e
+    // voltam no "Corrigir" — senão o PDF corrigido sairia sem eles e SUPERARIA o PDF bom.
+    try{ await guardarPgpx(id); }catch(e){}
+    try{ if(window.PGPX && typeof PGPX.limpar === 'function') PGPX.limpar(); }catch(e){}   // o que o checkFinalize da corretiva fazia
+    return true;
+  }
+  function chavesLocais(pref, os, tar){
+    var out = [], suf = '::' + (os === undefined ? osId() : os) + '::' + (tar === undefined ? tarId() : tar);
+    try{ for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if(k && k.indexOf(pref) === 0 && k.slice(-suf.length) === suf) out.push(k); } }catch(e){}
+    return out;
+  }
+  function chavesPgpx(os, tar){ return chavesLocais('pgpx::', os, tar); }
+  async function guardarPgpx(id){
+    var ks = chavesPgpx(); if(!ks.length) return;
+    var vals = {}; ks.forEach(function(k){ try{ vals[k] = localStorage.getItem(k); }catch(e){} });
+    await PS.saveDraft({ draftId:'reab-pgpx::' + id, kind:'reab_pgpx', status:'reab', valores:vals });
+  }
+  async function devolverPgpx(id){
+    var r = null; try{ r = await PS.loadDraft('reab-pgpx::' + id); }catch(e){}
+    if(!r || !r.valores) return false;
+    // 2ª auditoria (N4): com o localStorage cheio o setItem falha — o registro só sai do IndexedDB se TUDO voltou
+    var ok = false, falhou = false;
+    Object.keys(r.valores).forEach(function(k){
+      try{ if(!localStorage.getItem(k) && r.valores[k]){ localStorage.setItem(k, r.valores[k]); if(k.indexOf('pgpx::') === 0) ok = true; } }
+      catch(e){ falhou = true; }
+    });
+    if(!falhou){ try{ await PS.dropDraft('reab-pgpx::' + id); }catch(e){} }
+    return ok;
+  }
+  function arquivadoNoPrazo(id){
+    var a = ls(kArq(id));
+    return !!(a && a.em && (Date.now() - a.em) < RET_DIAS * 86400000);
+  }
+  async function purgar(){
+    var chaves = [];
+    try{ for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if(k && (k.indexOf('reab::arq::') === 0 || k.indexOf('reab::cor::') === 0)) chaves.push(k); } }catch(e){ return; }
+    var agora = Date.now();
+    for(var j = 0; j < chaves.length; j++){
+      var k2 = chaves[j], m = ls(k2), arq = k2.indexOf('reab::arq::') === 0, id = k2.slice(11);
+      var prazo = (arq ? RET_DIAS : 30) * 86400000;
+      if(m && (m.em || m.desde) && (agora - (m.em || m.desde)) < prazo) continue;
+      if(arq && id && id !== did()){
+        try{ var d = await PS.loadDraft(id); if(d && d.status === 'sending'){ await PS.dropJobsOf(id); await PS.dropPhotos(id); await PS.dropDraft(id); } }catch(e){}
+        try{ await PS.dropDraft('reab-pgpx::' + id); }catch(e){}
+      }
+      ls(k2, null);
+    }
+  }
+
+  // ── C · corrigir ──
+  function restaurarPmaq(itens){
+    try{
+      if(!window.PMAQ || typeof PMAQ._itens !== 'function') return 0;
+      var atuais = PMAQ._itens(), tem = {};
+      atuais.forEach(function(it){ tem[it.uid] = 1; });
+      var n = 0;
+      (itens || []).forEach(function(x){
+        if(!x || !x.uid || !PMAQ_TIPOS[x.tipo] || tem[x.uid]) return;
+        var s = function(v){ return (v === undefined || v === null) ? '' : String(v); };
+        atuais.push({ uid:x.uid, tipo:x.tipo, maquina_id:s(x.maquina_id), horas:s(x.horas), minutos:s(x.minutos),
+          part_id:x.tipo === 'contador_peca' ? (x.part_id || (x.nome ? 'outra' : '')) : '',
+          nome:x.tipo === 'contador_peca' && !x.part_id ? s(x.nome) : '', contador:x.contador || 'progressivo',
+          acao:x.acao === 'trocada' ? 'trocada' : 'conferida', turnos:Array.isArray(x.turnos) ? x.turnos : [],
+          _regimeTocado:x.tipo === 'regime' });
+        n++;
+      });
+      if(n){
+        try{ PMAQ.render(); }catch(e){}
+        try{ PMAQ.campo(atuais[atuais.length - 1].uid, 'maquina_id', atuais[atuais.length - 1].maquina_id); }catch(e){}   // campo() grava o rascunho do PMAQ
+      }
+      return n;
+    }catch(e){ return 0; }
+  }
+  function pgpxProprios(){
+    try{ if(!window.PGPX || typeof PGPX.captura !== 'function') return 0;
+         return PGPX.captura().filter(function(i){ return i && !PMAQ_TIPOS[i.tipo]; }).length; }catch(e){ return 0; }
+  }
+  async function corrigir(btn){
+    if(!selado()){ return; }
+    if(btn){ if(btn.dataset.reabBusy === '1') return; btn.dataset.reabBusy = '1'; btn.disabled = true; btn.textContent = 'Abrindo a correção…'; }
+    try{
+      var id = did(), inf = await infoEnvio(), sv = ultimoAtivoServidor();
+      var reab = (_estado && !_estado.indisponivel) ? _estado.reabertura : null;
+      var deUid = (inf && inf.form_uid) || (sv && sv.form_uid) || '';
+      var voltouPgpx = await devolverPgpx(id);
+      if(!voltouPgpx) voltouPgpx = pgpxDoEnvio(inf && inf.itens);
+      var cor = { v:VERSAO, desde:Date.now(), de_form_uid:deUid, de_form_id:(inf && inf.form_id) || (sv && sv.form_id) || '',
+                  de_em:(inf && inf.em) || (sv && sv.criado_em) || '', motivo_adm:(reab && reab.motivo) || '', por_adm:(reab && reab.por) || '',
+                  itens_ant:(inf && inf.itens) || [], carregar_nao_pmaq:!voltouPgpx && pgpxProprios() === 0 && chavesPgpx().length === 0, nota:'' };
+      ls(kCor(id), cor);
+      ls(kArq(id), null);
+      restaurarPmaq(cor.itens_ant);
+      _sending = false;                       // ANTES de mexer na fila: o checkFinalize (onChange) não pode arquivar de novo
+      try{ await saveDraft(); }catch(e){}
+      // os envios já confirmados viram história (o servidor os tem); o que ainda está subindo (foto) continua
+      try{ var jobs = await PS.jobsOf(id); for(var i = 0; i < jobs.length; i++){ if(jobs[i].status === 'done') await PS.dropJob(jobs[i].jobId); } }catch(e){}
+      try{ cancelarAutoVolta(); }catch(e){}
+      // A1 (auditoria): o `_formUid` do formulário é CONST da página. Corrigir sem recarregar reenviaria com o
+      // MESMO form_uid (e o PDF com o mesmo pdf_uid): o servidor trataria como reenvio e descartaria a correção.
+      // Recarregar dá uid novo, reidrata a tela a partir do rascunho (agora em edição) e o PMAQ/PGPX do localStorage.
+      if(!deUid){ try{ sessionStorage.setItem('reab::sem_uid', '1'); }catch(e){} }
+      // 2ª auditoria (N1): a guarda de "sair da página?" do formulário vale para QUALQUER envio pendente do
+      // aparelho (até foto de outra OS) — se o técnico cancelasse o "Recarregar?", a tela ficava meio corrigida
+      // e o botão morto. A fila é durável (IndexedDB): recarregar não perde nada, então a guarda é calada SÓ
+      // neste reload; e se a página não sair em 4 s (cancelado, ou sem rede para recarregar), a edição abre
+      // aqui mesmo (a defesa de uid no PS.enqueue cobre o envio). Sem rede não se recarrega: a página não voltaria.
+      // 3ª auditoria (P1): "sinal sem internet" (lie-fi) engana o navigator.onLine — /ProperForms/ não tem service
+      // worker e o reload viraria a tela de erro do Chrome. Só recarrega se a própria página RESPONDER agora.
+      if(await paginaResponde()){
+        try{ sessionStorage.setItem('reab::acabou_de_abrir', '1'); }catch(e){}
+        _recarregando = true;
+        var tmr = setTimeout(function(){ _recarregando = false; try{ sessionStorage.removeItem('reab::acabou_de_abrir'); }catch(e){} abrirAqui(true); }, 4000);
+        try{ window.addEventListener('pagehide', function(){ clearTimeout(tmr); }, { once:true }); }catch(e){}
+        try{ location.reload(); return; }catch(e){ clearTimeout(tmr); _recarregando = false; }
+      }
+      abrirAqui(false);
+    }finally{
+      if(btn){ delete btn.dataset.reabBusy; btn.disabled = false; btn.textContent = '✏ Corrigir e reenviar'; }
+    }
+  }
+  // 3ª auditoria (P1): a página responde AGORA? (HEAD curto, sem cache). Falhou/lento ⇒ não recarrega.
+  async function paginaResponde(){
+    try{
+      if(typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+      var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tm = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(e){} }, 3500);
+      try{ var r = await fetch(String(location.href).split('#')[0], { method:'HEAD', cache:'no-store', signal:ctl ? ctl.signal : undefined }); return !!(r && r.ok); }
+      finally{ clearTimeout(tm); }
+    }catch(e){ return false; }
+  }
+  // edição sem recarregar (reload recusado/cancelado ou sem rede): mesma tela que a página nova abriria
+  function abrirAqui(tardio){
+    try{ if(window.PGPX && typeof PGPX.restaurar === 'function') PGPX.restaurar(); }catch(e){}
+    var app = $('app'), dock = $('dock'), ok = $('okScreen');
+    if(app) app.style.display = ''; if(dock) dock.style.display = ''; if(ok) ok.style.display = 'none';
+    pintarBanner();
+    try{ toast('✏ Correção aberta — altere o que precisar e toque em Concluir de novo.'); }catch(e){}
+  }
+  // A8 (auditoria), último recurso: o rascunho do PGPX já não existe (nem no localStorage nem no arquivo), mas o
+  // envio anterior levou os itens no campos_json. Eles voltam para a tela (editáveis e no PDF corrigido); a foto
+  // de cada item está no Drive e volta como REFERÊNCIA com um quadro cinza no PDF — nunca em base64.
+  var FOTO_CINZA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+  function pgpxDoEnvio(itens){
+    try{
+      if(!window.PGPX || chavesPgpx().length) return false;
+      var l = (itens || []).filter(function(i){ return i && i.uid && !PMAQ_TIPOS[i.tipo]; });
+      if(!l.length) return false;
+      var its = l.map(function(i){ return { uid:i.uid, tipo:i.tipo, titulo:i.titulo || '', cond:i.condicao || i.cond || '', texto:i.texto || '',
+        valor:i.valor || '', unidade:i.unidade || '', horas:i.horas, minutos:i.minutos,
+        fotos:(i.fotos || []).map(function(f){ return { fid:f.foto_uid || f.fid || '', legenda:(f.legenda || '') + ' (foto do envio anterior — está no Drive)', url:f.url || '', status:'ok', dataUrl:FOTO_CINZA }; }) }; });
+      localStorage.setItem('pgpx::' + String(did()).split('::')[0] + '::' + osId() + '::' + tarId(), JSON.stringify(its));
+      return true;
+    }catch(e){ return false; }
+  }
+  // A3 (auditoria): o envio guardado é de uma instância anterior da tarefa — começar um formulário novo
+  async function descartarAntigo(btn){
+    if(btn){ if(btn.dataset.reabBusy === '1') return; btn.dataset.reabBusy = '1'; btn.disabled = true; }
+    // P1 (3ª auditoria): começar do zero exige página nova — sem a página respondendo, NADA é apagado
+    if(!(await paginaResponde())){
+      try{ toast('📶 Sem conexão com a página agora — tente de novo com internet. Nada foi apagado.'); }catch(e){}
+      if(btn){ delete btn.dataset.reabBusy; btn.disabled = false; }
+      return;
+    }
+    var id = did();
+    try{ await PS.dropJobsOf(id); await PS.dropPhotos(id); await PS.dropDraft(id); await PS.dropDraft('reab-pgpx::' + id); }catch(e){}
+    ls(kArq(id), null); ls(kCor(id), null);
+    try{ chavesLocais('pgpx::').concat(chavesLocais('pmaq::')).forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} }); }catch(e){}   // N5
+    _recarregando = true;
+    try{ location.reload(); }catch(e){}
+  }
+
+  // ── pintura ──
+  function caixa(id, pai, antesDe){
+    var el = $(id);
+    if(!el){ el = document.createElement('div'); el.id = id; if(antesDe && antesDe.parentNode) antesDe.parentNode.insertBefore(el, antesDe); else if(pai) pai.appendChild(el); }
+    return el;
+  }
+  var CSS_AVISO = 'max-width:460px;margin:14px auto 0;padding:12px 14px;border-radius:10px;text-align:left;font-size:12.5px;line-height:1.45;';
+  var AMBAR = 'border:1px solid #a16207;background:#2a2210;color:#fde68a;';
+  var AZUL  = 'border:1px solid #0e7490;background:#0c2233;color:#bae6fd;';
+  var VERDE = 'border:1px solid #15803d;background:#0f2a1a;color:#bbf7d0;';
+  function linhaReab(reab){
+    if(!reab) return '';
+    return (reab.modo === 'corrigir' ? '✏ Correção pedida' : '↩ Tarefa reaberta') + (reab.por ? ' por <b>' + esc(reab.por) + '</b>' : '') +
+           (reab.em ? ' em ' + esc(hora(reab.em)) : '') + (reab.motivo ? ': “' + esc(reab.motivo) + '”' : '') + '.';
+  }
+  async function avaliar(){
+    if(!osId() || !tarId()) return;
+    var inf = await infoEnvio();
+    var sf = statusTarefa(inf), st = sf.st, aberta = tarefaAberta(st);
+    var reab = (_estado && !_estado.indisponivel) ? _estado.reabertura : null;
+    if(selado()){
+      var okSub = $('okSub'), big = $('okBig'), tit = $('okTitle'), ok = $('okScreen');
+      var host = ok ? (ok.querySelector('.ok-msg') || ok) : null;
+      var painel = host ? caixa('reabOk', host, $('btn-voltar-pipeline')) : null;
+      var html = '', corrigivel = false;
+      if(inf && inf.status === 'pending'){
+        if(okSub) okSub.textContent = '⏳ Os dados ainda NÃO chegaram ao servidor. A tarefa só é concluída quando chegarem.';
+      } else if(inf && inf.status === 'dead'){
+        if(okSub) okSub.textContent = '⚠ O envio dos dados travou — a tarefa NÃO foi concluída. Toque em “Ver envios” para reenviar.';
+      } else if(inf && inf.status === 'done'){
+        var t = inf.tarefa;
+        if(t && t.concluida === false){
+          if(big) big.textContent = '⚠️'; if(tit) tit.textContent = 'Formulário recebido — tarefa ABERTA';
+          if(okSub) okSub.textContent = 'O formulário chegou ao servidor, mas a tarefa NÃO foi concluída: ' + (t.motivo_txt || t.motivo || 'motivo não informado') + '. O escritório foi avisado.';
+        } else if(t && t.concluida === true && !aberta){
+          /* verdade dita pelo servidor: o texto original ("concluída") vale */
+        } else if(okSub){
+          okSub.textContent = 'Os dados chegaram ao servidor' + (inf.em ? ' (' + hora(inf.em) + ')' : '') + '.' +
+                              (st ? (sf.fonte === 'url' ? ' No pipeline, a tarefa consta ' : ' No servidor, a tarefa está ') + (ROT[st] || st) + '.' : '');
+        }
+      }
+      var ehAdm = !!(inf && inf.tarefa && (inf.tarefa.motivo === 'tarefa_adm' || inf.tarefa.codigo === 'tarefa_adm'));
+      var velho = envioDeOutraInstancia(inf);
+      if(velho){
+        html = '<div style="' + CSS_AVISO + AZUL + '">ℹ O envio guardado neste aparelho' + (inf.em ? ' (' + esc(hora(inf.em)) + ')' : '') +
+          ' é de uma <b>versão anterior do pipeline</b> desta OS — a tarefa de hoje é outra. Ele continua no servidor, como história.' +
+          '<button type="button" class="btn-sign" id="reabBtnNovo" onclick="REAB.descartarAntigo(this)" style="width:100%;margin-top:10px">📝 Começar o formulário desta tarefa</button></div>';
+        try{ cancelarAutoVolta(); }catch(e){}
+      } else if(ehAdm){
+        // B1 (auditoria): tarefa do escritório — reenviar nunca conclui; corrigir aqui só geraria laço
+        html = '<div style="' + CSS_AVISO + AZUL + '">🏢 Esta tarefa é do <b>escritório</b>: o formulário foi salvo e o escritório confere e conclui no ProperAdmin.</div>';
+      } else if(aberta && (!inf || inf.status === 'done')){
+        corrigivel = true;
+        html = '<div style="' + CSS_AVISO + AMBAR + '">' +
+          '<div style="font-weight:800;font-size:13.5px">' + (reab ? linhaReab(reab) : (sf.fonte === 'url' ? '⚠ No pipeline, a tarefa consta ABERTA (' : '⚠ A tarefa está ABERTA no servidor (') + esc(ROT[st] || st) + ').') + '</div>' +
+          '<div style="margin-top:5px">' + (inf ? 'O que você enviou' + (inf.em ? ' em ' + esc(hora(inf.em)) : '') + ' está guardado neste aparelho — ' : '') +
+          'toque abaixo para <b>corrigir e reenviar</b>. O envio novo <b>substitui</b> o anterior (não vira um segundo).</div>' +
+          '<button type="button" class="btn-sign" id="reabBtnCorrigir" onclick="REAB.corrigir(this)" style="width:100%;margin-top:10px;background:#b45309;border-color:#92400e;color:#fff">✏ Corrigir e reenviar</button></div>';
+        try{ cancelarAutoVolta(); }catch(e){}
+      } else if(st === 'completo' && inf && inf.status === 'done'){
+        var cp = _estado && _estado.tarefa ? _estado.tarefa.concluido_por : '';
+        html = '<div style="' + CSS_AVISO + VERDE + '">✅ ' + (sf.fonte === 'url' ? 'No pipeline, a tarefa consta concluída' : 'No servidor, a tarefa está concluída') + (cp ? ' (por ' + esc(cp) + ')' : '') +
+               '. Para mudar o que foi enviado, peça ao escritório para <b>reabrir</b> a tarefa.</div>';
+      } else if(!st && inf && inf.status === 'done' && _buscando){
+        html = '<div style="' + CSS_AVISO + AZUL + '">⏳ Conferindo com o servidor se a tarefa foi concluída…</div>';
+      } else if(!st && _estado && _estado.indisponivel && inf && inf.status === 'done'){
+        html = '<div style="' + CSS_AVISO + AZUL + '">📶 Não deu para conferir com o servidor agora (' + esc(_estado.erro || 'sem resposta') + '). ' +
+               'Se o escritório reabrir a tarefa, abra este formulário de novo com internet.</div>';
+      }
+      // A2 (auditoria): a volta automática de 8 s só segue quando se SABE que a tarefa fechou (servidor ou
+      // resposta do envio). Sem saber — sem tstatus e com o GAS lento —, a tela fica e o botão de voltar está lá.
+      if(inf && inf.status === 'done' && !(st === 'completo' && sf.fonte !== 'url')){ try{ cancelarAutoVolta(); }catch(e){} }
+      // só repinta o que MUDOU: repintar igual troca o botão debaixo do dedo (o toque some)
+      if(painel){ if(painel._reabHtml !== html){ painel.innerHTML = html; painel._reabHtml = html; } painel.style.display = html ? '' : 'none'; painel.setAttribute('data-corrigivel', corrigivel ? '1' : '0'); }
+      return;
+    }
+    // não selado: rascunho em edição (ou em branco)
+    var id = did(), cor = ls(kCor(id));
+    if(!cor){
+      var sv = ultimoAtivoServidor();
+      // A3 (auditoria): sem pedido explícito de reabertura/correção, NADA se marca sozinho — o formulário aberto
+      // pelo escritório (tarefa do adm) ou o 1º envio de um pipeline novo não podem desativar o envio de outro.
+      if(sv && aberta && _estado && _estado.corrigivel && reab){
+        cor = { v:VERSAO, desde:Date.now(), de_form_uid:sv.form_uid || '', de_form_id:sv.form_id || '', de_em:sv.criado_em || '',
+                motivo_adm:(reab && reab.motivo) || '', por_adm:(reab && reab.por) || '', itens_ant:[], carregar_nao_pmaq:false,
+                nota:'', sem_local:true };
+        ls(kCor(id), cor);
+      }
+    }
+    if(cor) pintarBanner();
+  }
+  function pintarBanner(){
+    var id = did(), cor = ls(kCor(id)), app = $('app');
+    if(!cor || !app){ var b0 = $('reabBanner'); if(b0) b0.remove(); return; }
+    var b = caixa('reabBanner', null, app.firstChild);
+    if(b.parentNode !== app) app.insertBefore(b, app.firstChild);
+    b.setAttribute('style', 'margin:10px 12px;padding:12px 14px;border-radius:10px;font-size:12.5px;line-height:1.45;' + AMBAR);
+    var reabTxt = cor.motivo_adm ? ' Pedido do escritório' + (cor.por_adm ? ' (' + esc(cor.por_adm) + ')' : '') + ': “' + esc(cor.motivo_adm) + '”.' : '';
+    b.innerHTML = '<div style="font-weight:800;font-size:13.5px">✏ CORREÇÃO' + (cor.de_em ? ' do envio de ' + esc(hora(cor.de_em)) : '') + '</div>' +
+      '<div style="margin-top:4px">' + (cor.sem_local
+        ? 'Esta tarefa já tem um envio no servidor e está ABERTA. O envio anterior <b>não está neste aparelho</b>: preencha o que for preciso — o que você enviar <b>substitui</b> o anterior.'
+        : 'Os dados enviados foram carregados. Altere o que precisar e toque em <b>Concluir</b>: o envio novo <b>substitui</b> o anterior.') + reabTxt + '</div>' +
+      '<textarea id="reabNota" rows="2" placeholder="O que você corrigiu? (opcional — vai para o histórico da OS)" ' +
+      'style="width:100%;margin-top:8px;box-sizing:border-box;background:#1c1606;color:#fde68a;border:1px solid #a16207;border-radius:8px;padding:8px;font-size:12.5px">' + esc(cor.nota || '') + '</textarea>';
+    var ta = $('reabNota');
+    if(ta && !ta._reab){ ta._reab = 1; ta.addEventListener('input', function(){ var c = ls(kCor(did())); if(c){ c.nota = ta.value.slice(0, 400); ls(kCor(did()), c); } }); }
+  }
+
+  // ── embrulhos (instalados UMA vez, pela costura depois do PS.open) ──
+  function instalar(){
+    if(_inst) return; _inst = true;
+    _tStatusUrl = String(q('tstatus') || '').trim();
+    // N1: registrada ANTES da guarda do formulário (costura 1 < "Proteções") e em captura — cala só o reload do REAB
+    try{ window.addEventListener('beforeunload', function(e){ if(_recarregando){ try{ e.stopImmediatePropagation(); }catch(x){} } }, true); }catch(e){}
+    var oOk = window.atualizarOkScreen;
+    if(typeof oOk === 'function') window.atualizarOkScreen = async function(){
+      var r; try{ r = await oOk.apply(this, arguments); } finally { try{ await avaliar(); }catch(e){} } return r;
+    };
+    var oCf = window.checkFinalize;
+    if(typeof oCf === 'function') window.checkFinalize = async function(){
+      try{
+        if(selado() && did() && osId() && !pdfPend()){
+          var jobs = await PS.jobsOf(did());
+          var vivos = jobs.filter(function(j){ return j.status === 'pending' || j.status === 'dead'; }).length;
+          if(vivos === 0){
+            if(await arquivar(jobs) || (!jobs.length && ls(kArq(did())))){
+              if(vistoNaTela('okScreen')) await window.atualizarOkScreen();
+              return;
+            }
+          }
+        }
+      }catch(e){}
+      return oCf.apply(this, arguments);
+    };
+    var oLi = window.limparInstanciasConcluidas;
+    if(typeof oLi === 'function') window.limparInstanciasConcluidas = async function(){
+      // o faxineiro da corretiva apagaria o arquivo (selado e sem envio vivo): ele pula o que está no prazo
+      try{
+        var tipo = String(did()).split('::')[0], ds = await PS.listDrafts();
+        for(var i = 0; i < ds.length; i++){
+          var d = ds[i];
+          if(!d || d.formType !== tipo || d.draftId === did()) continue;
+          if(d.status !== 'sending' || d.pdfPending) continue;
+          if(arquivadoNoPrazo(d.draftId)) continue;
+          var js = await PS.jobsOf(d.draftId), vivos = 0;
+          for(var k = 0; k < js.length; k++){ if(js[k].status === 'pending' || js[k].status === 'dead') vivos++; }
+          if(vivos === 0){
+            // com OS e o envio confirmado: vira ARQUIVO (a correção depois de uma reabertura precisa dele)
+            if(d.osId && await arquivar(js, d)) continue;
+            await PS.dropJobsOf(d.draftId); await PS.dropPhotos(d.draftId); await PS.dropDraft(d.draftId); ls(kArq(d.draftId), null);
+          }
+        }
+      }catch(e){}
+    };
+    var oEnq = PS.enqueue;
+    PS.enqueue = function(job){
+      try{
+        // A1 (auditoria): o PDF da correção sai ANTES do saveFormulario, com pdf_uid = 'pdf_' + _formUid;
+        // com o uid do envio corrigido o servidor o trataria como o mesmo PDF e guardaria o antigo.
+        if(job && job.kind === 'salvarPdfDrive' && job.body && job.draftId){
+          var c0 = ls(kCor(job.draftId));
+          if(c0 && c0.de_form_uid && job.body.pdf_uid === 'pdf_' + c0.de_form_uid){
+            job.body.pdf_uid = 'pdf_cor_' + Date.now().toString(36);
+            c0.pdf_uid_novo = job.body.pdf_uid; ls(kCor(job.draftId), c0);   // N6: o saveFormulario aponta para ESTE PDF
+          }
+        }
+        if(job && job.kind === 'saveFormulario' && job.body && job.draftId){
+          var cor = ls(kCor(job.draftId));
+          if(cor){
+            // A1 (auditoria): defesa se a página não recarregou — nunca reenviar a correção com o uid do envio corrigido
+            if(cor.de_form_uid && cor.de_form_uid === job.body.form_uid) job.body.form_uid = 'cor_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            if(cor.pdf_uid_novo && job.body.pdf_uid === 'pdf_' + cor.de_form_uid) job.body.pdf_uid = cor.pdf_uid_novo;   // N6
+            if(cor.de_form_uid) job.body.correcao_de = cor.de_form_uid;
+            job.body.correcao_motivo = [cor.motivo_adm ? 'Pedido: ' + cor.motivo_adm : '', cor.nota ? 'Técnico: ' + cor.nota : ''].filter(Boolean).join(' · ').slice(0, 500);
+            var cj = job.body.campos_json, txt = (typeof cj === 'string');
+            if(txt){ try{ cj = JSON.parse(cj); }catch(e){ cj = null; } }
+            if(cj && typeof cj === 'object'){
+              // N6 (2ª auditoria): sem reload, o campos_json ainda aponta para o PDF do envio corrigido
+              if(cor.pdf_uid_novo && cj.pdf && typeof cj.pdf === 'object' && cj.pdf.pdf_uid === 'pdf_' + cor.de_form_uid) cj.pdf.pdf_uid = cor.pdf_uid_novo;
+              cj.correcao = { de_form_uid:cor.de_form_uid || '', de_form_id:cor.de_form_id || '', motivo:job.body.correcao_motivo, em:new Date().toISOString(), versao:VERSAO };
+              var atuais = Array.isArray(cj.itens_extras) ? cj.itens_extras : [], tem = {};
+              atuais.forEach(function(it){ if(it && it.uid) tem[it.uid] = 1; });
+              if(cor.carregar_nao_pmaq) (cor.itens_ant || []).forEach(function(it){ if(it && it.uid && !tem[it.uid] && !PMAQ_TIPOS[it.tipo]) atuais.push(it); });
+              cj.itens_extras = atuais;
+              job.body.campos_json = txt ? JSON.stringify(cj) : cj;
+            }
+            ls(kCor(job.draftId), null);
+          }
+        }
+      }catch(e){}
+      return oEnq.apply(PS, arguments);
+    };
+  }
+
+  // Costura 1 — logo depois do `await PS.open()` do boot.
+  async function antes(){
+    try{ instalar(); }catch(e){}
+    try{ await purgar(); }catch(e){}
+  }
+  // Costura 2 — fim do boot (o rascunho já foi restaurado e, se selado, a tela final já foi pintada).
+  function depois(){
+    try{
+      if(!osId() || !tarId()) return;
+      try{
+        if(sessionStorage.getItem('reab::acabou_de_abrir')){
+          sessionStorage.removeItem('reab::acabou_de_abrir');
+          setTimeout(function(){ try{ toast('✏ Correção aberta — altere o que precisar e toque em Concluir de novo.'); }catch(e){} }, 400);
+          if(sessionStorage.getItem('reab::sem_uid')){ sessionStorage.removeItem('reab::sem_uid');
+            setTimeout(function(){ try{ toast('⚠ Não achei o identificador do envio anterior: o novo vai como envio adicional.'); }catch(e){} }, 3200); }
+        }
+      }catch(e){}
+      var b = buscarEstado();   // parte JÁ: enquanto o servidor não responde, a tela diz "conferindo" (A2)
+      var t = selado() ? Promise.resolve(window.checkFinalize()).catch(function(){}).then(function(){ return avaliar(); }) : avaliar();
+      Promise.all([Promise.resolve(t).catch(function(){}), Promise.resolve(b).catch(function(){})]).then(function(){ return avaliar(); }).catch(function(){});
+    }catch(e){}
+  }
+  return { versao:VERSAO, antes:antes, depois:depois, corrigir:corrigir, descartarAntigo:descartarAntigo, avaliar:avaliar,
+           _estado:function(){ return _estado; }, _infoEnvio:infoEnvio, _ls:ls };
 })();
 </script>
 
@@ -2600,6 +3177,7 @@ function wireInputs(){
     _psUiTimer = setTimeout(function(){ psRefreshBadge(); checkFinalize(); }, 250);
   });
   await PS.open();
+  try{ if(window.REAB) await REAB.antes(); }catch(eReab){}   // REAB_V1 (29/09): embrulhos ANTES do restoreDraft
   ensureDraftId();
   var restaurou=false; try{ restaurou=await restoreDraft(); }catch(e){}
   if(restaurou){ toast(_sending?'Retomando os envios desta OS':'Rascunho restaurado'); }
@@ -2630,6 +3208,7 @@ function wireInputs(){
     }
     atualizarOkScreen();
   }
+  try{ if(window.REAB) REAB.depois(); }catch(eReab){}   // REAB_V1 (29/09): a verdade sobre a tarefa + ✏ Corrigir e reenviar
   // ── Proteções de salvamento ──
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
   window.addEventListener('pagehide', function(){ saveDraft(); });
