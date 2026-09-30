@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  30/09/2026 — EXEC_PISTAO_V2 · câmera, identidade, PDF e layout de celular
+  Chamado do Fernando (print do bloco "Peças substituídas", 09:18): "não está
+  dando para acessar a câmera nessa pergunta" + botões e textos estourando.
+  · C1  O 📷 ao lado do "⇄ quando" era um SELO decorativo com moldura
+        tracejada — a mesma cara dos botões Câmera/Galeria — e o toque nele não
+        fazia nada. No bloco de foto ele agora ABRE a câmera; nos outros blocos
+        perdeu a moldura (não parece mais botão). Câmera/Galeria viraram botões
+        cheios, lado a lado.
+  · C2  pickPhoto/pickPhotoGal com o envio já selado retornavam MUDOS; agora avisam.
+  · L1  Título do bloco, nome do item, legenda, grandeza, pergunta e resposta
+        eram campos de UMA linha cortados no celular ("Peças substituídas (retirad").
+        Viraram caixa que CRESCE com o texto (sem Enter; colar com quebra vira
+        espaço). Mesma classe, mesmo handler, mesmo .value — captura e rascunho iguais.
+  · L2  Pílulas Executado/Pendente/N.A. com o texto vazando para fora; Data/Hora
+        saindo do cartão; classificação partida no meio da palavra ("Produt o");
+        "Concluir OS" em duas linhas. A pilha de blocos devolve ~60 px de largura
+        no celular (alça, margem do ✕ e recuo da seção).
+  · F1  Identidade herdada do gêmeo: tela final dizia "OS genérica enviada", a
+        fila "Dados da OS genérica"/"Dados do diagnóstico" e o PDF "2. Diagnóstico".
+  · F2  PDF: ponto de foto do roteiro SEM foto saía como quadro "foto no Drive —
+        não embutida neste aparelho" — dado ausente impresso como fato. Agora
+        sai uma linha "Sem foto registrada — (legenda)"; o quadro "no Drive" fica
+        só para foto que existe no servidor e não neste aparelho.
+  · F3  A gaveta de configuração dizia "Configurar · Nova lista" para a lista
+        "Escopo aprovado pelo cliente"; agora mostra o título do bloco.
+  Build: ENTREGAS/2026-09-30_exec_pistao_camera/_testes/BUILD_EXEC_PISTAO_V2.py
+  (base = form_exec_pistao no ar, md5 d61467d1). Zero GAS, zero SQL. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   29/09/2026 — REAB_V1 · o formulário diz a verdade sobre a tarefa e deixa CORRIGIR
   (par do GAS v159 · PCF V118). Chamado da PGP-2026-0094: a tela final dizia
   "tarefa concluída" com a tarefa ABERTA no servidor, e o rascunho selado não
@@ -1958,11 +1989,11 @@ function blkShell(uid, tipo, inner, extraClass, titulo){
   el.innerHTML =
     '<div class="grab" title="Arraste para reordenar">≡</div>'
     + '<div class="cbody">'
-    +   '<input class="b-tit" value="'+attr(tit)+'" placeholder="Título do bloco (edite)" '
-    +     'aria-label="Título do bloco" oninput="scheduleSave()">'
+    +   '<textarea class="b-tit pgp-1l" rows="1" placeholder="Título do bloco (edite)" '
+    +     'aria-label="Título do bloco" oninput="scheduleSave()">'+esc(tit)+'</textarea>'
     +   '<div class="gwtag" style="display:none"></div>'
     +   '<div class="blk-acts">'
-    +     '<span class="blk-selo">'+BLK_ICO[tipo]+'</span>'
+    +     '<span class="blk-selo"'+(tipo==='foto' ? (' role="button" tabindex="0" title="Abrir a câmera" aria-label="Abrir a câmera" onclick="pickPhoto(\''+uid+'\')"') : ' aria-hidden="true"')+'>'+BLK_ICO[tipo]+'</span>'
     +     (BLK_CFG[tipo] ? ('<button type="button" class="mini b-cfg" title="Configurar este bloco" onclick="abrirCfg(\''+uid+'\')">⚙ opções</button>') : '')
     +     '<button type="button" class="mini b-cond" title="Quando este bloco aparece" onclick="abrirCond(\''+uid+'\')">⇄ quando</button>'
     +   '</div>'
@@ -1982,8 +2013,8 @@ function addBlock(tipo, d, restoring, alvo){
       '<textarea class="b-obs" placeholder="Descreva o que foi feito / encontrado…">'+esc(d.texto||'')+'</textarea>', null, d.titulo);
   } else if(tipo==='pr'){
     el = blkShell(uid,'pr',
-      '<label>Pergunta (criada por você)</label><input type="text" class="b-perg" value="'+attr(d.pergunta||'')+'" placeholder="Ex.: Válvula de admissão apresenta travamento?">'
-      + '<label>Resposta</label><input type="text" class="b-resp" value="'+attr(d.resposta||'')+'" placeholder="Ex.: Sim — travada por resíduo de óleo">', null, d.titulo);
+      '<label>Pergunta (criada por você)</label><textarea class="b-perg pgp-1l" rows="1" placeholder="Ex.: Válvula de admissão apresenta travamento?">'+esc(d.pergunta||'')+'</textarea>'
+      + '<label>Resposta</label><textarea class="b-resp pgp-1l" rows="1" placeholder="Ex.: Sim — travada por resíduo de óleo">'+esc(d.resposta||'')+'</textarea>', null, d.titulo);
   } else if(tipo==='med'){
     // N4 — a unidade deixa de ser escolhida EM CAMPO e passa a ser definida ao
     // montar o bloco (⚙). Nos form03/04/diagnóstico ela é read-only de propósito:
@@ -1996,7 +2027,7 @@ function addBlock(tipo, d, restoring, alvo){
     bd(uid).dir = d.dir || 'acima';
     el = blkShell(uid,'med',
       '<div class="med-row">'
-      + '<div class="g"><label>Grandeza</label><input type="text" class="b-grand" value="'+attr(d.grandeza||'')+'" placeholder="Ex.: Folga axial"></div>'
+      + '<div class="g"><label>Grandeza</label><textarea class="b-grand pgp-1l" rows="1" placeholder="Ex.: Folga axial">'+esc(d.grandeza||'')+'</textarea></div>'
       + '<div class="v"><label>Valor</label><input type="text" class="b-val" inputmode="decimal" value="'+attr(d.valor||'')+'" placeholder="0,0" oninput="onMedValor(\''+uid+'\')"></div>'
       + '<div class="u"><label>Unid.</label><div class="unitfix" id="un-'+uid+'">'+esc(bd(uid).unidade)+'</div></div>'
       + '</div>'
@@ -2006,8 +2037,8 @@ function addBlock(tipo, d, restoring, alvo){
   } else if(tipo==='foto'){
     el = blkShell(uid,'foto',
       '<label>Legenda (o que a foto mostra — entra no PDF e no Drive)</label>'
-      + '<input type="text" class="b-leg" value="'+attr(d.legenda||'')+'" placeholder="Ex.: Rotor com desgaste no mancal LA">'
-      + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+uid+'\')">📷 Câmera</button><button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\''+uid+'\')">🖼 Galeria</button></div>'
+      + '<textarea class="b-leg pgp-1l" rows="1" placeholder="Ex.: Rotor com desgaste no mancal LA">'+esc(d.legenda||'')+'</textarea>'
+      + '<div class="pgp-fotobtns" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+uid+'\')">📷 Câmera</button><button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\''+uid+'\')">🖼 Galeria</button></div>'
       + '<div class="thumbs" id="thumbs-'+uid+'"></div>', null, d.titulo);
     if(!_fotosByBlock[uid]) _fotosByBlock[uid] = [];
     // refs restauradas do rascunho (miniaturas voltam do IndexedDB em restoreDraft)
@@ -2303,8 +2334,8 @@ function htmlLitem(luid, it, pai){
   }).join('');
   var h = '<div class="lit'+(pai?' sub':'')+(precisa?' flag':'')+'" data-item="'+attr(it.uid)+'">'
     + '<div class="lit-top">'
-    +   '<input type="text" class="lit-nome" value="'+attr(it.nome)+'" placeholder="Nome do item" '
-    +     'oninput="setItemNome(\''+luid+'\',\''+it.uid+'\',this.value)">'
+    +   '<textarea class="lit-nome pgp-1l" rows="1" placeholder="Nome do item" '
+    +     'oninput="setItemNome(\''+luid+'\',\''+it.uid+'\',this.value)">'+esc(it.nome)+'</textarea>'
     +   '<button type="button" class="ib'+(mostraFoto?' on':'')+'" title="Foto neste item" onclick="togFotoItem(\''+luid+'\',\''+it.uid+'\')">📷</button>'
     +   (pai?'':'<button type="button" class="ib" title="Sub-item" onclick="addLitem(\''+luid+'\',\''+it.uid+'\')">⊕</button>')
     +   '<button type="button" class="ib" title="Remover" onclick="rmLitem(\''+luid+'\',\''+it.uid+'\')">✕</button>'
@@ -2670,7 +2701,7 @@ function abrirCfg(uid){
   _cfgUid=uid;
   var el=document.querySelector('.blk[data-uid="'+uid+'"]'); if(!el) return;
   var tipo=el.dataset.tipo, D=bd(uid), h='';
-  document.getElementById('cfgTitulo').textContent='Configurar · '+(BLK_TITLE[tipo]||tipo);
+  document.getElementById('cfgTitulo').textContent='Configurar · '+((q(el,'.b-tit') && q(el,'.b-tit').value.trim()) || BLK_TITLE[tipo] || tipo);   // V2 (30/09)
   document.getElementById('cfgSub').textContent='';
   if(tipo==='med'){
     h = '<label>Unidade (fixa — o técnico não escolhe em campo)</label>'
@@ -2807,7 +2838,7 @@ function legendaDe(pointKey){
 }
 function legendaDoBloco(uid){ return legendaDe(uid); }   // compat
 function pickPhoto(uid){
-  if(_sending) return;
+  if(_sending){ toast('Esta execução já foi concluída — a foto não entra mais neste envio.'); return; }   // V2 (30/09): era retorno mudo
   const inp = document.getElementById('fileInput');
   inp.onchange = e => { const f = e.target.files[0]; inp.value='';
     if (!f) return;
@@ -2818,7 +2849,7 @@ function pickPhoto(uid){
 }
 // Etapa B — galeria: sem capture=, o aparelho oferece Galeria/Arquivos; aceita várias de uma vez
 function pickPhotoGal(uid){
-  if(_sending) return;
+  if(_sending){ toast('Esta execução já foi concluída — a foto não entra mais neste envio.'); return; }   // V2 (30/09): era retorno mudo
   const inp = document.getElementById('fileInputGal');
   // 13/08 (perf): a galeria aceita VARIAS fotos de uma vez. Antes todas eram
   // disparadas juntas e decodificavam/redimensionavam na main thread ao mesmo
@@ -3413,7 +3444,7 @@ async function enviar(){
       maquina_id:(_maqAtual&&_maqAtual.id)||'',
       tecnico_nome: state.identificacao.tecnico || (_sess&&_sess.tecnico&&_sess.tecnico.nome) || '',
       tecnico_id: (_sess&&_sess.tecnico&&_sess.tecnico.id) || '', campos_json: payloadState, fotos_json: fotosFlat() };
-    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados do diagnóstico' });
+    await PS.enqueue({ draftId:_draftId, kind:'saveFormulario', url:GAS_URL, body:body, label:'Dados da execução do serviço' });
     try{ if(window.PMAQ) PMAQ.limpar(); }catch(ePm){}   // 26/09 — os itens de máquina já estão no job
   }
   if(_osId){ await enfileirarPdf(_pdfB64); }   // 21/08 (P5): usa o PDF já gerado acima
@@ -3482,7 +3513,7 @@ async function atualizarOkScreen(){
   }catch(eW){}
   if(!_osId){ if(okSub) okSub.textContent='Conteúdo guardado no aparelho. Sem OS vinculada, os dados não ficam no sistema.'; }
   if(pend+dead===0 && !_pdfPendente){
-    if(big) big.textContent='✅'; if(title) title.textContent='OS genérica enviada';
+    if(big) big.textContent='✅'; if(title) title.textContent='Execução de serviço enviada';
     if(_osId&&okSub) okSub.textContent='A tarefa foi concluída e o servidor confirmou tudo (dados, fotos e PDF).';
     if(okStatus) okStatus.textContent='';
   } else if(dead>0){
@@ -3649,7 +3680,7 @@ async function psAbrirPainel(){
   var ov=document.getElementById('psOverlay'), box=document.getElementById('psJobs');
   var jobs=[]; try{ jobs=await PS.listJobs(); }catch(e){}
   jobs=jobs.filter(function(j){ return j.status!=='done'; }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
-  var KIND={ saveFormulario:'Dados da OS genérica', salvarFotoForm:'Foto', salvarPdfDrive:'PDF da OS' };
+  var KIND={ saveFormulario:'Dados da execução do serviço', salvarFotoForm:'Foto', salvarPdfDrive:'PDF da OS' };
   if(!jobs.length){ box.innerHTML='<div class="sub">Nenhum envio pendente. Tudo confirmado ✅</div>'; }
   else box.innerHTML=jobs.map(function(j){
     var who=(KIND[j.kind]||j.kind)+(j.label&&j.kind==='salvarFotoForm'?(' — '+j.label):'');   // 19/08: o esc() vem no innerHTML abaixo
@@ -5343,7 +5374,7 @@ function lvAchatar(blocos){
 function lvTemConteudo(b){
   if(b.__sec) return true;
   switch(b.tipo){
-    case 'foto':    return true;
+    case 'foto':    return ((b.fotos||[]).length > 0) || !!String(b.legenda||'').trim();   // V2 (30/09): sem foto e sem legenda não é conteúdo
     case 'obs':     return !!String(b.texto||'').trim();
     case 'pr':      return !!(String(b.pergunta||'').trim() || String(b.resposta||'').trim());
     case 'med':     return !!(String(b.grandeza||'').trim() || String(b.valor||'').trim());
@@ -5432,10 +5463,10 @@ function lvDocDiagOficinaCorpo(photosByKey){
 
   // ── 2. o corpo, na ordem em que foi montado ───────────────────────────
   if(!plano.length){
-    L.h1(++n, 'Diagnóstico');
+    L.h1(++n, 'Serviço executado');
     L.p('— nenhum item registrado neste laudo —', { size:8, cor:LV_COR.suave, italico:true });
   } else {
-    L.h1(++n, 'Diagnóstico');
+    L.h1(++n, 'Serviço executado');
     var fila=[];
     var descarrega=function(){ if(fila.length){ L.figuras(fila, { numerar:true }); fila=[]; } };
 
@@ -5448,7 +5479,10 @@ function lvDocDiagOficinaCorpo(photosByKey){
       if(b.tipo==='foto'){
         var leg=String(b.legenda||'').trim() || (b.titulo||'Foto do serviço');
         var shots=(photosByKey && photosByKey[b.uid]) || [];
-        if(!shots.length){ fila.push({ dataUrl:'', legenda:leg }); return; }
+        if(!shots.length){
+          if((b.fotos||[]).length){ fila.push({ dataUrl:'', legenda:leg }); return; }   // tem foto no servidor, só não neste aparelho: o quadro diz a verdade
+          descarrega(); L.p('Sem foto registrada — ' + leg, { size:7.5, cor:LV_COR.suave, italico:true }); return;   // V2 (30/09): antes saía 'foto no Drive' sem foto nenhuma
+        }
         shots.forEach(function(sh, ix){
           fila.push({ dataUrl:sh.dataUrl, legenda:leg + (shots.length>1 ? (' ('+(ix+1)+'/'+shots.length+')') : '') });
         });
@@ -6223,6 +6257,109 @@ try{ PMAQ.init({ tipo:'form_exec_pistao', host:'#pmaqHost',
   maquinas: function(){ return (typeof _maquinas!=='undefined' && _maquinas) || []; },
   postar: function(b){ return gcFetchJson(b); } }); }catch(ePm){ try{ console.warn('[PMAQ] init:', ePm); }catch(_c){} }
 </script>
+<!-- ████ INICIO EXEC_PISTAO_V2 (câmera + layout de celular) ████ -->
+<style>
+  /* C1 — o selo não tem mais cara de botão; no bloco de foto ele É o atalho da câmera */
+  .blk-selo{border:none;background:transparent;min-width:28px;min-height:44px;padding:0 2px;font-size:18px;color:var(--muted)}
+  .blk[data-tipo="foto"] .blk-acts > .blk-selo{cursor:pointer;min-width:44px;border-radius:8px}
+  .blk[data-tipo="foto"] .blk-acts > .blk-selo:active{background:rgba(245,130,32,.18)}
+  /* C1 — Câmera/Galeria: botões cheios, lado a lado */
+  .btn-foto-mini{border-style:solid;background:rgba(245,130,32,.13);font-weight:700;font-size:14px;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px}
+  .btn-foto-mini:active{background:rgba(245,130,32,.30)}
+  .pgp-fotobtns > .btn-foto-mini{flex:1 1 0;min-width:0}
+  .fbox .btn-foto-mini{flex:1 1 38%;min-width:0}
+  .fbox .mini{flex:1 1 100%}
+  /* L1 — campo de 1 linha que cresce com o texto */
+  textarea.pgp-1l{resize:none;min-height:42px;overflow:hidden;line-height:1.3;field-sizing:content;white-space:pre-wrap;overflow-wrap:break-word}
+  .blk textarea.b-tit{padding:10px}
+  .lit textarea.lit-nome{min-height:44px;padding:11px 10px}
+  /* L2 — nada vaza do seu cartão */
+  .row2>div,.row3>div,.med-row>div{min-width:0}
+  .row2 input,.row3 input,.med-row input{min-width:0;max-width:100%}
+  .lit .pills .pill{font-size:12.5px;padding:6px 3px}
+  /* colunas pelo tamanho da palavra: "N.A." cede espaço a "Executado" (palavra não quebra) */
+  .lit .pills.q3{grid-template-columns:auto auto auto}
+  .fbox .btn-foto-mini{padding:8px 6px;gap:4px}
+  .lit.sub .btn-foto-mini{font-size:12.5px}
+  .cl{font-size:11.5px;line-height:1.2;padding:5px 2px}
+  /* 3 colunas quando cabem; no sub-item estreito vira 2 + 1 em vez de partir "Transversal" */
+  .classe-row{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
+  @media (max-width:520px){
+    body{padding-left:10px;padding-right:10px}
+    .card{padding:12px}
+    .blk .grab{width:24px;font-size:16px}
+    .blk .cbody{padding:10px 10px 12px 10px}
+    .blk > .cbody > .b-tit{width:calc(100% - 36px)}
+    .blk .xdel{top:4px;right:2px}
+    .sec-stack .blk .grab{width:18px;font-size:14px}
+    .sec-stack .blk .cbody{padding:9px 8px 10px 8px}
+    .sec-stack .blk > .cbody > .b-tit{width:calc(100% - 32px)}
+    .sec-stack .blk .xdel{top:4px;right:1px}
+    .lit{padding:8px}
+    .lit.sub{margin-left:4px;padding:6px}
+    .card .row2{flex-wrap:wrap}
+    .card .row2>div{flex:1 1 100%}
+    .row3{flex-wrap:wrap}
+    .row3>div:first-child{flex:1 1 100%}
+    .row3>div{flex:1 1 45%}
+    .dock{padding:10px 10px 12px}
+    .fab,.b-fin{padding:13px 8px;font-size:14.5px;white-space:nowrap}
+  }
+  @media (max-width:340px){
+    .lit .pills .pill{font-size:10.5px;padding:6px 1px;letter-spacing:-.1px}
+  }
+</style>
+<script>
+/* EXEC_PISTAO_V2 · L1 — campo de uma linha que cresce. O CSS `field-sizing:content`
+   faz o trabalho no Chrome atual; o JS só entra onde ele não existe. Enter não
+   quebra linha (título/nome são uma linha só no PDF) e quebra colada vira espaço —
+   o listener é de CAPTURA, então roda ANTES do oninput do próprio campo. */
+(function(){
+  try{
+    var FS = !!(window.CSS && CSS.supports && CSS.supports('field-sizing','content'));
+    var eh = function(t){ return !!(t && t.classList && t.classList.contains('pgp-1l')); };
+    var ajusta = function(t){ if(FS) return; try{ t.style.height='auto'; t.style.height=(t.scrollHeight + (t.offsetHeight - t.clientHeight))+'px'; }catch(e){} };
+    document.addEventListener('input', function(e){
+      var t = e.target; if(!eh(t)) return;
+      if(/[\r\n]/.test(t.value)){
+        var p = t.value.slice(0, t.selectionStart).replace(/[\r\n]+/g, ' ').length;
+        t.value = t.value.replace(/[\r\n]+/g, ' ');
+        try{ t.setSelectionRange(p, p); }catch(_){}
+      }
+      ajusta(t);
+    }, true);
+    document.addEventListener('keydown', function(e){
+      if(e.key === 'Enter' && eh(e.target)) e.preventDefault();
+    }, true);
+    // o teclado do celular mostra "concluído" em vez de ↵ (Enter não quebra linha aqui)
+    document.addEventListener('focusin', function(e){
+      var t = e.target; if(eh(t) && !t.hasAttribute('enterkeyhint')) t.setAttribute('enterkeyhint', 'done');
+    }, true);
+    // selo do bloco de foto também responde ao teclado
+    document.addEventListener('keydown', function(e){
+      var t = e.target;
+      if((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('blk-selo') && t.getAttribute('role') === 'button'){ e.preventDefault(); t.click(); }
+    });
+    if(!FS){
+      var pend = false;
+      var todos = function(){
+        pend = false;
+        var ts = document.querySelectorAll('textarea.pgp-1l'), i;
+        for(i=0;i<ts.length;i++) ts[i].style.height = 'auto';
+        var hs = []; for(i=0;i<ts.length;i++) hs.push(ts[i].scrollHeight);
+        for(i=0;i<ts.length;i++) if(hs[i]) ts[i].style.height = (hs[i] + (ts[i].offsetHeight - ts[i].clientHeight)) + 'px';
+      };
+      var agenda = function(){ if(!pend){ pend = true; requestAnimationFrame(todos); } };
+      // só a área do formulário; classe inclusa (bloco que reaparece por .oculto ou seção reaberta)
+      new MutationObserver(agenda).observe(document.getElementById('app') || document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['class'] });
+      window.addEventListener('resize', agenda);
+      agenda();
+    }
+  }catch(e){ /* acabamento de tela: nunca derruba o formulário */ }
+})();
+</script>
+<!-- ████ FIM EXEC_PISTAO_V2 ████ -->
 <!-- ████ INICIO BLOCOS PADRAO UX (PWAIT + CFX) ████ -->
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PWAIT v1 — A ESPERA FICA VISÍVEL, SEMPRE (+ GUARDA DE BOTÃO)   · hoje: v4
