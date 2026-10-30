@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  30/10/2026 — CORX_V1 · corretiva: fechar bloco, galeria, Ok/NOK/N.A. (Fernando)
+  · ✕ em cada bloco (Dados da máquina, Motivo, Parâmetros, Proteções, Fotos,
+    Diagnóstico): o bloco vira uma faixa "Não se aplica nesta visita" e SAI do
+    laudo; ↺ Reabrir devolve com o que já estava digitado. Grava em
+    `secoes_omitidas` (campos_json). Mesma ideia do ✕ dos blocos da genérica.
+  · Motivo do chamado ganha "Adequação" (chave nova `adequacao`, nada renomeado).
+  · Foto: todo botão de foto agora é 📷 Câmera + 🖼 Galeria (input SEM capture,
+    várias de uma vez, em sequência) — inclusive no ＋ Adicionar item (PGPX).
+  · BUG PGPX: Ok / NOK / N.A. do "Item de lista" gravavam mas NÃO acendiam
+    (cond() chamava render(), que só desenha cartão novo) ⇒ repintar(u).
+  Zero GAS, zero SQL. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   29/09/2026 — REAB_V1 · o formulário diz a verdade sobre a tarefa e deixa CORRIGIR
   (par do GAS v159 · PCF V118). Chamado da PGP-2026-0094: a tela final dizia
   "tarefa concluída" com a tarefa ABERTA no servidor, e o rascunho selado não
@@ -231,6 +246,16 @@ form_corretiva.html — 22/07/2026 — Lançamento de VISITA CORRETIVA em campo 
   .field-hint b{color:var(--accent)}
   /* ── Foto POR LEITURA (inline) + estados de envio da miniatura ── */
   .pfoto{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 2px}
+  .card{position:relative}
+  .card .secx{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:16px;cursor:pointer;line-height:1}
+  .card .secx:active{color:var(--red)}
+  .card.sec-omit>*:not(h2):not(.secx):not(.sec-omit-bar){display:none!important}
+  .card.sec-omit{opacity:.75;padding-bottom:10px}
+  .card.sec-omit h2{margin-bottom:6px;color:var(--muted);text-decoration:line-through}
+  .sec-omit-bar{display:none;font-size:12.5px;color:var(--muted)}
+  .card.sec-omit .sec-omit-bar{display:flex;gap:8px;align-items:center;justify-content:space-between}
+  .sec-omit-bar button{background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;min-height:40px;font-family:inherit}
+  .pfoto-btns{display:flex;gap:6px;flex-wrap:wrap}
   .btn-foto-mini{background:var(--bg);border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap}
   .pfoto-cap{font-size:11px;color:var(--muted)}
   .thumb.pending{border-color:var(--amber);opacity:.7}
@@ -500,7 +525,7 @@ function pgpBootAviso(msg){
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="maquina">
     <h2>Dados da máquina</h2>
     <div class="sub" style="margin-bottom:6px">Vêm do cadastro quando existem; se não, o técnico lança pra aproveitar a visita e atualizar a máquina.</div>
     <label>Horímetro total (h)</label>
@@ -513,7 +538,7 @@ function pgpBootAviso(msg){
     <div class="field-hint" id="hint_regime"></div>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="motivo">
     <h2>Motivo do chamado</h2>
     <div class="sub" style="margin-bottom:6px">Marque todos os sintomas relatados/observados.</div>
     <div id="motivos"></div>
@@ -521,7 +546,7 @@ function pgpBootAviso(msg){
     <textarea id="f_motivo_outro" placeholder="Descreva o que o cliente relatou, se necessário..."></textarea>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="parametros">
     <h2>Parâmetros de funcionamento</h2>
     <div class="sub" style="margin-bottom:6px">Cada leitura tem um botão 📷 logo abaixo — anexe pelo menos uma foto por leitura; a legenda entra sozinha no laudo.</div>
     <label>Temperatura de funcionamento (°C)</label>
@@ -549,7 +574,7 @@ function pgpBootAviso(msg){
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="protecoes">
     <h2>Proteções e nível de óleo</h2>
     <div class="item">
       <div>Relé de falta de fase presente e ligado corretamente</div>
@@ -577,14 +602,16 @@ function pgpBootAviso(msg){
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="fotos">
     <h2>📷 Registro fotográfico geral</h2>
     <div class="sub" style="margin-bottom:4px">Cada leitura e proteção acima já tem seu próprio botão 📷 com legenda automática. Aqui ficam as fotos gerais da máquina e do ambiente. Toda foto entra no PDF do laudo.</div>
     <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+    <!-- CORX_V1 (30/10): SEM capture= — o aparelho oferece Galeria/Arquivos e aceita várias -->
+    <input type="file" id="fileInputGal" accept="image/*" multiple style="display:none">
     <div id="fotoSecoes"></div>
   </div>
 
-  <div class="card">
+  <div class="card" data-sec="diagnostico">
     <h2>Diagnóstico do técnico</h2>
     <label>Causa-raiz provável do problema</label>
     <textarea id="f_causa" placeholder="O que o técnico julga ser a origem do defeito..."></textarea>
@@ -1574,6 +1601,7 @@ const MOTIVOS = [
   { k:'vaz_ar',      label:'Vazamento de ar' },
   { k:'vaz_oleo',    label:'Vazamento de óleo' },
   { k:'partida',     label:'Acompanhamento de partida (pós-reforma)' },
+  { k:'adequacao',   label:'Adequação (instalação / quadro / rede)' },   // CORX_V1 30/10
   { k:'outro',       label:'Outro (detalhar abaixo)' }
 ];
 
@@ -1614,9 +1642,10 @@ function onMotivo(k, checked){ state.motivos[k] = !!checked; scheduleSave(); }
 
 // Controle de foto inline (botão + legenda + miniaturas) por ponto de leitura.
 function photoCtrlHtml(pt){
-  var label = pt.geral ? '📷 Adicionar' : '📷 Foto da leitura';
+  // CORX_V1 (30/10): câmera E galeria (o capture= sozinho abria só a câmera)
   return '<div class="pfoto" data-k="'+pt.k+'">'
-    + '<button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+pt.k+'\')">'+label+'</button>'
+    + '<div class="pfoto-btns"><button type="button" class="btn-foto-mini" onclick="pickPhoto(\''+pt.k+'\')">📷 Câmera</button>'
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\''+pt.k+'\')">🖼 Galeria</button></div>'
     + (pt.geral ? '' : '<span class="pfoto-cap">'+esc(pt.caption)+'</span>')
     + '<div class="thumbs" id="thumbs-'+pt.k+'"></div></div>';
 }
@@ -1664,6 +1693,21 @@ function pickPhoto(k){
     if (!f) return;
     pgpEsperaLonga('📷 Preparando a foto…');   // 13/08 (perf): cobre a compressao
     handlePhoto(k, f).then(function(){ pgpEsperaLonga(null); }, function(){ pgpEsperaLonga(null); });
+  };
+  inp.click();
+}
+// CORX_V1 (30/10) — GALERIA. Mesmo padrão do form01/diag_oficina: input SEM capture=,
+// várias fotos de uma vez, processadas EM SEQUÊNCIA com "N de M" na barra de espera.
+function pickPhotoGal(k){
+  const inp = document.getElementById('fileInputGal');
+  if(!inp){ pickPhoto(k); return; }
+  inp.onchange = async e => {
+    const fs = [].slice.call(e.target.files||[]); inp.value='';
+    for (let i=0; i<fs.length; i++){
+      pgpEsperaLonga('📷 Processando foto '+(i+1)+' de '+fs.length+'…');
+      try{ await handlePhoto(k, fs[i]); }catch(err){}
+    }
+    pgpEsperaLonga(null);
   };
   inp.click();
 }
@@ -2074,6 +2118,7 @@ function hydrateUI(){
   Object.keys(state.motivos||{}).forEach(function(k){ var c=document.getElementById('mot_'+k); if(c) c.checked=!!state.motivos[k]; });
   var pr=state.protecoes||{}; markSN('rele_ligado',pr.rele_ligado); markSN('rele_atuando',pr.rele_atuando); markSN('oleo_ok',pr.oleo_ok);
   markSN('situacao', d.situacao);
+  try{ corxAplicar(); }catch(eCx){}   // CORX_V1 (30/10)
   // (as miniaturas das fotos são reconstruídas do IndexedDB em restoreDraft)
   pgpAtualizarStatusAssinaturas();
 }
@@ -2448,6 +2493,46 @@ async function psDrop(id){ if(confirm('Descartar este envio? O dado desta etapa 
 
 // ── PDF do laudo → Drive (Gestão de Documentos) ──
 const _MOT_LABEL = MOTIVOS.reduce(function(o,m){ o[m.k]=m.label; return o; }, {});
+/* ══ CORX_V1 · 30/10/2026 — ✕ FECHA O BLOCO QUE NÃO SE APLICA ═══════════════
+   Fernando (OS corretiva Localiza, quadro elétrico): blocos como Parâmetros e
+   Proteções não valem para toda visita. O ✕ não apaga nada: o bloco vira uma
+   faixa "Não se aplica nesta visita", sai do laudo (e as fotos dele também) e
+   ↺ Reabrir devolve com o que estava digitado. Estado em state.secoes_omitidas
+   (vai no campos_json e no rascunho). Sem confirm(): é reversível. */
+const CORX_SECOES = ['maquina','motivo','parametros','protecoes','fotos','diagnostico'];
+function corxOmit(k){ try{ return !!(state.secoes_omitidas && state.secoes_omitidas[k]); }catch(e){ return false; } }
+function corxSecDoPonto(pt){ return pt.anchor ? 'parametros' : (pt.anchorSN ? 'protecoes' : 'fotos'); }
+function corxMontar(){
+  CORX_SECOES.forEach(function(k){
+    var c = document.querySelector('.card[data-sec="'+k+'"]'); if(!c || c.querySelector(':scope > .secx')) return;
+    var b = document.createElement('button'); b.type='button'; b.className='secx';
+    b.setAttribute('aria-label','Não se aplica — fechar este bloco'); b.title='Não se aplica — fechar este bloco';
+    b.textContent='✕'; b.onclick=function(){ corxFechar(k, true); };
+    var bar = document.createElement('div'); bar.className='sec-omit-bar';
+    bar.innerHTML='<span>Não se aplica nesta visita · fora do laudo</span>';
+    var r = document.createElement('button'); r.type='button'; r.textContent='↺ Reabrir';
+    r.onclick=function(){ corxFechar(k, false); };
+    bar.appendChild(r);
+    var h = c.querySelector(':scope > h2');
+    if(h && h.nextSibling) c.insertBefore(bar, h.nextSibling); else c.appendChild(bar);
+    c.insertBefore(b, c.firstChild);
+  });
+  corxAplicar();
+}
+function corxFechar(k, fechar){
+  if(!state.secoes_omitidas || typeof state.secoes_omitidas!=='object') state.secoes_omitidas = {};
+  if(fechar) state.secoes_omitidas[k] = true; else delete state.secoes_omitidas[k];
+  corxAplicar(); scheduleSave();
+  if(fechar) toast('Bloco fechado — não entra no laudo. ↺ Reabrir desfaz.');
+}
+function corxAplicar(){
+  CORX_SECOES.forEach(function(k){
+    var c = document.querySelector('.card[data-sec="'+k+'"]'); if(!c) return;
+    var off = corxOmit(k);
+    c.classList.toggle('sec-omit', off);
+    var b = c.querySelector(':scope > .secx'); if(b) b.style.display = off ? 'none' : '';
+  });
+}
 const _SIT_LABEL = { resolvido:'Resolvido', parcial:'Parcial', retorno:'Requer retorno' };
 const _SN_LABEL  = { sim:'SIM', nao:'NÃO', na:'N/A' };
 function _cb(v,target){ return '<span class="pdf-cb'+(v===target?' marked':'')+'">'+(v===target?'✓':'')+'</span>'; }
@@ -2964,6 +3049,7 @@ function preencherResponsavelSessao(){
 // Best-effort e não-bloqueante: os dados também ficam no campos_json do laudo.
 async function atualizarMaquinaCadastro(){
   if(!_maqAtual || !_maqAtual.id) return;                 // avulsa / sem máquina → nada a atualizar
+  if(corxOmit('maquina')) return;                         // CORX_V1 (30/10): bloco fechado = não mexe no cadastro
   var hVal = val('f_horimetro');
   var novoHor = hVal!=='' ? (parseInt(hVal,10)||0) : (parseInt(_maqAtual.hourTotal,10)||0);
   var antigoHor = parseInt(_maqAtual.hourTotal,10)||0;
@@ -3017,6 +3103,7 @@ function wireInputs(){
 (async function init(){
   initMotivos();
   mountPhotoControls();
+  try{ corxMontar(); }catch(eCx){}   // CORX_V1 (30/10): ✕ por bloco
   const p=new URLSearchParams(location.search);
   _osId=p.get('os_id')||''; _tarefaId=p.get('tarefa_id')||'';
   window._GC=p.get('gc')||window._GC||'';
@@ -3902,16 +3989,21 @@ function lvDocCorretiva(photosByKey){
     rodapeEsq2:'Responsável técnico: ' + (i.tecnico || '—')
   });
 
+  if(!corxOmit('motivo')){   // CORX_V1 (30/10)
   L.banda('Motivo do chamado', { cor:LV_COR.ambar });
   L.p(motivos.length ? motivos.join(' · ') : '—', { size:8 });
   if (state.motivoOutro) L.caixa(state.motivoOutro, { altMin:9 });
+  }
 
+  if(!corxOmit('maquina')){   // CORX_V1 (30/10)
   L.banda('Dados da máquina', { cor:LV_COR.escuro });
   L.kv([
     ['Horímetro total',   mq.horimetro ? (mq.horimetro + ' h') : '—'],
     ['Regime de trabalho', resumoRegime(mq.regimeData)]
   ], { pularVazio:false, kw:44 });
+  }
 
+  if(!corxOmit('parametros')){   // CORX_V1 (30/10)
   L.banda('Parâmetros de funcionamento', { cor:LV_COR.azul });
   L.tabela(
     [{t:'Parâmetro'}, {t:'Fase A / A-B', align:'center'}, {t:'Fase B / B-C', align:'center'}, {t:'Fase C / C-A', align:'center'}],
@@ -3924,7 +4016,9 @@ function lvDocCorretiva(photosByKey){
     ],
     { thCor:LV_COR.azul }
   );
+  }
 
+  if(!corxOmit('protecoes')){   // CORX_V1 (30/10)
   L.banda('Proteções e óleo', { cor:LV_COR.escuro });
   var SN = [{v:'sim',lab:'Sim'},{v:'nao',lab:'Não'},{v:'na',lab:'N/A'}];
   L.tabela(
@@ -3936,23 +4030,29 @@ function lvDocCorretiva(photosByKey){
       ['Nível de óleo correto antes da partida',    {cb:pr.oleo_ok==='sim'},      {cb:pr.oleo_ok==='nao'},      {cb:pr.oleo_ok==='na'}]
     ]
   );
+  }
 
+  if(!corxOmit('diagnostico')){   // CORX_V1 (30/10)
   L.banda('Diagnóstico', { cor:LV_COR.azul });
   L.p('Causa-raiz provável:', { bold:true, size:7.5, gap:1 });   L.caixa(dg.causa || '—', { altMin:12 });
   L.p('Ações corretivas tomadas:', { bold:true, size:7.5, gap:1 }); L.caixa(dg.acoes || '—', { altMin:12 });
   L.p('Pendências (peça / ferramental):', { bold:true, size:7.5, gap:1 }); L.caixa(dg.pendencias || '—', { altMin:9 });
   L.kv([['Situação ao final', _SIT_LABEL[dg.situacao] || '—']], { pularVazio:false, kw:44 });
+  }
 
-  L.banda('Registro fotográfico', { cor:LV_COR.escuro });
   var fotos = [];
   for (var k = 0; k < FOTO_PONTOS.length; k++){
     var pt = FOTO_PONTOS[k], arr = (photosByKey && photosByKey[pt.k]) || [];
+    if (corxOmit(corxSecDoPonto(pt))) continue;   // CORX_V1 (30/10): foto de bloco fechado sai do laudo
     for (var z = 0; z < arr.length; z++){
       if (!arr[z] || !arr[z].dataUrl) continue;
       fotos.push({ dataUrl:arr[z].dataUrl, legenda:arr[z].caption || pt.caption });
     }
   }
+  if (fotos.length || !corxOmit('fotos')){   // CORX_V1 (30/10)
+  L.banda('Registro fotográfico', { cor:LV_COR.escuro });
   L.figuras(fotos, { vazio:'Sem fotos anexadas nesta visita.' });
+  }
 
   L.banda('Assinaturas', { cor:LV_COR.escuro });
   L.assinaturas([
@@ -4012,7 +4112,7 @@ window.PGPX = (function(){
      `postar(body)` (para buscar a lista se o form ainda não a tiver). */
   var O = {};              // opções do init
   var ITENS = [];          // o estado, na ordem em que o técnico montou
-  var _seq = 0, _montado = false, _chaveRasc = '';
+  var _seq = 0, _montado = false, _chaveRasc = '', _avisoCota = false;
 
   var TIPOS = [
     { id:'item', ico:'🧾', rot:'Item de lista',  sub:'Ok / NOK / N.A. + observação + foto' },
@@ -4092,8 +4192,10 @@ window.PGPX = (function(){
       + '<div id="pgpxLista"></div>'
       + '<div id="pmaqHost"></div>'
       + '</div>'
-      + '<input type="file" id="pgpxFile" accept="image/*" capture="environment" style="display:none">';
+      + '<input type="file" id="pgpxFile" accept="image/*" capture="environment" style="display:none">'
+      + '<input type="file" id="pgpxFileGal" accept="image/*" multiple style="display:none">';   // CORX_V1: galeria, SEM capture
     $('#pgpxFile').addEventListener('change', _arquivoEscolhido);
+    $('#pgpxFileGal').addEventListener('change', _arquivoEscolhido);
     _montado = true;
     render();
     // v2 — os itens de MÁQUINA moram no PMAQ, dentro deste cartão.
@@ -4142,7 +4244,7 @@ window.PGPX = (function(){
     it[k]=v; it.valor = it.horas ? (parseInt(it.horas,10)+':'+pad2(it.minutos||0)) : '';
     salvar();
   }
-  function cond(u, v){ var it=acha(u); if(!it) return; it.cond=v; render(); salvar(); }
+  function cond(u, v){ var it=acha(u); if(!it) return; it.cond=(it.cond===v ? '' : v); repintar(u); salvar(); }   // CORX_V1 (30/10): render() não repinta cartão existente — a pílula não acendia
 
   function htmlItem(it){
     var t = TIPOS.filter(function(x){ return x.id===it.tipo; })[0] || TIPOS[0];
@@ -4184,7 +4286,8 @@ window.PGPX = (function(){
         +  ' oninput="PGPX.campo(\''+it.uid+'\',\'texto\',this.value)">'+esc(it.texto)+'</textarea>';
     }
     if(it.tipo!=='obs' && it.tipo!=='med'){
-      h += '<div style="margin-top:8px"><button type="button" class="pgpx-mini" onclick="PGPX.foto(\''+it.uid+'\')">📷 Anexar foto</button></div>'
+      h += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pgpx-mini" onclick="PGPX.foto(\''+it.uid+'\')">📷 Câmera</button>'
+        +  '<button type="button" class="pgpx-mini" onclick="PGPX.fotoGal(\''+it.uid+'\')">🖼 Galeria</button></div>'
         +  '<div class="pgpx-fotos">'
         +  (it.fotos||[]).map(function(f){ return '<img src="'+attr(f.dataUrl||'')+'" class="'+(f.status==='ok'?'ok':'')+'" alt="">'; }).join('')
         +  '</div>';
@@ -4219,6 +4322,7 @@ window.PGPX = (function(){
   /* ── FOTO: comprime aqui dentro (sem depender do compressor do hospedeiro) ── */
   var _fotoAlvo = null;
   function foto(u){ _fotoAlvo = u; var f=$('#pgpxFile'); if(f){ f.value=''; f.click(); } }
+  function fotoGal(u){ _fotoAlvo = u; var f=$('#pgpxFileGal'); if(f){ f.value=''; f.click(); } }   // CORX_V1 (30/10)
 
   function comprimir(file){
     return new Promise(function(res, rej){
@@ -4241,13 +4345,19 @@ window.PGPX = (function(){
   }
 
   async function _arquivoEscolhido(ev){
-    var file = ev.target.files && ev.target.files[0];
-    if(!file || !_fotoAlvo) return;
-    var u = _fotoAlvo; _fotoAlvo = null;
+    var files = [].slice.call((ev.target && ev.target.files) || []);
+    if(!files.length || !_fotoAlvo) return;
+    var u0 = _fotoAlvo; _fotoAlvo = null;
+    // CORX_V1: galeria manda várias. O alvo vai por PARÂMETRO (auditoria 30/10: com _fotoAlvo
+    //   reescrito no laço, a câmera de outro item tocada no meio perdia a foto em silêncio).
+    for(var i=0;i<files.length;i++){ await _umArquivo(files[i], u0); }
+  }
+  async function _umArquivo(file, u){
+    if(!file || !u) return;
     var it = acha(u); if(!it) return;
     var dataUrl;
     try{ dataUrl = await comprimir(file); }
-    catch(e){ alert('Não consegui ler esta imagem. Tente outra.'); return; }
+    catch(e){ try{ (typeof toast==='function' ? toast : alert)('Não consegui ler esta imagem. Tente outra.'); }catch(_t){} return; }   // CORX_V1: toast, não alert em série
     var f = { fid:uid(), legenda:(it.titulo || 'Item adicional'), dataUrl:dataUrl, status:'pendente', url:'' };
     it.fotos.push(f);
     repintar(u); salvar();
@@ -4286,7 +4396,8 @@ window.PGPX = (function(){
   }
   function salvar(){
     try{ localStorage.setItem(chave(), JSON.stringify(ITENS)); }
-    catch(e){ /* cota estourada (foto grande): o item continua na memória */ }
+    catch(e){ /* cota estourada (foto grande): o item continua na memória */
+      if(!_avisoCota){ _avisoCota = true; try{ (typeof toast==='function' ? toast : function(){})('⚠ Muitas fotos nos itens adicionais: conclua logo — o rascunho deles não cabe mais neste aparelho.'); }catch(_t){} } }   // CORX_V1
   }
   function restaurar(){
     try{
@@ -4385,7 +4496,7 @@ window.PGPX = (function(){
     return API;
   }
 
-  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto, unid:unid, hm:hm, versao:'PGPX_V2',
+  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto, fotoGal:fotoGal, unid:unid, hm:hm, versao:'PGPX_V2',
               captura:captura, restaurar:restaurar, limpar:limpar, temConteudo:temConteudo,
               pdf:pdf, fotosPdf:fotosPdf, render:render,
               visivel:function(v){ var c=$('#pgpxCard'); if(c) c.style.display = v===false ? 'none' : ''; },
