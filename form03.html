@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  30/10/2026 (fim de tarde) — FOTO_SALVAR_V1 · as melhorias da corretiva nos demais
+  formulários (Fernando 17h06, 1ª entrega; ✕ por bloco ficou de fora por decisão dele).
+  · ＋ Adicionar item (PGPX = o da corretiva): Ok/NOK/N.A. acendem; 📷 Câmera + 🖼 Galeria e ✕ para
+    apagar foto no item; o botão fica ABAIXO dos itens.
+  · Pontos de foto: 📷 Câmera + 🖼 Galeria (várias de uma vez).
+  · ✕ visível em toda miniatura de foto (FXDEL_V1): 1º toque "Apagar?", 2º apaga.
+  · 💾 Salvar com prova (SALV_V1): chip no canto + botão; relê o rascunho antes de dizer "Salvo".
+  Zero GAS, zero SQL. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   26/09/2026 — PCF ESTÁVEL · lado do formulário (bloco PFX V1 + PMAQ V1)
   · Volta ao PCF com os_numero + voltou_de + t: o PCF V113 abre DIRETO a OS,
     espera este envio e diz a verdade sobre a tarefa (prints 2/3 de 24/09).
@@ -359,6 +371,8 @@ function pgpBootAviso(msg){
   <button class="btn-primary no-print" id="btnEnviar" onclick="enviar()">✓ Concluir peritagem</button>
   <button class="btn no-print" style="width:100%;margin-top:8px" onclick="window.print()">🖨️ Gerar PDF / imprimir</button>
   <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+  <!-- FOTO_SALVAR_V1: SEM capture= — galeria/arquivos, várias de uma vez -->
+  <input type="file" id="fileInputGal" accept="image/*" multiple style="display:none">
 </div>
 <div id="okScreen" style="display:none">
   <div class="ok-msg"><div class="big">✅</div><h1 style="margin-top:10px">Peritagem registrada</h1>
@@ -597,7 +611,7 @@ function renderItem(it){
     ctrl = `<textarea data-k="${it.k}" onchange="setItem('${it.k}',this.value)"></textarea>`;
   } else if (it.c==='foto'){
     state.fotos[it.k]=state.fotos[it.k]||[];
-    ctrl = `<button class="btn-foto no-print" onclick="pickPhoto('${it.k}')">📷 Adicionar foto</button><div class="thumbs" id="thumbs-${it.k}"></div>`;
+    ctrl = `<button class="btn-foto no-print" onclick="pickPhoto('${it.k}')">📷 Câmera</button> <button class="btn-foto no-print" onclick="pickPhotoGal('${it.k}')">🖼 Galeria</button><div class="thumbs" id="thumbs-${it.k}"></div>`;   // FOTO_SALVAR_V1
   }
   return `<div class="item" data-gw="${it.gw?esc(it.gw):''}"><div class="item-label">${it.label}</div>${ctrl}</div>`;
 }
@@ -640,6 +654,29 @@ function stateParaEnvio(){
 }
 
 // ══ Fotos ══
+// FOTO_SALVAR_V1 — GALERIA: input SEM capture=, várias fotos, comprimidas UMA POR VEZ
+//   (12 MP em paralelo trava o aparelho — lição de 13/08); o envio de cada uma segue sozinho.
+function pickPhotoGal(secao){
+  const inp=document.getElementById('fileInputGal'); if(!inp){ pickPhoto(secao); return; }
+  inp.onchange=async e=>{
+    const fs=[].slice.call(e.target.files||[]); inp.value='';
+    for(let i=0;i<fs.length;i++){
+      pgpEsperaLonga('📷 Processando foto '+(i+1)+' de '+fs.length+'…');
+      try{
+        const dataUrl=await new Promise(function(res,rej){
+          const r=new FileReader(); r.onerror=rej;
+          r.onload=function(){ const img=new Image(); img.onerror=rej; img.onload=function(){
+            let w=img.width,h=img.height; if(w>MAX_IMG_PX||h>MAX_IMG_PX){const k=Math.min(MAX_IMG_PX/w,MAX_IMG_PX/h);w=Math.round(w*k);h=Math.round(h*k);}
+            const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+            res(cv.toDataURL('image/jpeg',IMG_QUALITY)); }; img.src=r.result; };
+          r.readAsDataURL(fs[i]); });
+        uploadPhoto(secao,dataUrl,fs[i].name||'foto.jpg');
+      }catch(err){ toast('Não consegui ler essa foto'); }
+    }
+    pgpEsperaLonga(null);
+  };
+  inp.click();
+}
 function pickPhoto(secao){
   const inp=document.getElementById('fileInput');
   inp.onchange=e=>{ const f=e.target.files[0]; if(f) handlePhoto(secao,f); inp.value=''; };
@@ -684,6 +721,7 @@ async function uploadPhoto(secao,dataUrl,fileName){
   // única vez e reusado pelas 3 tentativas do gasPostJson → nunca é regerado.
   const _clientTs = Date.now();
   const _fotoUid  = 'f_' + _formUid + '_' + _clientTs + '_' + Math.random().toString(36).slice(2,8);
+  el.dataset.fuid = _fotoUid;   // FXDEL
   await _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_fotoUid);
 }
 async function _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_fotoUid){
@@ -695,6 +733,7 @@ async function _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_f
       client_ts:_clientTs, foto_uid:_fotoUid, legenda:_labelFoto(secao)};
     const data=await gasPostJson(payload);   // 29/07 (F-12): parse seguro + retry
     if(!data||data.ok!==true) throw new Error(data.error||'falha');
+    if(window._fxApagadas && window._fxApagadas[_fotoUid]) return;   // FXDEL: apagada enquanto subia
     if(el){ el.className='thumb ok'; el.onclick=null; el.title=''; }
     delete _fotoRetryStore[thumbId];
     var _r=_reg();
@@ -704,6 +743,7 @@ async function _tentarUploadFoto0304(secao,dataUrl,fileName,thumbId,_clientTs,_f
   }catch(err){
     if(el){ el.className='thumb erro'; el.title='Falha no envio — toque para reenviar'; el.onclick=function(){ retryFoto(thumbId); }; }
     _fotoRetryStore[thumbId]={ secao:secao, dataUrl:dataUrl, fileName:fileName, clientTs:_clientTs, fotoUid:_fotoUid };
+    if(window._fxApagadas && window._fxApagadas[_fotoUid]) return;   // FXDEL
     if(!_reg()) state.fotos[secao].push({url:null,fileName,status:'erro',foto_uid:_fotoUid,client_ts:_clientTs});
     toast('Erro ao enviar foto — toque na miniatura vermelha para reenviar'); scheduleSave();
   }
@@ -2486,7 +2526,7 @@ window.PGPX = (function(){
      `postar(body)` (para buscar a lista se o form ainda não a tiver). */
   var O = {};              // opções do init
   var ITENS = [];          // o estado, na ordem em que o técnico montou
-  var _seq = 0, _montado = false, _chaveRasc = '';
+  var _seq = 0, _montado = false, _chaveRasc = '', _avisoCota = false;
 
   var TIPOS = [
     { id:'item', ico:'🧾', rot:'Item de lista',  sub:'Ok / NOK / N.A. + observação + foto' },
@@ -2545,6 +2585,9 @@ window.PGPX = (function(){
   + '.pgpx-fotos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}'
   + '.pgpx-fotos img{width:58px;height:58px;object-fit:cover;border-radius:6px;border:2px solid var(--amber,#f59e0b)}'
   + '.pgpx-fotos img.ok{border-color:var(--green,#22c55e)}'
+  + '.pgpx-fw{position:relative;display:inline-block}'
+  + '.pgpx-fx{position:absolute;top:-7px;right:-7px;min-width:24px;height:24px;padding:0 5px;border-radius:12px;border:1px solid var(--border,#334155);background:#0b1220;color:#e2e8f0;font-size:12px;line-height:22px;cursor:pointer;z-index:2}'
+  + '.pgpx-fx.armado{background:var(--red,#ef4444);border-color:var(--red,#ef4444);color:#fff;font-weight:700}'
   + '.pgpx-mini{padding:8px 12px;border-radius:8px;border:1px solid var(--border,#334155);'
   +   'background:transparent;color:inherit;font-size:13px;cursor:pointer;min-height:40px}';
 
@@ -2558,16 +2601,19 @@ window.PGPX = (function(){
       '<div id="pgpxCard">'
       + '<h2>＋ Itens adicionais</h2>'
       + '<div class="pgpx-sub">' + esc(O.sub || 'Para o que este formulário não previu: item, observação, medição ou foto. Entra no PDF e no registro da OS.') + '</div>'
+      + '<div id="pgpxLista"></div>'
+      + '<div id="pmaqHost"></div>'
+      + '<div style="margin-top:10px"></div>'
       + '<button type="button" class="pgpx-add" onclick="PGPX.menu()">＋ Adicionar item</button>'
       + '<div class="pgpx-menu" id="pgpxMenu">'
       +   TIPOS.map(function(t){ return '<button type="button" class="pgpx-opt" onclick="PGPX.novo(\'' + t.id + '\')">'
             + '<b>' + t.ico + ' ' + esc(t.rot) + '</b><span>' + esc(t.sub) + '</span></button>'; }).join('')
       + '</div>'
-      + '<div id="pgpxLista"></div>'
-      + '<div id="pmaqHost"></div>'
-      + '</div>'
-      + '<input type="file" id="pgpxFile" accept="image/*" capture="environment" style="display:none">';
+      + '</div>'   /* CORX_V2: botão e menu DEPOIS da lista */
+      + '<input type="file" id="pgpxFile" accept="image/*" capture="environment" style="display:none">'
+      + '<input type="file" id="pgpxFileGal" accept="image/*" multiple style="display:none">';   // CORX_V1: galeria, SEM capture
     $('#pgpxFile').addEventListener('change', _arquivoEscolhido);
+    $('#pgpxFileGal').addEventListener('change', _arquivoEscolhido);
     _montado = true;
     render();
     // v2 — os itens de MÁQUINA moram no PMAQ, dentro deste cartão.
@@ -2616,7 +2662,7 @@ window.PGPX = (function(){
     it[k]=v; it.valor = it.horas ? (parseInt(it.horas,10)+':'+pad2(it.minutos||0)) : '';
     salvar();
   }
-  function cond(u, v){ var it=acha(u); if(!it) return; it.cond=v; render(); salvar(); }
+  function cond(u, v){ var it=acha(u); if(!it) return; it.cond=(it.cond===v ? '' : v); repintar(u); salvar(); }   // CORX_V1 (30/10): render() não repinta cartão existente — a pílula não acendia
 
   function htmlItem(it){
     var t = TIPOS.filter(function(x){ return x.id===it.tipo; })[0] || TIPOS[0];
@@ -2658,9 +2704,11 @@ window.PGPX = (function(){
         +  ' oninput="PGPX.campo(\''+it.uid+'\',\'texto\',this.value)">'+esc(it.texto)+'</textarea>';
     }
     if(it.tipo!=='obs' && it.tipo!=='med'){
-      h += '<div style="margin-top:8px"><button type="button" class="pgpx-mini" onclick="PGPX.foto(\''+it.uid+'\')">📷 Anexar foto</button></div>'
+      h += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="pgpx-mini" onclick="PGPX.foto(\''+it.uid+'\')">📷 Câmera</button>'
+        +  '<button type="button" class="pgpx-mini" onclick="PGPX.fotoGal(\''+it.uid+'\')">🖼 Galeria</button></div>'
         +  '<div class="pgpx-fotos">'
-        +  (it.fotos||[]).map(function(f){ return '<img src="'+attr(f.dataUrl||'')+'" class="'+(f.status==='ok'?'ok':'')+'" alt="">'; }).join('')
+        +  (it.fotos||[]).map(function(f){ return '<span class="pgpx-fw"><img src="'+attr(f.dataUrl||'')+'" class="'+(f.status==='ok'?'ok':'')+'" alt="">'
+             + '<button type="button" class="pgpx-fx" aria-label="Apagar esta foto" onclick="PGPX.fotoX(\''+it.uid+'\',\''+attr(f.fid)+'\',this)">✕</button></span>'; }).join('')   // CORX_V2
         +  '</div>';
     }
     return h + '</div>';
@@ -2693,6 +2741,22 @@ window.PGPX = (function(){
   /* ── FOTO: comprime aqui dentro (sem depender do compressor do hospedeiro) ── */
   var _fotoAlvo = null;
   function foto(u){ _fotoAlvo = u; var f=$('#pgpxFile'); if(f){ f.value=''; f.click(); } }
+  // CORX_V2 (30/10) — apagar a foto do item: 1º toque arma, 2º apaga; cancela o envio se ainda não foi.
+  function fotoX(u, fid, btn){
+    try{ if(typeof _sending!=='undefined' && _sending){ (window.toast || window.showToast || function(){})('Esta corretiva já foi concluída — a foto não pode mais ser apagada.'); return; } }catch(e){}
+    if(btn && !btn.classList.contains('armado')){
+      btn.classList.add('armado'); btn.textContent='Apagar?';
+      setTimeout(function(){ try{ btn.classList.remove('armado'); btn.textContent='✕'; }catch(e){} }, 4000);
+      return;
+    }
+    var it = acha(u); if(!it) return;
+    var f = null; (it.fotos||[]).forEach(function(x){ if(x.fid===fid) f=x; });
+    it.fotos = (it.fotos||[]).filter(function(x){ return x.fid!==fid; });
+    repintar(u); salvar();
+    try{ if(f && O.cancelarFoto) O.cancelarFoto(f); }catch(e){}
+    try{ (window.toast || window.showToast || function(){})('Foto apagada'); }catch(e){}
+  }
+  function fotoGal(u){ _fotoAlvo = u; var f=$('#pgpxFileGal'); if(f){ f.value=''; f.click(); } }   // CORX_V1 (30/10)
 
   function comprimir(file){
     return new Promise(function(res, rej){
@@ -2715,17 +2779,23 @@ window.PGPX = (function(){
   }
 
   async function _arquivoEscolhido(ev){
-    var file = ev.target.files && ev.target.files[0];
-    if(!file || !_fotoAlvo) return;
-    var u = _fotoAlvo; _fotoAlvo = null;
+    var files = [].slice.call((ev.target && ev.target.files) || []);
+    if(!files.length || !_fotoAlvo) return;
+    var u0 = _fotoAlvo; _fotoAlvo = null;
+    // CORX_V1: galeria manda várias. O alvo vai por PARÂMETRO (auditoria 30/10: com _fotoAlvo
+    //   reescrito no laço, a câmera de outro item tocada no meio perdia a foto em silêncio).
+    for(var i=0;i<files.length;i++){ await _umArquivo(files[i], u0); }
+  }
+  async function _umArquivo(file, u){
+    if(!file || !u) return;
     var it = acha(u); if(!it) return;
     var dataUrl;
     try{ dataUrl = await comprimir(file); }
-    catch(e){ alert('Não consegui ler esta imagem. Tente outra.'); return; }
+    catch(e){ try{ (window.toast || window.showToast || alert)('Não consegui ler esta imagem. Tente outra.'); }catch(_t){} return; }   // CORX_V1: toast, não alert em série
     var f = { fid:uid(), legenda:(it.titulo || 'Item adicional'), dataUrl:dataUrl, status:'pendente', url:'' };
     it.fotos.push(f);
     repintar(u); salvar();
-    try{ await enviarFoto(it, f); f.status='ok'; }
+    try{ f.jobId = await enviarFoto(it, f); f.status='ok'; }   // CORX_V2: guarda o job para poder cancelar
     catch(e){ f.status='pendente'; try{ console.error('[PGPX] foto não subiu:', e); }catch(_c){} }
     repintar(u); salvar();
   }
@@ -2760,7 +2830,8 @@ window.PGPX = (function(){
   }
   function salvar(){
     try{ localStorage.setItem(chave(), JSON.stringify(ITENS)); }
-    catch(e){ /* cota estourada (foto grande): o item continua na memória */ }
+    catch(e){ /* cota estourada (foto grande): o item continua na memória */
+      if(!_avisoCota){ _avisoCota = true; try{ (window.toast || window.showToast || function(){})('⚠ Muitas fotos nos itens adicionais: conclua logo — o rascunho deles não cabe mais neste aparelho.'); }catch(_t){} } }   // CORX_V1
   }
   function restaurar(){
     try{
@@ -2859,7 +2930,7 @@ window.PGPX = (function(){
     return API;
   }
 
-  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto, unid:unid, hm:hm, versao:'PGPX_V2',
+  var API = { init:init, menu:menu, novo:novo, remover:remover, campo:campo, cond:cond, foto:foto, fotoGal:fotoGal, fotoX:fotoX, salvar:salvar, salvoOk:function(){ try{ var g=localStorage.getItem(chave()); return ITENS.length ? g===JSON.stringify(ITENS) : true; }catch(e){ return false; } }, unid:unid, hm:hm, versao:'PGPX_V2',
               captura:captura, restaurar:restaurar, limpar:limpar, temConteudo:temConteudo,
               pdf:pdf, fotosPdf:fotosPdf, render:render,
               visivel:function(v){ var c=$('#pgpxCard'); if(c) c.style.display = v===false ? 'none' : ''; },
@@ -3975,5 +4046,216 @@ try{
 </script>
 
 <!-- ████ FIM BLOCOS PADRAO UX ████ -->
+<!-- ████ INICIO FXDEL V1 (✕ para apagar foto · 30/10/2026) ████ -->
+<style>
+.fxw{position:relative;display:inline-block;vertical-align:top}
+.fxx{position:absolute;top:-7px;right:-7px;min-width:24px;height:24px;padding:0 5px;border-radius:12px;border:1px solid #475569;background:#0b1220;color:#e2e8f0;font-size:12px;line-height:22px;cursor:pointer;font-family:inherit;z-index:2}
+.fxx.armado{background:#ef4444;border-color:#ef4444;color:#fff;font-weight:700}
+@media print{.fxx{display:none!important}}
+</style>
+<script>
+/* FXDEL V1 · 30/10/2026 — Fernando: "não consigo excluir as fotos após incluir".
+   Toda miniatura de foto ganha um ✕ VISÍVEL. 1º toque: o ✕ vira "Apagar?"
+   (vermelho, 4 s); 2º toque: apaga pelo `apagar(img)` do formulário. Sem
+   confirm() (regra §4.1). BLOCO ÚNICO, byte a byte nos formulários que o usam;
+   só o FXDEL.init({...}) muda (alvo = quais <img> ganham ✕; apagar = como
+   o formulário tira a foto do estado/rascunho/fila).
+   O ✕ entra por um MutationObserver que embrulha a <img> num <span class=fxw>
+   — assim pega TODO caminho que cria miniatura (captura, galeria, rascunho
+   restaurado) sem costura em cada um. O observador só embrulha <img> cujo pai
+   ainda não é .fxw (o embrulho não se re-embrulha) e tem disjuntor. */
+(function(){
+  'use strict';
+  var CFG = null, _n = 0, _t0 = Date.now(), _obs = null;
+  function toastF(m){ try{ (window.toast || window.showToast || function(){})(m); }catch(e){} }
+  function embrulhar(img){
+    try{
+      if(!CFG || !img || img.tagName !== 'IMG') return;
+      var p = img.parentNode; if(!p || (p.classList && p.classList.contains('fxw'))) return;
+      if(!CFG.alvo(img)) return;
+      if(Date.now() - _t0 > 1000){ _t0 = Date.now(); _n = 0; }
+      if(++_n > 400){ try{ _obs && _obs.disconnect(); console.warn('[FXDEL] disjuntor'); }catch(e){} return; }
+      var w = document.createElement('span'); w.className = 'fxw';
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'fxx'; x.textContent = '✕';
+      x.setAttribute('aria-label', 'Apagar esta foto');
+      p.insertBefore(w, img); w.appendChild(img); w.appendChild(x);
+    }catch(e){}
+  }
+  function varrer(raiz){
+    try{
+      if(!raiz) return;
+      if(raiz.tagName === 'IMG') return embrulhar(raiz);
+      if(raiz.querySelectorAll) [].slice.call(raiz.querySelectorAll('img')).forEach(embrulhar);
+    }catch(e){}
+  }
+  function desarmar(x){ try{ clearTimeout(x._fxT); x.classList.remove('armado'); x.textContent = '✕'; }catch(e){} }
+  document.addEventListener('click', function(e){
+    var x = e.target && e.target.closest ? e.target.closest('.fxx') : null; if(!x || !CFG) return;
+    e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    var w = x.parentNode, img = w && w.querySelector('img'); if(!img) return;
+    try{ if(CFG.concluido && CFG.concluido()){ toastF('Já concluído — a foto não pode mais ser apagada.'); return; } }catch(_c){}
+    if(!x.classList.contains('armado')){
+      x.classList.add('armado'); x.textContent = 'Apagar?';
+      x._fxT = setTimeout(function(){ desarmar(x); }, 4000);
+      return;
+    }
+    desarmar(x);
+    var r;
+    try{ r = CFG.apagar(img); }catch(err){ toastF('Não consegui apagar a foto'); return; }
+    Promise.resolve(r).then(function(ok){
+      if(ok !== true) return;
+      try{ if(w.parentNode) w.parentNode.removeChild(w); }catch(_r){}
+    }, function(){ toastF('Não consegui apagar a foto'); });
+  }, true);
+  window.FXDEL = {
+    versao: 'FXDEL_V1',
+    init: function(cfg){
+      CFG = cfg || null; if(!CFG) return;
+      var go = function(){
+        varrer(document.body);
+        try{
+          _obs = new MutationObserver(function(ms){ ms.forEach(function(m){
+            [].forEach.call(m.addedNodes || [], varrer);
+            // a <img> saiu por outro caminho (toque na foto + confirm, re-render): o ✕ órfão sai junto
+            try{ var t=m.target; if(m.removedNodes && m.removedNodes.length && t && t.classList && t.classList.contains('fxw') && !t.querySelector('img') && t.parentNode) t.parentNode.removeChild(t); }catch(e){}
+          }); });
+          _obs.observe(document.body, { childList:true, subtree:true });
+        }catch(e){}
+      };
+      if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+    }
+  };
+})();
+</script>
+<!-- ████ FIM FXDEL V1 ████ -->
+
+<!-- ████ INICIO SALV V1 (💾 Salvar com prova · 30/10/2026) ████ -->
+<style>
+#salvChip{position:fixed;top:8px;right:8px;z-index:9000;background:#111;border:1px solid #334155;color:#e2e8f0;border-radius:16px;padding:6px 10px;font-size:12px;opacity:.94;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.45);font-family:inherit;line-height:1.2}
+#salvChip.ok{border-color:#22c55e;color:#bbf7d0}
+#salvChip.sujo{border-color:#f59e0b;color:#fde68a}
+#salvChip.erro{border-color:#ef4444;color:#fecaca}
+#salvChip.oculto{display:none}
+@media print{#salvChip,.salv-btn,.salv-st{display:none!important}}
+.salv-st{text-align:center;font-size:12px;color:#94a3b8;margin:4px 0 10px}
+</style>
+<script>
+/* SALV V1 · 30/10/2026 — Fernando: "seria bom um botão salvar pra evitar essa
+   dúvida por parte dos técnicos". O rascunho já salvava sozinho, mas nada na
+   tela dizia. Agora: chip fixo no canto (💾 Salvar amarelo = mudou; ✓ Salvo
+   HH:MM verde = gravado) + botão 💾 do formulário. O toque grava e RELÊ o que
+   ficou no aparelho antes de dizer "Salvo" (cfg.salvar devolve 'ok' | 'vazio'
+   | outro = falhou). O automático continua; o chip só mostra a hora dele.
+   BLOCO ÚNICO, byte a byte; só o SALV.init({...}) muda por formulário. */
+(function(){
+  'use strict';
+  var CFG = null;
+  function hora(){ var d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+  function toastF(m){ try{ (window.toast || window.showToast || function(){})(m); }catch(e){} }
+  function concl(){ try{ return !!(CFG && CFG.concluido && CFG.concluido()); }catch(e){ return false; } }
+  function chip(est, txt){
+    var c=document.getElementById('salvChip'); if(!c) return;
+    c.classList.remove('ok','sujo','erro','oculto');
+    if(concl()){ c.classList.add('oculto'); return; }
+    if(est) c.classList.add(est);
+    c.textContent = txt || (est==='ok' ? '✓ Salvo '+hora() : est==='erro' ? '⚠ Não salvou' : '💾 Salvar');
+  }
+  function status(t){ [].forEach.call(document.querySelectorAll('.salv-st'), function(e){ e.textContent=t; }); }
+  async function agora(btn){
+    if(!CFG) return;
+    if(concl()){ toastF('Já concluído.'); return; }
+    if(btn && btn.dataset && btn.dataset.salvBusy==='1') return;
+    if(btn && btn.dataset) btn.dataset.salvBusy='1';
+    try{
+      try{ if(window.PGPX && PGPX.salvar) PGPX.salvar(); }catch(e){}
+      var r = 'falhou'; try{ r = await CFG.salvar(); }catch(e){ r='falhou'; }
+      var okPgpx = true; try{ if(window.PGPX && PGPX.salvoOk) okPgpx = PGPX.salvoOk(); }catch(e){ okPgpx=false; }
+      if(r==='vazio' && okPgpx){ chip('', '💾 Salvar'); status('Nada preenchido ainda — nada para salvar.'); toastF('Nada preenchido ainda.'); }
+      else if(r==='ok' && okPgpx){
+        chip('ok'); status('✓ Salvo neste aparelho às '+hora()+'. Pode fechar e voltar pela mesma OS, neste celular.');
+        toastF('✓ Salvo neste aparelho às '+hora());
+      } else {
+        chip('erro'); status('⚠ Não consegui confirmar o salvamento. Não feche o formulário; tente de novo.');
+        toastF('⚠ Não consegui confirmar o salvamento — não feche o formulário.');
+      }
+    } finally { if(btn && btn.dataset) delete btn.dataset.salvBusy; }
+  }
+  window.SALV = {
+    versao:'SALV_V1', agora:agora, chip:chip,
+    init: function(cfg){
+      CFG = cfg || null; if(!CFG) return;
+      var go = function(){
+        if(!document.getElementById('salvChip')){
+          var c=document.createElement('button'); c.type='button'; c.id='salvChip'; c.textContent='💾 Salvar';
+          c.setAttribute('aria-label','Salvar rascunho'); c.onclick=function(){ agora(c); };
+          document.body.appendChild(c);
+        }
+        try{ if(CFG.montar) CFG.montar(); }catch(e){}
+        // o automático continua igual; só avisa o chip
+        var nome = CFG.auto || 'saveDraft', orig = window[nome];
+        if(typeof orig === 'function' && !orig._salv){
+          var emb = function(){
+            var p; try{ p = orig.apply(this, arguments); }catch(e){ chip('erro'); throw e; }
+            Promise.resolve(p).then(function(){
+              var est='ok'; try{ if(CFG.autoEstado) est = CFG.autoEstado(); }catch(e){}
+              if(est==='vazio') chip('', '💾 Salvar'); else chip(est==='ok' ? 'ok' : 'erro');
+            }, function(){ chip('erro'); });
+            return p;
+          };
+          emb._salv = true; window[nome] = emb;
+        }
+        var sujo = function(e){ var t=e.target; if(!t || !t.closest) return;
+          if(t.closest('#salvChip,.salv-btn,.pgp-sign-overlay')) return; chip('sujo'); };
+        document.addEventListener('input', sujo, true);
+        document.addEventListener('change', sujo, true);
+        // botões que mudam o formulário sem 'input' (Ok/NOK, ＋ item, ✕ de foto): agenda o salvamento
+        document.addEventListener('click', function(e){
+          var t=e.target; if(!t || !t.closest) return;
+          var b=t.closest('button'); if(!b || b.closest('#salvChip,.salv-btn,#btnEnviar,.b-fin,.btn-primary,.fab,[onclick*="enviar"]')) return;
+          if(!b.closest(CFG.zonaCliques || '#app,#pgpxCard,main,body')) return;
+          setTimeout(function(){ try{ if(!concl()){ chip('sujo'); if(typeof window.scheduleSave==='function') window.scheduleSave(); } }catch(x){} }, 0);
+        }, true);
+      };
+      if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+      // concluiu (tela final): o chip sai sozinho, sem esperar outro toque
+      setInterval(function(){ try{ var c=document.getElementById('salvChip'); if(c && concl() && !c.classList.contains('oculto')) chip(); }catch(e){} }, 1000);
+    }
+  };
+})();
+</script>
+<!-- ████ FIM SALV V1 ████ -->
+
+<script>
+/* FXDEL + SALV — ligação deste formulário (rascunho em localStorage; fotos sobem direto) */
+FXDEL.init({
+  alvo: function(img){ return img.classList.contains('thumb') && !!img.closest('[id^="thumbs-"]'); },
+  concluido: function(){ return !!_enviado; },
+  apagar: function(img){
+    var c = img.closest('[id^="thumbs-"]'); var secao = c.id.replace(/^thumbs-/,'');
+    var fu = img.dataset.fuid || ''; if(!fu){ toast('Foto de rascunho antigo: não dá para apagar daqui.'); return false; }
+    window._fxApagadas = window._fxApagadas || {}; window._fxApagadas[fu] = 1;
+    state.fotos[secao] = (state.fotos[secao]||[]).filter(function(f){ return !f || f.foto_uid !== fu; });
+    try{ Object.keys(_fotoRetryStore).forEach(function(k){ if(_fotoRetryStore[k] && _fotoRetryStore[k].fotoUid===fu) delete _fotoRetryStore[k]; }); }catch(e){}
+    scheduleSave(); toast('Foto apagada'); return true;
+  }
+});
+SALV.init({
+  auto: 'saveDraft',
+  concluido: function(){ return !!_enviado; },
+  autoEstado: function(){ return _rascunhoTemConteudo(state) ? 'ok' : 'vazio'; },
+  salvar: function(){
+    clearTimeout(_saveTimer); window.saveDraft();
+    if(!_rascunhoTemConteudo(state)) return 'vazio';
+    return localStorage.getItem(DRAFT_KEY) === JSON.stringify(state) ? 'ok' : 'falhou';
+  },
+  montar: function(){
+    var b=document.getElementById('btnEnviar'); if(!b || document.getElementById('salvBtn')) return;
+    var x=document.createElement('button'); x.type='button'; x.id='salvBtn'; x.className='btn no-print salv-btn';
+    x.style.cssText='width:100%;margin-bottom:6px'; x.textContent='💾 Salvar rascunho'; x.onclick=function(){ SALV.agora(x); };
+    var st=document.createElement('div'); st.className='salv-st no-print'; st.textContent='O formulário também salva sozinho neste aparelho.';
+    b.parentNode.insertBefore(x, b); b.parentNode.insertBefore(st, b);
+  }
+});
+</script>
 </body>
 </html>

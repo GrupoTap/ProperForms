@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  30/10/2026 (fim de tarde) — FOTO_SALVAR_V1 · as melhorias da corretiva nos demais
+  formulários (Fernando 17h06, 1ª entrega; ✕ por bloco ficou de fora por decisão dele).
+  · Só o motor do ＋ Adicionar item (PGPX): o aviso acha também showToast (motor igual nos 7).
+  Zero GAS, zero SQL. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   30/10/2026 (tarde) — CORX_V2 · apagar foto depois de incluir (Fernando, 15h31)
   · 💾 SALVAR: chip fixo no canto ("💾 Salvar" / "✓ Salvo 15:42") + botão "💾 Salvar rascunho" acima do
     Concluir. O manual grava e RELÊ o que ficou no aparelho antes de dizer "Salvo". O automático
@@ -4422,7 +4430,7 @@ window.PGPX = (function(){
   function foto(u){ _fotoAlvo = u; var f=$('#pgpxFile'); if(f){ f.value=''; f.click(); } }
   // CORX_V2 (30/10) — apagar a foto do item: 1º toque arma, 2º apaga; cancela o envio se ainda não foi.
   function fotoX(u, fid, btn){
-    try{ if(typeof _sending!=='undefined' && _sending){ (typeof toast==='function'?toast:function(){})('Esta corretiva já foi concluída — a foto não pode mais ser apagada.'); return; } }catch(e){}
+    try{ if(typeof _sending!=='undefined' && _sending){ (window.toast || window.showToast || function(){})('Esta corretiva já foi concluída — a foto não pode mais ser apagada.'); return; } }catch(e){}
     if(btn && !btn.classList.contains('armado')){
       btn.classList.add('armado'); btn.textContent='Apagar?';
       setTimeout(function(){ try{ btn.classList.remove('armado'); btn.textContent='✕'; }catch(e){} }, 4000);
@@ -4433,7 +4441,7 @@ window.PGPX = (function(){
     it.fotos = (it.fotos||[]).filter(function(x){ return x.fid!==fid; });
     repintar(u); salvar();
     try{ if(f && O.cancelarFoto) O.cancelarFoto(f); }catch(e){}
-    try{ (typeof toast==='function'?toast:function(){})('Foto apagada'); }catch(e){}
+    try{ (window.toast || window.showToast || function(){})('Foto apagada'); }catch(e){}
   }
   function fotoGal(u){ _fotoAlvo = u; var f=$('#pgpxFileGal'); if(f){ f.value=''; f.click(); } }   // CORX_V1 (30/10)
 
@@ -4470,7 +4478,7 @@ window.PGPX = (function(){
     var it = acha(u); if(!it) return;
     var dataUrl;
     try{ dataUrl = await comprimir(file); }
-    catch(e){ try{ (typeof toast==='function' ? toast : alert)('Não consegui ler esta imagem. Tente outra.'); }catch(_t){} return; }   // CORX_V1: toast, não alert em série
+    catch(e){ try{ (window.toast || window.showToast || alert)('Não consegui ler esta imagem. Tente outra.'); }catch(_t){} return; }   // CORX_V1: toast, não alert em série
     var f = { fid:uid(), legenda:(it.titulo || 'Item adicional'), dataUrl:dataUrl, status:'pendente', url:'' };
     it.fotos.push(f);
     repintar(u); salvar();
@@ -4510,7 +4518,7 @@ window.PGPX = (function(){
   function salvar(){
     try{ localStorage.setItem(chave(), JSON.stringify(ITENS)); }
     catch(e){ /* cota estourada (foto grande): o item continua na memória */
-      if(!_avisoCota){ _avisoCota = true; try{ (typeof toast==='function' ? toast : function(){})('⚠ Muitas fotos nos itens adicionais: conclua logo — o rascunho deles não cabe mais neste aparelho.'); }catch(_t){} } }   // CORX_V1
+      if(!_avisoCota){ _avisoCota = true; try{ (window.toast || window.showToast || function(){})('⚠ Muitas fotos nos itens adicionais: conclua logo — o rascunho deles não cabe mais neste aparelho.'); }catch(_t){} } }   // CORX_V1
   }
   function restaurar(){
     try{

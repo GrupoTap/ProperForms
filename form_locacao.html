@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  30/10/2026 (fim de tarde) — FOTO_SALVAR_V1 · as melhorias da corretiva nos demais
+  formulários (Fernando 17h06, 1ª entrega; ✕ por bloco ficou de fora por decisão dele).
+  · ✕ visível em toda miniatura de foto (FXDEL_V1): 1º toque "Apagar?", 2º apaga. (antes só tocando na foto + confirm)
+  · 💾 Salvar com prova (SALV_V1): chip no canto + botão; relê o rascunho antes de dizer "Salvo". (💾 no rodapé, ao lado do Concluir)
+  Zero GAS, zero SQL. Nada renomeado.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   29/09/2026 — REAB_V1 · o formulário diz a verdade sobre a tarefa e deixa CORRIGIR
   (par do GAS v159 · PCF V118). Chamado da PGP-2026-0094: a tela final dizia
   "tarefa concluída" com a tarefa ABERTA no servidor, e o rascunho selado não
@@ -1800,7 +1809,7 @@ async function delBloco(btn){
 // o restoreDraft.
 async function removerFotoPonto(pk, photoId){
   if(_sending) return;
-  if(!confirm('Apagar esta foto?')) return;
+  if(!window._fxJaConfirmou && !confirm('Apagar esta foto?')) return;   // FXDEL: o ✕ já confirmou
   _fotosByBlock[pk]=(_fotosByBlock[pk]||[]).filter(function(r){ return r.photoId!==photoId; });
   try{
     var jobs=await PS.jobsOf(_draftId);
@@ -5305,5 +5314,215 @@ try{
 </script>
 
 <!-- ████ FIM BLOCOS PADRAO UX ████ -->
+<!-- ████ INICIO FXDEL V1 (✕ para apagar foto · 30/10/2026) ████ -->
+<style>
+.fxw{position:relative;display:inline-block;vertical-align:top}
+.fxx{position:absolute;top:-7px;right:-7px;min-width:24px;height:24px;padding:0 5px;border-radius:12px;border:1px solid #475569;background:#0b1220;color:#e2e8f0;font-size:12px;line-height:22px;cursor:pointer;font-family:inherit;z-index:2}
+.fxx.armado{background:#ef4444;border-color:#ef4444;color:#fff;font-weight:700}
+@media print{.fxx{display:none!important}}
+</style>
+<script>
+/* FXDEL V1 · 30/10/2026 — Fernando: "não consigo excluir as fotos após incluir".
+   Toda miniatura de foto ganha um ✕ VISÍVEL. 1º toque: o ✕ vira "Apagar?"
+   (vermelho, 4 s); 2º toque: apaga pelo `apagar(img)` do formulário. Sem
+   confirm() (regra §4.1). BLOCO ÚNICO, byte a byte nos formulários que o usam;
+   só o FXDEL.init({...}) muda (alvo = quais <img> ganham ✕; apagar = como
+   o formulário tira a foto do estado/rascunho/fila).
+   O ✕ entra por um MutationObserver que embrulha a <img> num <span class=fxw>
+   — assim pega TODO caminho que cria miniatura (captura, galeria, rascunho
+   restaurado) sem costura em cada um. O observador só embrulha <img> cujo pai
+   ainda não é .fxw (o embrulho não se re-embrulha) e tem disjuntor. */
+(function(){
+  'use strict';
+  var CFG = null, _n = 0, _t0 = Date.now(), _obs = null;
+  function toastF(m){ try{ (window.toast || window.showToast || function(){})(m); }catch(e){} }
+  function embrulhar(img){
+    try{
+      if(!CFG || !img || img.tagName !== 'IMG') return;
+      var p = img.parentNode; if(!p || (p.classList && p.classList.contains('fxw'))) return;
+      if(!CFG.alvo(img)) return;
+      if(Date.now() - _t0 > 1000){ _t0 = Date.now(); _n = 0; }
+      if(++_n > 400){ try{ _obs && _obs.disconnect(); console.warn('[FXDEL] disjuntor'); }catch(e){} return; }
+      var w = document.createElement('span'); w.className = 'fxw';
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'fxx'; x.textContent = '✕';
+      x.setAttribute('aria-label', 'Apagar esta foto');
+      p.insertBefore(w, img); w.appendChild(img); w.appendChild(x);
+    }catch(e){}
+  }
+  function varrer(raiz){
+    try{
+      if(!raiz) return;
+      if(raiz.tagName === 'IMG') return embrulhar(raiz);
+      if(raiz.querySelectorAll) [].slice.call(raiz.querySelectorAll('img')).forEach(embrulhar);
+    }catch(e){}
+  }
+  function desarmar(x){ try{ clearTimeout(x._fxT); x.classList.remove('armado'); x.textContent = '✕'; }catch(e){} }
+  document.addEventListener('click', function(e){
+    var x = e.target && e.target.closest ? e.target.closest('.fxx') : null; if(!x || !CFG) return;
+    e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    var w = x.parentNode, img = w && w.querySelector('img'); if(!img) return;
+    try{ if(CFG.concluido && CFG.concluido()){ toastF('Já concluído — a foto não pode mais ser apagada.'); return; } }catch(_c){}
+    if(!x.classList.contains('armado')){
+      x.classList.add('armado'); x.textContent = 'Apagar?';
+      x._fxT = setTimeout(function(){ desarmar(x); }, 4000);
+      return;
+    }
+    desarmar(x);
+    var r;
+    try{ r = CFG.apagar(img); }catch(err){ toastF('Não consegui apagar a foto'); return; }
+    Promise.resolve(r).then(function(ok){
+      if(ok !== true) return;
+      try{ if(w.parentNode) w.parentNode.removeChild(w); }catch(_r){}
+    }, function(){ toastF('Não consegui apagar a foto'); });
+  }, true);
+  window.FXDEL = {
+    versao: 'FXDEL_V1',
+    init: function(cfg){
+      CFG = cfg || null; if(!CFG) return;
+      var go = function(){
+        varrer(document.body);
+        try{
+          _obs = new MutationObserver(function(ms){ ms.forEach(function(m){
+            [].forEach.call(m.addedNodes || [], varrer);
+            // a <img> saiu por outro caminho (toque na foto + confirm, re-render): o ✕ órfão sai junto
+            try{ var t=m.target; if(m.removedNodes && m.removedNodes.length && t && t.classList && t.classList.contains('fxw') && !t.querySelector('img') && t.parentNode) t.parentNode.removeChild(t); }catch(e){}
+          }); });
+          _obs.observe(document.body, { childList:true, subtree:true });
+        }catch(e){}
+      };
+      if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+    }
+  };
+})();
+</script>
+<!-- ████ FIM FXDEL V1 ████ -->
+
+<!-- ████ INICIO SALV V1 (💾 Salvar com prova · 30/10/2026) ████ -->
+<style>
+#salvChip{position:fixed;top:8px;right:8px;z-index:9000;background:#111;border:1px solid #334155;color:#e2e8f0;border-radius:16px;padding:6px 10px;font-size:12px;opacity:.94;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.45);font-family:inherit;line-height:1.2}
+#salvChip.ok{border-color:#22c55e;color:#bbf7d0}
+#salvChip.sujo{border-color:#f59e0b;color:#fde68a}
+#salvChip.erro{border-color:#ef4444;color:#fecaca}
+#salvChip.oculto{display:none}
+@media print{#salvChip,.salv-btn,.salv-st{display:none!important}}
+.salv-st{text-align:center;font-size:12px;color:#94a3b8;margin:4px 0 10px}
+</style>
+<script>
+/* SALV V1 · 30/10/2026 — Fernando: "seria bom um botão salvar pra evitar essa
+   dúvida por parte dos técnicos". O rascunho já salvava sozinho, mas nada na
+   tela dizia. Agora: chip fixo no canto (💾 Salvar amarelo = mudou; ✓ Salvo
+   HH:MM verde = gravado) + botão 💾 do formulário. O toque grava e RELÊ o que
+   ficou no aparelho antes de dizer "Salvo" (cfg.salvar devolve 'ok' | 'vazio'
+   | outro = falhou). O automático continua; o chip só mostra a hora dele.
+   BLOCO ÚNICO, byte a byte; só o SALV.init({...}) muda por formulário. */
+(function(){
+  'use strict';
+  var CFG = null;
+  function hora(){ var d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+  function toastF(m){ try{ (window.toast || window.showToast || function(){})(m); }catch(e){} }
+  function concl(){ try{ return !!(CFG && CFG.concluido && CFG.concluido()); }catch(e){ return false; } }
+  function chip(est, txt){
+    var c=document.getElementById('salvChip'); if(!c) return;
+    c.classList.remove('ok','sujo','erro','oculto');
+    if(concl()){ c.classList.add('oculto'); return; }
+    if(est) c.classList.add(est);
+    c.textContent = txt || (est==='ok' ? '✓ Salvo '+hora() : est==='erro' ? '⚠ Não salvou' : '💾 Salvar');
+  }
+  function status(t){ [].forEach.call(document.querySelectorAll('.salv-st'), function(e){ e.textContent=t; }); }
+  async function agora(btn){
+    if(!CFG) return;
+    if(concl()){ toastF('Já concluído.'); return; }
+    if(btn && btn.dataset && btn.dataset.salvBusy==='1') return;
+    if(btn && btn.dataset) btn.dataset.salvBusy='1';
+    try{
+      try{ if(window.PGPX && PGPX.salvar) PGPX.salvar(); }catch(e){}
+      var r = 'falhou'; try{ r = await CFG.salvar(); }catch(e){ r='falhou'; }
+      var okPgpx = true; try{ if(window.PGPX && PGPX.salvoOk) okPgpx = PGPX.salvoOk(); }catch(e){ okPgpx=false; }
+      if(r==='vazio' && okPgpx){ chip('', '💾 Salvar'); status('Nada preenchido ainda — nada para salvar.'); toastF('Nada preenchido ainda.'); }
+      else if(r==='ok' && okPgpx){
+        chip('ok'); status('✓ Salvo neste aparelho às '+hora()+'. Pode fechar e voltar pela mesma OS, neste celular.');
+        toastF('✓ Salvo neste aparelho às '+hora());
+      } else {
+        chip('erro'); status('⚠ Não consegui confirmar o salvamento. Não feche o formulário; tente de novo.');
+        toastF('⚠ Não consegui confirmar o salvamento — não feche o formulário.');
+      }
+    } finally { if(btn && btn.dataset) delete btn.dataset.salvBusy; }
+  }
+  window.SALV = {
+    versao:'SALV_V1', agora:agora, chip:chip,
+    init: function(cfg){
+      CFG = cfg || null; if(!CFG) return;
+      var go = function(){
+        if(!document.getElementById('salvChip')){
+          var c=document.createElement('button'); c.type='button'; c.id='salvChip'; c.textContent='💾 Salvar';
+          c.setAttribute('aria-label','Salvar rascunho'); c.onclick=function(){ agora(c); };
+          document.body.appendChild(c);
+        }
+        try{ if(CFG.montar) CFG.montar(); }catch(e){}
+        // o automático continua igual; só avisa o chip
+        var nome = CFG.auto || 'saveDraft', orig = window[nome];
+        if(typeof orig === 'function' && !orig._salv){
+          var emb = function(){
+            var p; try{ p = orig.apply(this, arguments); }catch(e){ chip('erro'); throw e; }
+            Promise.resolve(p).then(function(){
+              var est='ok'; try{ if(CFG.autoEstado) est = CFG.autoEstado(); }catch(e){}
+              if(est==='vazio') chip('', '💾 Salvar'); else chip(est==='ok' ? 'ok' : 'erro');
+            }, function(){ chip('erro'); });
+            return p;
+          };
+          emb._salv = true; window[nome] = emb;
+        }
+        var sujo = function(e){ var t=e.target; if(!t || !t.closest) return;
+          if(t.closest('#salvChip,.salv-btn,.pgp-sign-overlay')) return; chip('sujo'); };
+        document.addEventListener('input', sujo, true);
+        document.addEventListener('change', sujo, true);
+        // botões que mudam o formulário sem 'input' (Ok/NOK, ＋ item, ✕ de foto): agenda o salvamento
+        document.addEventListener('click', function(e){
+          var t=e.target; if(!t || !t.closest) return;
+          var b=t.closest('button'); if(!b || b.closest('#salvChip,.salv-btn,#btnEnviar,.b-fin,.btn-primary,.fab,[onclick*="enviar"]')) return;
+          if(!b.closest(CFG.zonaCliques || '#app,#pgpxCard,main,body')) return;
+          setTimeout(function(){ try{ if(!concl()){ chip('sujo'); if(typeof window.scheduleSave==='function') window.scheduleSave(); } }catch(x){} }, 0);
+        }, true);
+      };
+      if(document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+      // concluiu (tela final): o chip sai sozinho, sem esperar outro toque
+      setInterval(function(){ try{ var c=document.getElementById('salvChip'); if(c && concl() && !c.classList.contains('oculto')) chip(); }catch(e){} }, 1000);
+    }
+  };
+})();
+</script>
+<!-- ████ FIM SALV V1 ████ -->
+
+<style>.b-salv{flex:0 0 auto;border:1px solid #334155;border-radius:13px;padding:14px 16px;background:#243349;color:#fff;font-size:17px;cursor:pointer;font-family:inherit}</style>
+<script>
+/* FXDEL + SALV — ligação deste formulário (rascunho e fotos no IndexedDB, fila de envio) */
+FXDEL.init({
+  alvo: function(img){ return img.classList.contains('thumb') && !!img.closest('[id^="thumbs-"]'); },
+  concluido: function(){ return !!_sending; },
+  apagar: async function(img){
+    var c = img.closest('[id^="thumbs-"]'); var pk = c.id.replace(/^thumbs-/,'');
+    var pid = img.getAttribute('data-pid');
+    if(pid==null || pid===''){ toast('Aguarde a foto terminar de gravar no aparelho.'); return false; }
+    var p; window._fxJaConfirmou = true;
+    try{ p = removerFotoPonto(pk, parseInt(pid,10)); } finally { window._fxJaConfirmou = false; }
+    await p; return !document.body.contains(img);   // o próprio formulário tira a <img> quando apaga
+  }
+});
+SALV.init({
+  auto: 'saveDraft',
+  concluido: function(){ return !!_sending; },
+  salvar: async function(){
+    clearTimeout(_saveTimer); await window.saveDraft();
+    var d=null; try{ d=await PS.loadDraft(_draftId); }catch(e){}
+    return (d && d.state && JSON.stringify(d.state)===JSON.stringify(state)) ? 'ok' : 'falhou';
+  },
+  montar: function(){
+    var b=document.getElementById('btnEnviar'); if(!b || document.getElementById('salvBtn')) return;
+    var x=document.createElement('button'); x.type='button'; x.id='salvBtn'; x.className='b-salv salv-btn';
+    x.title='Salvar rascunho'; x.setAttribute('aria-label','Salvar rascunho'); x.textContent='💾'; x.onclick=function(){ SALV.agora(x); };
+    b.parentNode.insertBefore(x, b);
+  }
+});
+</script>
 </body>
 </html>
