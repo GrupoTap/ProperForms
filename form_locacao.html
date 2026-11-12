@@ -4276,7 +4276,7 @@ function lvDocLocacao(photosByKey){
   var prs = blocos.filter(function(b){ return b.tipo === 'pr' && (b.pergunta || b.resposta); });
   var itensEntregues = prs.filter(function(b){ return ENTREGUE.test(String(b.pergunta || '')); });
   var verificacoes   = prs.filter(function(b){ return !ENTREGUE.test(String(b.pergunta || '')); });
-  var meds = blocos.filter(function(b){ return b.tipo === 'med' && (b.grandeza || b.valor); });
+  var meds = blocos.filter(function(b){ return b.tipo === 'med' && (b.grandeza || b.valor || b.nao_medido); });   // #178
   var obss = blocos.filter(function(b){ return b.tipo === 'obs' && b.texto; });
   var fms  = blocos.filter(function(b){ return b.tipo === 'form' && (b.formNome || b.obs); });
   var fotos = blocos.filter(function(b){ return b.tipo === 'foto' || ifxItemTemFoto(b, photosByKey); });   // #178
