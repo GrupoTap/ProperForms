@@ -1640,6 +1640,189 @@ function blkShell(uid, tipo, inner, extraClass){
     + '<button type="button" class="xdel" onclick="delBloco(this)">✕</button>';
   return el;
 }
+/* ══ IFX V1 · ProperCare-backlog#178 (12/11/2026) ═══════════════════════════
+   📷 Foto opcional em TODO item (pergunta, medição, observação) e botão
+   "Não medido" com justificativa nas medições.
+   🔑 BLOCO IDÊNTICO no form_locacao e no form_emprestimo (comparar os dois).
+   • A foto do item usa o MESMO caminho do bloco Foto: pickPhoto/pickPhotoGal →
+     _fotosByBlock[uid] → fila `salvarFotoForm` (secao = uid do item). No
+     campos_json vai só a REFERÊNCIA (`fotos:[…]`, nunca base64), e só quando há
+     foto: item sem foto sai igual ao de antes.
+   • "Não medido": data-nm / data-nm-just no bloco; a captura grava
+     `nao_medido:true` + `justificativa` (rascunho antigo, sem os campos, abre como
+     medição comum). Janela própria — nada de prompt()/confirm().
+   • Medição com grandeza, sem valor e sem "Não medido" segura o envio e leva
+     o técnico ao item (acaba o "não medido" mudo no PDF).
+   ════════════════════════════════════════════════════════════════════════ */
+var IFX_TIPOS_ITEM = { pr:1, med:1, obs:1 };
+var _ifxNmAlvo = null;
+function ifxBarraHtml(uid, tipo){
+  return '<div class="ifx-barra">'
+    + (tipo === 'med' ? '<button type="button" class="btn-foto-mini ifx-nm-btn" onclick="ifxNaoMedido(this)">Não medido</button>' : '')
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhoto(\'' + uid + '\')">📷 Câmera</button>'
+    + '<button type="button" class="btn-foto-mini" onclick="pickPhotoGal(\'' + uid + '\')">🖼 Galeria</button>'
+    + '</div>'
+    + (tipo === 'med' ? '<div class="ifx-nm-linha" hidden><span class="ifx-nm-txt"></span><span class="ifx-nm-acoes">'
+        + '<button type="button" class="btn-foto-mini" onclick="ifxNaoMedido(this)">Editar motivo</button>'
+        + '<button type="button" class="btn-foto-mini" onclick="ifxDesfazerNm(this)">Desfazer</button></span></div>' : '')
+    + '<div class="thumbs" id="thumbs-' + uid + '"></div>';
+}
+// Chamado pelo addBlock depois do appendChild (novo, semeado ou restaurado).
+function ifxMontar(el, d, restoring){
+  var uid = el.dataset.uid;
+  if(!_fotosByBlock[uid]) _fotosByBlock[uid] = [];
+  if(restoring && d && Array.isArray(d.fotos)) _fotosByBlock[uid] = d.fotos.slice();   // as miniaturas voltam do IndexedDB no restoreDraft
+  if(el.dataset.tipo === 'med' && d && d.nao_medido){
+    el.dataset.nm = '1'; el.dataset.nmJust = String(d.justificativa || '');
+    ifxPintarNm(el);
+    setTimeout(function(){ ifxPintarNm(el); }, 0);   // o PFX cria os campos h:min por observador, depois daqui
+  }
+}
+// Repinta UM bloco de medição a partir do data-nm (lição: render "só o novo" não repinta item mudado).
+function ifxPintarNm(el){
+  if(!el || el.dataset.tipo !== 'med') return;
+  var on = el.dataset.nm === '1', just = el.dataset.nmJust || '';
+  var v = q(el, '.b-val'); if(v){ if(on) v.value = ''; v.disabled = on; }
+  el.querySelectorAll('.pfx-hm input').forEach(function(i){ if(on) i.value = ''; i.disabled = on; });
+  var lin = q(el, '.ifx-nm-linha'), btn = q(el, '.ifx-nm-btn');
+  if(lin){ lin.hidden = !on; var t = q(lin, '.ifx-nm-txt'); if(t) t.textContent = 'Não medido — ' + just; }
+  if(btn) btn.hidden = on;
+  if(on !== el.classList.contains('ifx-nm-on')) el.classList.toggle('ifx-nm-on', on);
+  if(on && el.classList.contains('ifx-pend')) el.classList.remove('ifx-pend');
+}
+function ifxModal(){
+  var ov = document.getElementById('ifxNmOverlay'); if(ov) return ov;
+  ov = document.createElement('div'); ov.id = 'ifxNmOverlay'; ov.className = 'ifx-ov'; ov.setAttribute('aria-hidden', 'true');
+  ov.innerHTML = '<div class="ifx-box" role="dialog" aria-modal="true" aria-labelledby="ifxNmTit">'
+    + '<h3 id="ifxNmTit">Por que não foi medido?</h3><div class="ifx-nm-sub"></div>'
+    + '<textarea rows="3" maxlength="200" placeholder="Ex.: máquina sem carga no momento da entrega"></textarea>'
+    + '<div class="ifx-nm-erro" role="alert"></div>'
+    + '<div class="ifx-acoes"><button type="button" class="ifx-cancel">Cancelar</button><button type="button" class="ifx-ok">OK</button></div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('.ifx-cancel').addEventListener('click', ifxFecharNm);
+  ov.querySelector('.ifx-ok').addEventListener('click', ifxConfirmarNm);
+  ov.querySelector('textarea').addEventListener('input', function(){ ov.querySelector('.ifx-nm-erro').textContent = ''; });
+  ov.addEventListener('keydown', function(e){ if(e.key === 'Escape') ifxFecharNm(); });
+  return ov;
+}
+function ifxNaoMedido(btn){
+  if(_sending) return;
+  var el = btn && btn.closest('.blk'); if(!el) return;
+  _ifxNmAlvo = el;
+  var ov = ifxModal(), ta = ov.querySelector('textarea');
+  ta.value = el.dataset.nmJust || '';
+  ov.querySelector('.ifx-nm-erro').textContent = '';
+  ov.querySelector('.ifx-nm-sub').textContent = String((q(el, '.b-grand') || {}).value || '').trim();
+  ov.classList.add('open'); ov.setAttribute('aria-hidden', 'false');
+  setTimeout(function(){ try{ ta.focus(); }catch(e){} }, 60);
+}
+function ifxFecharNm(){
+  var ov = document.getElementById('ifxNmOverlay');
+  if(ov){ ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); }
+  _ifxNmAlvo = null;
+}
+function ifxConfirmarNm(){
+  var ov = document.getElementById('ifxNmOverlay'); if(!ov) return;
+  var ta = ov.querySelector('textarea'), t = String(ta.value || '').replace(/\s+/g, ' ').trim();
+  if(t.length < 3){ ov.querySelector('.ifx-nm-erro').textContent = 'Escreva o motivo para marcar como não medido.'; try{ ta.focus(); }catch(e){} return; }
+  var el = _ifxNmAlvo; ifxFecharNm();
+  if(!el || !el.isConnected) return;
+  el.dataset.nm = '1'; el.dataset.nmJust = t.slice(0, 200);
+  ifxPintarNm(el); scheduleSave();
+  toast('Medição marcada como não medida');
+}
+function ifxDesfazerNm(btn){
+  if(_sending) return;
+  var el = btn && btn.closest('.blk'); if(!el) return;
+  delete el.dataset.nm; delete el.dataset.nmJust;
+  ifxPintarNm(el); scheduleSave();
+  var v = q(el, '.b-val'); try{ if(v && v.style.display !== 'none') v.focus(); }catch(e){}
+}
+// Legenda da foto do item = a pergunta / a grandeza (observação: o começo do texto).
+function ifxLegendaDe(b){
+  b = b || {};
+  if(b.tipo === 'obs'){
+    var x = String(b.texto || '').replace(/\s+/g, ' ').trim();
+    return 'Observação' + (x ? ' — ' + (x.length > 80 ? x.slice(0, 77) + '…' : x) : '');
+  }
+  var t = String((b.tipo === 'pr' ? b.pergunta : b.grandeza) || '').replace(/\s+/g, ' ').trim();
+  return t || (b.tipo === 'med' ? 'Medição' : 'Pergunta');
+}
+function ifxLegendaEl(el){
+  var tipo = el.dataset.tipo;
+  return ifxLegendaDe({ tipo:tipo, pergunta:(q(el, '.b-perg') || {}).value, grandeza:(q(el, '.b-grand') || {}).value, texto:(q(el, '.b-obs') || {}).value });
+}
+// captura(): acrescenta ao item as refs das fotos (só se houver) e o "não medido".
+function ifxCapturaItem(el, obj){
+  var fs = _fotosByBlock[el.dataset.uid] || [];
+  if(fs.length) obj.fotos = fs.map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid || '', client_ts:f.client_ts || 0 }; });
+  if(obj.tipo === 'med' && el.dataset.nm === '1'){ obj.valor = ''; obj.nao_medido = true; obj.justificativa = el.dataset.nmJust || ''; }
+  return obj;
+}
+function ifxItemTemFoto(b, photosByKey){
+  return !!(b && IFX_TIPOS_ITEM[b.tipo] && (((photosByKey || {})[b.uid] || []).length || (b.fotos || []).length));
+}
+// PDF vetorial: as figuras de um item (foto embutida; ou o aviso de que está no Drive).
+function ifxFigurasDoItem(b, photosByKey, fs){
+  var leg = ifxLegendaDe(b), shots = ((photosByKey || {})[b.uid]) || [];
+  if(shots.length){ shots.forEach(function(s){ fs.push({ dataUrl:s.dataUrl, legenda:leg }); }); return; }
+  if((b.fotos || []).length) fs.push({ dataUrl:'', legenda:leg, vazioTxt:'foto no Drive — não embutida neste aparelho' });
+}
+function ifxNmTexto(b){
+  return (b && b.nao_medido && b.justificativa) ? ('não medido — ' + b.justificativa) : 'não medido';
+}
+// Envio: medição com grandeza e sem valor precisa de valor OU de "Não medido".
+function ifxConferirMedicoes(){
+  var pend = [];
+  document.querySelectorAll('#stack .blk[data-tipo="med"]').forEach(function(el){
+    var g = String((q(el, '.b-grand') || {}).value || '').trim(), v = String((q(el, '.b-val') || {}).value || '').trim();
+    var falta = !!g && !v && el.dataset.nm !== '1';
+    if(falta !== el.classList.contains('ifx-pend')) el.classList.toggle('ifx-pend', falta);
+    if(falta) pend.push(el);
+  });
+  if(!pend.length) return true;
+  try{ pend[0].scrollIntoView({ behavior:'smooth', block:'center' }); }catch(e){}
+  toast(pend.length === 1 ? '1 medição sem valor — preencha ou toque em Não medido'
+                          : pend.length + ' medições sem valor — preencha ou toque em Não medido');
+  return false;
+}
+(function ifxIniciar(){
+  try{
+    var st = document.createElement('style');
+    st.textContent = '.ifx-barra{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}'
+      + '.ifx-barra [hidden],.ifx-nm-linha[hidden]{display:none!important}'
+      + '.ifx-nm-btn{border-style:solid;border-color:var(--muted);color:var(--text)}'
+      + '.ifx-nm-linha{margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid var(--amber);font-size:13px;color:var(--text)}'
+      + '.ifx-nm-txt{display:block;white-space:pre-wrap;word-break:break-word;margin-bottom:6px}'
+      + '.ifx-nm-acoes{display:flex;gap:8px;flex-wrap:wrap}'
+      + '.blk.ifx-nm-on .b-val{opacity:.45}'
+      + '.blk.ifx-pend{border-color:var(--red);box-shadow:0 0 0 2px rgba(239,68,68,.45)}'
+      + '.ifx-ov{position:fixed;inset:0;background:rgba(2,8,20,.7);z-index:100003;display:none;align-items:flex-start;justify-content:center;padding:12vh 14px 14px}'
+      + '.ifx-ov.open{display:flex}'
+      + '.ifx-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;width:100%;max-width:440px;box-shadow:0 10px 30px rgba(0,0,0,.55)}'
+      + '.ifx-box h3{font-size:16px;margin-bottom:4px}'
+      + '.ifx-nm-sub{font-size:12px;color:var(--muted);margin-bottom:8px}'
+      + '.ifx-nm-erro{min-height:18px;font-size:12px;color:var(--red);margin-top:4px}'
+      + '.ifx-acoes{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}'
+      + '.ifx-acoes button{min-height:44px;min-width:96px;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}'
+      + '.ifx-cancel{background:var(--bg);border:1px solid var(--border);color:var(--text)}'
+      + '.ifx-ok{background:var(--brand);border:1px solid var(--brand);color:#fff}'
+      + '.ifx-acoes button:active,.ifx-barra button:active,.ifx-nm-acoes button:active{filter:brightness(1.25)}'
+      + '@media print{.ifx-ov{display:none!important}}';
+    document.head.appendChild(st);
+    // trocar a unidade (h ⇄ outra) recria os campos h:min do PFX: repinta o "não medido" depois dele
+    document.addEventListener('change', function(e){
+      var t = e.target; if(!t || !t.matches || !t.matches('select.b-unid')) return;
+      var el = t.closest('.blk'); if(el && el.dataset.nm === '1') setTimeout(function(){ ifxPintarNm(el); }, 0);
+    });
+    // digitou na medição apontada pelo envio: some o realce
+    document.addEventListener('input', function(e){
+      var el = e.target && e.target.closest ? e.target.closest('.blk.ifx-pend') : null;
+      if(el) el.classList.remove('ifx-pend');
+    });
+  }catch(e){}
+})();
+/* ══ fim do IFX V1 ══ */
 // Cria o bloco (novo OU restaurado do rascunho). d = dados do state.blocos.
 function addBlock(tipo, d, restoring){
   d = d || {};
@@ -1647,7 +1830,8 @@ function addBlock(tipo, d, restoring){
   var el = null;
   if(tipo==='obs'){
     el = blkShell(uid,'obs',
-      '<textarea class="b-obs" placeholder="Descreva o que foi feito / encontrado…">'+esc(d.texto||'')+'</textarea>');
+      '<textarea class="b-obs" placeholder="Descreva o que foi feito / encontrado…">'+esc(d.texto||'')+'</textarea>'
+      + ifxBarraHtml(uid,'obs'));   // #178
   } else if(tipo==='pr'){
     el = blkShell(uid,'pr',
       '<label>Pergunta (criada por você)</label><textarea class="b-perg" rows="1" placeholder="Ex.: Válvula de admissão apresenta travamento?">'+esc(d.pergunta||'')+'</textarea>'
@@ -1656,7 +1840,8 @@ function addBlock(tipo, d, restoring){
       +   '<button type="button" class="chip sim" onclick="setResp(this,\'Sim\')">Sim</button>'
       +   '<button type="button" class="chip no" onclick="setResp(this,\'Não\')">Não</button>'
       +   '<button type="button" class="chip na" onclick="setResp(this,\'N.A.\')">N.A.</button>'
-      + '</div>');
+      + '</div>'
+      + ifxBarraHtml(uid,'pr'));   // #178
   } else if(tipo==='med'){
     var opts = UNIDADES.map(function(u){ return '<option'+(u===(d.unidade||'')?' selected':'')+'>'+u+'</option>'; }).join('');
     var outraShow = (d.unidade==='outra');
@@ -1666,7 +1851,8 @@ function addBlock(tipo, d, restoring){
       + '<div class="v"><label>Valor</label><input type="text" class="b-val" inputmode="decimal" value="'+attr(d.valor||'')+'" placeholder="0,0"></div>'
       + '<div class="u"><label>Unid.</label><select class="b-unid" onchange="onUnid(this)">'+opts+'</select></div>'
       + '</div>'
-      + '<input type="text" class="b-unid-outra'+(outraShow?' show':'')+'" value="'+attr(d.unidadeOutra||'')+'" placeholder="Qual unidade?">');
+      + '<input type="text" class="b-unid-outra'+(outraShow?' show':'')+'" value="'+attr(d.unidadeOutra||'')+'" placeholder="Qual unidade?">'
+      + ifxBarraHtml(uid,'med'));   // #178
   } else if(tipo==='foto'){
     el = blkShell(uid,'foto',
       '<label>Legenda (o que a foto mostra — entra no PDF e no Drive)</label>'
@@ -1702,6 +1888,7 @@ function addBlock(tipo, d, restoring){
   }
   if(!el) return null;
   document.getElementById('stack').appendChild(el);
+  if(IFX_TIPOS_ITEM[tipo]) ifxMontar(el, d, restoring);   // #178: fotos do item + "não medido"
   if(tipo==='pr'){ pintarChips(el); autoGrowEl(q(el,'.b-perg')); }
   if(tipo==='sig' && !restoring) addSigSlot(q(el,'.sig-list'), null);
   refreshEmpty();
@@ -1760,6 +1947,7 @@ function onUnid(sel){
 }
 function blocoTemConteudo(el){
   var tipo = el.dataset.tipo;
+  if(IFX_TIPOS_ITEM[tipo] && ((_fotosByBlock[el.dataset.uid]||[]).length || el.dataset.nm==='1')) return true;   // #178
   if(tipo==='obs') return !!q(el,'.b-obs').value.trim();
   if(tipo==='pr') return !!(q(el,'.b-perg').value.trim() || q(el,'.b-resp').value.trim());
   if(tipo==='med') return !!(q(el,'.b-grand').value.trim() || q(el,'.b-val').value.trim());
@@ -1774,7 +1962,7 @@ async function delBloco(btn){
   var uid = el.dataset.uid;
   if(blocoTemConteudo(el) && !confirm('Remover este bloco? O conteúdo dele sai da OS.')) return;
   // fotos do bloco removido: cancela uploads ainda na fila (a foto não deve mais ir ao Drive)
-  if(el.dataset.tipo==='foto'){
+  if(el.dataset.tipo==='foto' || IFX_TIPOS_ITEM[el.dataset.tipo]){   // #178: item com foto também
     // 19/08 (H1) — limpar `_fotosByBlock` e cancelar o job NÃO bastava: o
     // `fotos_json` do envio é REMONTADO do store (F-26, 29/07), então a foto de um
     // bloco apagado continuava viajando — com url e tudo, se já tivesse subido.
@@ -1872,6 +2060,7 @@ async function removerFotoPonto(pk, photoId){
 // ══ FOTOS (bytes no IndexedDB + fila durável; padrão corretiva V2) ══════════
 function legendaDoBloco(uid){
   var el = document.querySelector('.blk[data-uid="'+uid+'"]');
+  if(el && IFX_TIPOS_ITEM[el.dataset.tipo]) return ifxLegendaEl(el);   // #178
   return el ? (q(el,'.b-leg').value.trim() || 'Foto do serviço') : 'Foto do serviço';
 }
 function pickPhoto(uid){
@@ -1966,7 +2155,7 @@ function markPhotoSent(photoId, url){
 function state_os(){ return val('f_os') || _osId || 'SemOS'; }
 function fotosFlat(){
   var out=[];
-  document.querySelectorAll('#stack .blk[data-tipo="foto"]').forEach(function(el){
+  document.querySelectorAll('#stack .blk[data-tipo="foto"], #stack .blk[data-tipo="pr"], #stack .blk[data-tipo="med"], #stack .blk[data-tipo="obs"]').forEach(function(el){   // #178
     var uid=el.dataset.uid, leg=legendaDoBloco(uid);
     (_fotosByBlock[uid]||[]).forEach(function(f){
       out.push({ url:f.url||null, fileName:f.fileName, secao:uid, caption:leg, status:f.status||'pending',
@@ -2231,12 +2420,12 @@ function captura(){
   document.querySelectorAll('#stack .blk').forEach(function(el){
     var uid=el.dataset.uid, tipo=el.dataset.tipo;
     if(tipo==='obs'){
-      state.blocos.push({ uid:uid, tipo:'obs', texto:q(el,'.b-obs').value });
+      state.blocos.push(ifxCapturaItem(el, { uid:uid, tipo:'obs', texto:q(el,'.b-obs').value }));   // #178
     } else if(tipo==='pr'){
-      state.blocos.push({ uid:uid, tipo:'pr', pergunta:q(el,'.b-perg').value, resposta:q(el,'.b-resp').value });
+      state.blocos.push(ifxCapturaItem(el, { uid:uid, tipo:'pr', pergunta:q(el,'.b-perg').value, resposta:q(el,'.b-resp').value }));   // #178
     } else if(tipo==='med'){
-      state.blocos.push({ uid:uid, tipo:'med', grandeza:q(el,'.b-grand').value, valor:q(el,'.b-val').value,
-        unidade:q(el,'.b-unid').value, unidadeOutra:q(el,'.b-unid-outra').value });
+      state.blocos.push(ifxCapturaItem(el, { uid:uid, tipo:'med', grandeza:q(el,'.b-grand').value, valor:q(el,'.b-val').value,
+        unidade:q(el,'.b-unid').value, unidadeOutra:q(el,'.b-unid-outra').value }));   // #178
     } else if(tipo==='foto'){
       state.blocos.push({ uid:uid, tipo:'foto', legenda:q(el,'.b-leg').value,
         fotos:(_fotosByBlock[uid]||[]).map(function(f){ return { photoId:f.photoId, caption:f.caption, status:f.status, url:f.url, fileName:f.fileName, foto_uid:f.foto_uid||'', client_ts:f.client_ts||0 }; }) });
@@ -2314,6 +2503,7 @@ async function enviar(){
   // ── validações ──
   var blocosReais = (state.blocos||[]).filter(function(b){ return b.tipo!=='sig'; });
   if(!blocosReais.length){ toast('Adicione ao menos um item antes de concluir'); return; }
+  if(!ifxConferirMedicoes()) return;   // #178: medição sem valor e sem "Não medido" não sai
   var pend = assinaturasPendentes();
   if(pend.length){
     pend[0].scrollIntoView({behavior:'smooth', block:'center'});
@@ -2699,7 +2889,7 @@ function tpMontarFluxo(photosByKey){
   var meds  = blocos.filter(function(b){ return b.tipo==='med'; });
   var obss  = blocos.filter(function(b){ return b.tipo==='obs' && String(b.texto||'').trim(); });
   var forms = blocos.filter(function(b){ return b.tipo==='form' && (b.formNome||b.obs); });
-  var fotos = blocos.filter(function(b){ return b.tipo==='foto'; });
+  var fotos = blocos.filter(function(b){ return b.tipo==='foto' || ifxItemTemFoto(b, photosByKey); });   // #178
   var sigs  = state.assinaturas||[];
 
   var flow=[], n=0;
@@ -2771,7 +2961,7 @@ function tpMontarFluxo(photosByKey){
       meds.map(function(b){
         var v=String(b.valor||'').trim();
         return '<tr><td>'+tpOu(b.grandeza)+'</td>'
-             + '<td class="num">'+(v?esc(v):'<span class="tp-nd">não medido</span>')+'</td>'
+             + '<td class="num">'+(v?esc(v):'<span class="tp-nd">'+esc(ifxNmTexto(b))+'</span>')+'</td>'
              + '<td class="un">'+(v?esc(unidLabel(b)):'')+'</td></tr>';
       })));
   }
@@ -2779,7 +2969,7 @@ function tpMontarFluxo(photosByKey){
   // ── 6. registro fotográfico (grade de 2 colunas) ──
   var cels=[];
   fotos.forEach(function(b){
-    var leg = b.legenda || 'Foto do serviço';
+    var leg = (b.tipo==='foto') ? (b.legenda || 'Foto do serviço') : ifxLegendaDe(b);   // #178
     var shots = photosByKey[b.uid] || [];
     if(!shots.length){
       cels.push('<div class="tp-fcel"><div class="tp-fbox">'
@@ -4086,10 +4276,10 @@ function lvDocLocacao(photosByKey){
   var prs = blocos.filter(function(b){ return b.tipo === 'pr' && (b.pergunta || b.resposta); });
   var itensEntregues = prs.filter(function(b){ return ENTREGUE.test(String(b.pergunta || '')); });
   var verificacoes   = prs.filter(function(b){ return !ENTREGUE.test(String(b.pergunta || '')); });
-  var meds = blocos.filter(function(b){ return b.tipo === 'med' && (b.grandeza || b.valor); });
+  var meds = blocos.filter(function(b){ return b.tipo === 'med' && (b.grandeza || b.valor || b.nao_medido); });   // #178
   var obss = blocos.filter(function(b){ return b.tipo === 'obs' && b.texto; });
   var fms  = blocos.filter(function(b){ return b.tipo === 'form' && (b.formNome || b.obs); });
-  var fotos = blocos.filter(function(b){ return b.tipo === 'foto'; });
+  var fotos = blocos.filter(function(b){ return b.tipo === 'foto' || ifxItemTemFoto(b, photosByKey); });   // #178
 
   var doc = lvNovoDoc('Termo de Entrega — Máquina em Locação', 'Instalação, partida e conferência registradas em campo');
   var L = new Laudo(doc, { titulo:'Termo de Entrega em Locação', tecnico:i.tecnico || '—', data:lvData(at.data) }, {
@@ -4142,7 +4332,7 @@ function lvDocLocacao(photosByKey){
     L.tabela([{t:'Parâmetro'}, {t:'Valor', align:'right'}, {t:'Unidade', align:'center'}], [110, 40, 30],
       meds.map(function(b){
         var v = b.valor;
-        if (v === '' || v == null) return [b.grandeza || '—', {txt:'não medido', italico:true, cor:LV_COR.suave, align:'right'}, {txt:'', align:'center'}];
+        if (v === '' || v == null) return [(b.grandeza || '—') + (b.nao_medido && b.justificativa ? '\nMotivo: ' + b.justificativa : ''), {txt:'não medido', italico:true, cor:LV_COR.suave, align:'right'}, {txt:'', align:'center'}];
         return [b.grandeza || '—', {txt:String(v), bold:true, align:'right'}, {txt:unidLabel(b), align:'center'}];
       }));
   }
@@ -4150,6 +4340,7 @@ function lvDocLocacao(photosByKey){
     L.h1(++n, 'Registro fotográfico da entrega');
     var fs = [];
     fotos.forEach(function(b){
+      if (b.tipo !== 'foto'){ ifxFigurasDoItem(b, photosByKey, fs); return; }   // #178
       var leg = String(b.legenda || '').trim() || 'Foto do serviço';
       var shots = (photosByKey && photosByKey[b.uid]) || [];
       if (!shots.length){ fs.push({ dataUrl:'', legenda:leg }); return; }
