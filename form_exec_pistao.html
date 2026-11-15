@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <!--
   ════════════════════════════════════════════════════════════════════════════
+  15/11/2026 — TLIB_V1 · RESULTADO E LIBERAÇÃO DO TESTE (ProperCare-backlog#190)
+  O formulário ganha, no fim, o cartão fixo "Resultado e liberação": Aprovado ou
+  Reprovado (com motivo); aprovado pede quem liberou — outra pessoa (nome e
+  assinatura) ou o próprio técnico sozinho na oficina (todas as medições e fotos).
+  Reprovado grava o formulário e NÃO conclui a tarefa; a tela final oferece
+  "Novo teste". O Quadro da Oficina lê o resultado (SQL 137). Par: GAS v183.
+  Bloco TLIB_V1 + 4 costuras (host, antes, depois, PDF). Nada renomeado; o REAB
+  não foi tocado. Build: entregas/190/montar_forms.py do backlog.
+  ════════════════════════════════════════════════════════════════════════════
+-->
+<!--
+  ════════════════════════════════════════════════════════════════════════════
   30/10/2026 (fim de tarde) — FOTO_SALVAR_V1 · as melhorias da corretiva nos demais
   formulários (Fernando 17h06, 1ª entrega; ✕ por bloco ficou de fora por decisão dele).
   · ✕ visível em toda miniatura de foto (FXDEL_V1): 1º toque "Apagar?", 2º apaga. (antes só tocando na foto + confirm)
@@ -785,6 +797,7 @@ function pgpBootAviso(msg){
   </div>
   <div id="stack"></div>
   <div id="pmaqHost"></div>   <!-- 26/09 — dados da máquina (PMAQ) -->
+  <div id="tlibHost"></div>   <!-- 15/11 — resultado e liberação do teste (TLIB) -->
 
   <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
   <!-- Etapa B: input SEM capture= abre o seletor/galeria do aparelho (multi-seleção) -->
@@ -1657,6 +1670,418 @@ window.REAB = (function(){
   }
   return { versao:VERSAO, antes:antes, depois:depois, corrigir:corrigir, descartarAntigo:descartarAntigo, avaliar:avaliar,
            _estado:function(){ return _estado; }, _infoEnvio:infoEnvio, _ls:ls };
+})();
+</script>
+<script>
+/* ══════════════════════════════════════════════════════════════════════════════
+   TLIB_V1 · 15/11/2026 · RESULTADO E LIBERAÇÃO DO TESTE (ProperCare-backlog#190, estudo #185 · D5 e D6)
+   Par: SQL 137 OFICINA_TESTE (o Quadro da Oficina lê `campos_json.teste_liberacao`) · GAS v183.
+   🔑 BLOCO IDÊNTICO nos formulários que testam máquina (teste_parafuso, exec_pistao).
+
+   O QUE ESTE BLOCO FAZ:
+     R  RESULTADO — cartão fixo no fim do formulário (não é bloco da pilha: não se apaga nem se move):
+        Aprovado ou Reprovado. Reprovado exige o motivo.
+     L  LIBERADO POR — aprovado exige quem liberou: OUTRA pessoa (nome + assinatura no aparelho, e não
+        pode ser o próprio técnico) ou "Estou sozinho na oficina" (aí TODAS as medições e TODOS os
+        pontos de foto do formulário são obrigatórios).
+     V  REPROVADO NÃO CONCLUI — o envio leva `status:'em_andamento'`: o formulário é gravado e a tarefa
+        continua aberta (o GAS v183 garante o mesmo no servidor). A tela final diz isso e oferece
+        "Novo teste": a página recarrega PREENCHIDA e o envio novo é um envio a mais (não substitui
+        o reprovado — é ele que conta o retrabalho). "Enviei errado" continua sendo o Corrigir do REAB.
+     P  PDF — a seção "Resultado e liberação", com a assinatura de quem liberou.
+   O dado mora em `state.teste_liberacao` (vai no rascunho) e sai no `campos_json.teste_liberacao`:
+     { v, resultado, motivo, liberacao (outro|proprio), liberado_por, assinado,
+       medicoes:{total,preenchidas}, fotos:{pontos,com_foto}, em }  — a assinatura (PNG) vai só no PDF.
+   ⚠ Costuras (as únicas fora deste bloco): o host `tlibHost` depois do `pmaqHost` · `TLIB.antes()` logo
+     depois do `REAB.antes()` · `TLIB.depois()` logo depois do `REAB.depois()` · `TLIB.pdf(L, …)` antes
+     das assinaturas do laudo. Nenhum nome do formulário é renomeado; o REAB não é tocado.
+   ⚠ Nada aqui bloqueia o boot: toda falha cai no comportamento anterior.
+   ══════════════════════════════════════════════════════════════════════════════ */
+window.TLIB = (function(){
+  'use strict';
+  var VERSAO = 'TLIB_V1';
+  var _inst = false, _recarregando = false, _mem = null;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function ls(k, v){
+    try{
+      if(v === undefined){ var s = localStorage.getItem(k); return s ? JSON.parse(s) : null; }
+      if(v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v));
+    }catch(e){ return null; }
+    return null;
+  }
+  function did(){ try{ return _draftId || ''; }catch(e){ return ''; } }
+  function osId(){ try{ return _osId || ''; }catch(e){ return ''; } }
+  function selado(){ try{ return !!_sending; }catch(e){ return false; } }
+  function kEnv(id){ return 'tlib::env::' + id; }     // o último envio deste rascunho (resultado, motivo, quando)
+  function kNovo(id){ return 'tlib::novo::' + id; }   // "novo teste" aberto depois de um reprovado
+  function aviso(m){ try{ toast(m); }catch(e){} }
+  function norm(s){ return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function hora(v){
+    var d = new Date(typeof v === 'number' ? v : String(v || ''));
+    if(isNaN(d.getTime())) return '';
+    var p = function(n){ return (n < 10 ? '0' : '') + n; };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function vazio(){ return { v:VERSAO, resultado:'', motivo:'', liberacao:'', liberado_por:'', sig:null }; }
+  // o estado do bloco mora no `state` do formulário (o rascunho o leva e o devolve)
+  function st(){
+    try{
+      if(!state.teste_liberacao || typeof state.teste_liberacao !== 'object') state.teste_liberacao = vazio();
+      return state.teste_liberacao;
+    }catch(e){ if(!_mem) _mem = vazio(); return _mem; }
+  }
+  function salvar(){ try{ scheduleSave(); }catch(e){} }
+
+  // ── a conta: medições e pontos de foto do formulário (o que está escondido por uma pergunta não conta) ──
+  function contar(){
+    var m = { total:0, preenchidas:0, falta:[] }, f = { pontos:0, com_foto:0, falta:[] }, rep = 0;
+    try{ captura(); }catch(e){}
+    try{
+      (function w(a){ (a || []).forEach(function(b){
+        if(!b || b.oculto) return;
+        if(b.tipo === 'secao'){ w(b.filhos); return; }
+        if(b.tipo === 'med'){ m.total++; if(String(b.valor == null ? '' : b.valor).trim()) m.preenchidas++; else m.falta.push(b.uid); }
+        else if(b.tipo === 'foto'){ f.pontos++; if((b.fotos || []).length) f.com_foto++; else f.falta.push(b.uid); }
+      }); })(state.blocos);
+      rep = (state.orcamento || []).filter(function(x){ return x && norm(x.coluna) === 'reprovado'; }).length;
+    }catch(e){}
+    return { medicoes:m, fotos:f, reprovados:rep };
+  }
+  function tecnicoNomes(){
+    var out = [];
+    try{ var a = $('f_tecnico'); if(a && a.value) out.push(norm(a.value)); }catch(e){}
+    try{ var s = JSON.parse(localStorage.getItem('proper_session') || 'null');
+         if(s){ if(s.nome_tecnico) out.push(norm(s.nome_tecnico)); if(s.tecnico && s.tecnico.nome) out.push(norm(s.tecnico.nome)); } }catch(e){}
+    return out.filter(Boolean);
+  }
+
+  // ── a pintura do cartão ──
+  var CSS = '#tlibHost{margin-top:14px}' +
+    '.tlib-card{background:var(--card);border:1.5px solid var(--brand);border-radius:var(--radius);padding:14px;margin-bottom:12px}' +
+    '.tlib-tit{font-weight:800;font-size:15px;margin-bottom:10px}' +
+    '.tlib-rot{font-size:12.5px;color:var(--muted);font-weight:700;margin:12px 0 0}' +
+    '.tlib-op{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}' +
+    '.tlib-op.um{grid-template-columns:1fr}' +
+    '.tlib-bt{min-height:48px;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:10px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;text-align:center}' +
+    '.tlib-bt:active,.tlib-quem button:active,.tlib-ok .sec:active,.tlib-ok .btn-sign:active{transform:scale(.98);opacity:.85}' +
+    '.tlib-bt.on{border-color:var(--green);box-shadow:inset 0 0 0 2px var(--green);background:#0f2a1a !important;color:#bbf7d0 !important}' +
+    '.tlib-bt.on.rep{border-color:var(--red);box-shadow:inset 0 0 0 2px var(--red);background:#2a1416 !important;color:#fecaca !important}' +
+    '.tlib-ta{width:100%;box-sizing:border-box;margin-top:6px;min-height:64px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:9px;font-size:14px;font-family:inherit}' +
+    '.tlib-nota{font-size:12.5px;line-height:1.45;margin-top:8px;color:var(--muted)}' +
+    '.tlib-nota.falta{color:#fde68a}.tlib-nota.ok{color:#bbf7d0}' +
+    '.tlib-quem{display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px;border:1px solid #15803d;background:#0f2a1a;border-radius:9px;color:#bbf7d0;font-size:13.5px}' +
+    '.tlib-quem img{height:34px;max-width:110px;background:#fff;border-radius:5px}' +
+    '.tlib-quem button{margin-left:auto;background:transparent;border:1px solid #15803d;color:#bbf7d0;border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer;font-family:inherit}' +
+    '.tlib-banner{margin:10px 12px;padding:12px 14px;border-radius:10px;font-size:12.5px;line-height:1.45;border:1px solid #0e7490;background:#0c2233;color:#bae6fd}' +
+    '#okScreen.tlib-rep #okBig,#okScreen.tlib-rep #okTitle,#okScreen.tlib-rep #okSub,#okScreen.tlib-rep #reabOk,#okScreen.tlib-rep #btn-voltar-pipeline,#okScreen.tlib-rep #auto-volta-aviso{display:none !important}' +
+    '.tlib-ok{max-width:460px;margin:0 auto;text-align:left}' +
+    '.tlib-ok h2{font-size:19px;text-align:center;margin:8px 0 6px}' +
+    '.tlib-ok .cx{margin-top:12px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;border:1px solid #a16207;background:#2a2210;color:#fde68a}' +
+    '.tlib-ok .sec{display:block;width:100%;margin-top:10px;background:transparent;border:none;color:var(--muted);font-size:12.5px;text-decoration:underline;cursor:pointer;font-family:inherit}';
+  function estilo(){
+    if($('tlibCss')) return;
+    var e = document.createElement('style'); e.id = 'tlibCss'; e.textContent = CSS; document.head.appendChild(e);
+  }
+  function render(){
+    var h = $('tlibHost'); if(!h) return;
+    estilo();
+    var s = st(), ap = s.resultado === 'aprovado', rp = s.resultado === 'reprovado';
+    var html = '<div class="tlib-card" id="tlibCard" data-tlib="' + VERSAO + '">' +
+      '<div class="tlib-tit">🧪 Resultado e liberação</div>' +
+      '<div class="tlib-rot" style="margin-top:0">Resultado do teste</div>' +
+      '<div class="tlib-op">' +
+        '<button type="button" class="tlib-bt' + (ap ? ' on' : '') + '" id="tlibAprovado" aria-pressed="' + ap + '" onclick="TLIB.resultado(\'aprovado\')">✅ Aprovado</button>' +
+        '<button type="button" class="tlib-bt' + (rp ? ' on rep' : '') + '" id="tlibReprovado" aria-pressed="' + rp + '" onclick="TLIB.resultado(\'reprovado\')">↩ Reprovado</button>' +
+      '</div>';
+    if(rp){
+      html += '<div class="tlib-rot">Motivo da reprovação</div>' +
+        '<textarea class="tlib-ta" id="tlibMotivo" maxlength="300" placeholder="O que reprovou? Ex.: vazamento de óleo no retentor" oninput="TLIB.motivo(this.value)">' + esc(s.motivo) + '</textarea>' +
+        '<div class="tlib-nota">A máquina volta para a execução (retrabalho) e a tarefa de teste continua aberta. Depois do conserto, faça um novo teste.</div>';
+    } else if(ap){
+      var o = s.liberacao === 'outro', p = s.liberacao === 'proprio';
+      html += '<div class="tlib-rot">Quem libera a máquina?</div>' +
+        '<div class="tlib-op um">' +
+          '<button type="button" class="tlib-bt' + (o ? ' on' : '') + '" id="tlibOutro" aria-pressed="' + o + '" onclick="TLIB.liberacao(\'outro\')">👤 Outra pessoa (líder ou técnico sênior)</button>' +
+          '<button type="button" class="tlib-bt' + (p ? ' on' : '') + '" id="tlibProprio" aria-pressed="' + p + '" onclick="TLIB.liberacao(\'proprio\')">🙋 Estou sozinho na oficina</button>' +
+        '</div>';
+      if(o){
+        if(s.liberado_por && s.sig && s.sig.dataUrl){
+          html += '<div class="tlib-quem" id="tlibQuem"><img alt="" src="' + esc(s.sig.dataUrl) + '"><span>Liberado por <b>' + esc(s.liberado_por) + '</b></span>' +
+                  '<button type="button" id="tlibTrocar" onclick="TLIB.assinar(this)">Trocar</button></div>';
+        } else {
+          html += '<div class="sig-area"><button type="button" class="sig-collect" id="tlibAssinar" onclick="TLIB.assinar(this)">✍️ Colher a assinatura de quem libera</button></div>';
+        }
+      } else if(p){
+        var c = contar(), fm = c.medicoes.total - c.medicoes.preenchidas, ff = c.fotos.pontos - c.fotos.com_foto;
+        var semNada = c.medicoes.total === 0 || c.fotos.pontos === 0;
+        html += '<div class="tlib-nota ' + ((fm || ff || semNada) ? 'falta' : 'ok') + '" id="tlibConta">' +
+          (semNada ? '⚠ Sozinho na oficina, a liberação precisa de medições e de fotos — este formulário está sem ' + (c.medicoes.total === 0 ? 'medição' : 'ponto de foto') + '.'
+           : (fm || ff) ? '⚠ Sozinho na oficina, todas as medições e fotos são obrigatórias — ' +
+               [fm ? (fm === 1 ? 'falta 1 medição' : 'faltam ' + fm + ' medições') : '', ff ? (ff === 1 ? (fm ? '1 foto' : 'falta 1 foto') : (fm ? ff + ' fotos' : 'faltam ' + ff + ' fotos')) : ''].filter(Boolean).join(' e ') + '.'
+           : '✓ ' + c.medicoes.total + ' medições e ' + c.fotos.pontos + ' pontos de foto preenchidos.') + '</div>';
+      }
+    }
+    html += '</div>';
+    if(h._tlibHtml !== html){
+      // o motivo em foco não é repintado (o cursor sumiria)
+      var foco = document.activeElement && document.activeElement.id === 'tlibMotivo';
+      if(!(foco && rp && $('tlibMotivo'))){ h.innerHTML = html; h._tlibHtml = html; }
+    }
+    pintarBanner();
+  }
+
+  // ── os toques ──
+  function resultado(v){
+    if(selado()) return;
+    var s = st(); s.resultado = v;
+    if(v === 'reprovado'){ s.liberacao = ''; s.liberado_por = ''; s.sig = null; }
+    else { s.motivo = ''; }
+    salvar(); render();
+  }
+  function motivo(v){ var s = st(); s.motivo = String(v || '').slice(0, 300); salvar(); }
+  function liberacao(v){
+    if(selado()) return;
+    var s = st(); s.liberacao = v;
+    if(v === 'proprio'){ s.liberado_por = ''; s.sig = null; }
+    salvar(); render();
+  }
+  async function assinar(btn){
+    if(selado()) return;
+    if(btn){ if(btn.dataset.tlibBusy === '1') return; btn.dataset.tlibBusy = '1'; }
+    try{
+      var s = st();
+      var r = await pgpColetarAssinatura({ titulo:'Liberado por', sub:'Quem libera a máquina digita o nome e toca em Avançar.',
+                                           stageLbl:'Assinatura de quem libera', nomePrefill:s.liberado_por || '' });
+      if(!r) return;
+      if(tecnicoNomes().indexOf(norm(r.nome)) >= 0){
+        aviso('Quem libera é OUTRA pessoa. Se você está sozinho, marque “Estou sozinho na oficina”.');
+        return;
+      }
+      s.liberado_por = String(r.nome || '').trim().slice(0, 80);
+      s.sig = { dataUrl:r.dataUrl, w:r.w, h:r.h, ts:r.ts };
+      try{ await saveDraft(); }catch(e){}
+    } finally {
+      if(btn) delete btn.dataset.tlibBusy;
+      render();
+    }
+  }
+  function irAte(el){ try{ if(el) el.scrollIntoView({ behavior:'smooth', block:'center' }); }catch(e){} }
+  function abrirSecoesDe(el){
+    try{
+      var sec = el ? el.closest('.blk[data-tipo="secao"]') : null;
+      while(sec){ bd(sec.dataset.uid).aberta = true; renderSecao(sec.dataset.uid);
+        sec = sec.parentElement ? sec.parentElement.closest('.blk[data-tipo="secao"]') : null; }
+    }catch(e){}
+  }
+
+  // ── a régua do envio (a tela avisa; o banco julga de novo o que chegar) ──
+  function validar(){
+    if(!$('tlibHost')) return true;
+    var s = st(), card = $('tlibCard');
+    if(s.resultado !== 'aprovado' && s.resultado !== 'reprovado'){
+      irAte(card); aviso('Marque o resultado do teste: Aprovado ou Reprovado.'); return false;
+    }
+    if(s.resultado === 'reprovado'){
+      if(String(s.motivo || '').trim().length < 5){ irAte($('tlibMotivo') || card); aviso('Escreva o motivo da reprovação.'); return false; }
+      return true;
+    }
+    var c = contar();
+    if(c.reprovados > 0){
+      irAte(card);
+      aviso((c.reprovados === 1 ? 'Há 1 item marcado como Reprovado' : 'Há ' + c.reprovados + ' itens marcados como Reprovado') + ' — o resultado do teste não pode ser Aprovado.');
+      return false;
+    }
+    if(s.liberacao !== 'outro' && s.liberacao !== 'proprio'){
+      irAte(card); aviso('Diga quem libera a máquina: outra pessoa, ou você (se estiver sozinho na oficina).'); return false;
+    }
+    if(s.liberacao === 'outro'){
+      if(!s.liberado_por || !s.sig || !s.sig.dataUrl){ irAte($('tlibAssinar') || card); aviso('Falta a assinatura de quem libera a máquina.'); return false; }
+      if(tecnicoNomes().indexOf(norm(s.liberado_por)) >= 0){ irAte(card); aviso('Quem libera é OUTRA pessoa. Se você está sozinho, marque “Estou sozinho na oficina”.'); return false; }
+      return true;
+    }
+    var fm = c.medicoes.total - c.medicoes.preenchidas, ff = c.fotos.pontos - c.fotos.com_foto;
+    if(c.medicoes.total === 0 || c.fotos.pontos === 0){
+      render(); irAte(card); aviso('Sozinho na oficina, a liberação precisa de medições e de fotos neste formulário.'); return false;
+    }
+    if(fm || ff){
+      render();
+      var uid = c.medicoes.falta[0] || c.fotos.falta[0], alvo = uid ? document.querySelector('#stack .blk[data-uid="' + uid + '"]') : null;
+      abrirSecoesDe(alvo); irAte(alvo || card);
+      aviso('Sozinho na oficina: ' + [fm ? (fm === 1 ? 'falta 1 medição' : 'faltam ' + fm + ' medições') : '',
+                                      ff ? (ff === 1 ? (fm ? '1 foto' : 'falta 1 foto') : (fm ? ff + ' fotos' : 'faltam ' + ff + ' fotos')) : ''].filter(Boolean).join(' e ') + '.');
+      return false;
+    }
+    return true;
+  }
+  // o que vai no campos_json (sem o PNG da assinatura: ele vai só no PDF)
+  function payload(){
+    var s = st(), c = contar(), ap = s.resultado === 'aprovado';
+    return { v:VERSAO, resultado:s.resultado || '', motivo:ap ? '' : String(s.motivo || '').trim(),
+             liberacao:ap ? (s.liberacao || '') : '', liberado_por:(ap && s.liberacao === 'outro') ? (s.liberado_por || '') : '',
+             assinado:!!(ap && s.liberacao === 'outro' && s.sig && s.sig.dataUrl),
+             medicoes:{ total:c.medicoes.total, preenchidas:c.medicoes.preenchidas }, fotos:{ pontos:c.fotos.pontos, com_foto:c.fotos.com_foto },
+             em:new Date().toISOString() };
+  }
+
+  // ── o PDF ──
+  function pdf(L, o){
+    try{
+      var s = st();
+      if(s.resultado !== 'aprovado' && s.resultado !== 'reprovado') return false;
+      L.h1((o && o.n) || 0, 'Resultado e liberação');
+      if(s.resultado === 'reprovado'){
+        L.destaque('Resultado do teste', 'REPROVADO — ' + (String(s.motivo || '').trim() || 'motivo não informado') +
+                   '. A máquina volta para a execução (retrabalho); a tarefa de teste continua aberta.', LV_COR.cr || LV_COR.at);
+        return true;
+      }
+      L.destaque('Resultado do teste', 'APROVADO', LV_COR.ok);
+      if(s.liberacao === 'outro' && s.liberado_por){
+        L.assinaturas([{ nome:s.liberado_por, dataUrl:(s.sig && s.sig.dataUrl) || null, ts:(s.sig && s.sig.ts) || null, papel:'Liberado por' }]);
+      } else if(s.liberacao === 'proprio'){
+        var c = contar();
+        L.p('Liberado pelo próprio técnico (sozinho na oficina), com ' + c.medicoes.preenchidas + ' de ' + c.medicoes.total + ' medições e ' +
+            c.fotos.com_foto + ' de ' + c.fotos.pontos + ' pontos de foto registrados.', { size:8 });
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+
+  // ── o novo teste depois de um reprovado ──
+  async function paginaResponde(){
+    try{
+      if(typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+      var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tm = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(e){} }, 3500);
+      try{ var r = await fetch(String(location.href).split('#')[0], { method:'HEAD', cache:'no-store', signal:ctl ? ctl.signal : undefined }); return !!(r && r.ok); }
+      finally{ clearTimeout(tm); }
+    }catch(e){ return false; }
+  }
+  async function infoEnvio(){ try{ return (window.REAB && REAB._infoEnvio) ? await REAB._infoEnvio() : null; }catch(e){ return null; } }
+  async function novoTeste(btn){
+    if(!selado()) return;
+    if(btn){ if(btn.dataset.tlibBusy === '1') return; btn.dataset.tlibBusy = '1'; btn.disabled = true; }
+    var saiu = false;
+    try{
+      var id = did(), env = ls(kEnv(id)) || {}, inf = await infoEnvio();
+      if(inf && inf.status !== 'done'){ aviso('⏳ O teste reprovado ainda não chegou ao servidor. Espere o envio terminar.'); return; }
+      // o formulário novo precisa de página nova (o identificador do envio é da página): sem ela responder, nada muda
+      if(!(await paginaResponde())){ aviso('📶 Sem conexão com a página agora — tente de novo com internet. Nada foi apagado.'); return; }
+      ls(kNovo(id), { v:VERSAO, desde:Date.now(), de_em:env.em || 0, motivo:env.motivo || '' });
+      ls(kEnv(id), null);
+      try{ if(window.REAB && REAB._ls) REAB._ls('reab::arq::' + id, null); }catch(e){}   // o reprovado fica no servidor como história: não é envio a corrigir
+      var s = st(); s.resultado = ''; s.motivo = ''; s.liberacao = ''; s.liberado_por = ''; s.sig = null;   // o novo teste decide de novo
+      _sending = false;
+      try{ await saveDraft(); }catch(e){}
+      try{ var jobs = await PS.jobsOf(id); for(var i = 0; i < jobs.length; i++){ if(jobs[i].status === 'done') await PS.dropJob(jobs[i].jobId); } }catch(e){}
+      try{ cancelarAutoVolta(); }catch(e){}
+      _recarregando = true; saiu = true;
+      try{ location.reload(); }catch(e){ _recarregando = false; saiu = false; }
+    } finally {
+      if(btn && !saiu){ delete btn.dataset.tlibBusy; btn.disabled = false; }
+    }
+  }
+  function voltar(){ try{ voltarAoPipeline(); }catch(e){ try{ history.back(); }catch(x){} } }
+  function pintarBanner(){
+    try{
+      var app = $('app'), n = ls(kNovo(did())), b = $('tlibBanner');
+      if(!app || !n || selado()){ if(b) b.remove(); return; }
+      var html = '<div style="font-weight:800;font-size:13.5px">🔁 NOVO TESTE</div><div style="margin-top:4px">O teste' +
+        (n.de_em ? ' de ' + esc(hora(n.de_em)) : ' anterior') + ' foi <b>reprovado</b>' + (n.motivo ? ': “' + esc(n.motivo) + '”' : '') +
+        '. As respostas voltaram preenchidas: refaça o que mudou e registre o novo resultado.</div>';
+      if(!b){ b = document.createElement('div'); b.id = 'tlibBanner'; b.className = 'tlib-banner'; app.insertBefore(b, app.firstChild); }
+      if(b._tlibHtml !== html){ b.innerHTML = html; b._tlibHtml = html; }
+    }catch(e){}
+  }
+  // a tela final depois de um REPROVADO: a verdade (tarefa aberta, máquina de volta à execução) e o "Novo teste"
+  async function pintarOk(){
+    try{
+      var ok = $('okScreen'); if(!ok) return;
+      var env = ls(kEnv(did())), rep = selado() && env && env.resultado === 'reprovado';
+      ok.classList[rep ? 'add' : 'remove']('tlib-rep');
+      var cx = $('tlibOk');
+      if(!rep){ if(cx) cx.remove(); return; }
+      estilo();
+      try{ cancelarAutoVolta(); }catch(e){}   // a tarefa não fechou: a volta automática ao pipeline não segue sozinha
+      var inf = await infoEnvio(), stEnv = inf ? inf.status : 'done';
+      var chegou = stEnv === 'done';
+      var html = '<div style="font-size:44px;text-align:center">↩</div><h2>Teste REPROVADO registrado</h2>' +
+        '<div class="sub" style="text-align:center" id="tlibOkSub">' +
+          (chegou ? 'O formulário chegou ao servidor. A tarefa de teste continua ABERTA e a máquina voltou para a execução (retrabalho).'
+           : stEnv === 'dead' ? '⚠ O envio travou — toque em “Ver envios” para reenviar.'
+           : '⏳ Registrado neste aparelho — enviando ao servidor…') + '</div>' +
+        '<div class="cx"><b>Motivo:</b> ' + esc(env.motivo || '—') + '<br>Depois do conserto, toque abaixo: o formulário abre preenchido para o novo teste.' +
+          '<button type="button" class="btn-sign" id="tlibBtnNovo" onclick="TLIB.novoTeste(this)"' + (chegou ? '' : ' disabled') +
+          ' style="width:100%;margin-top:10px;background:#0e7490;border-color:#155e75;color:#fff' + (chegou ? '' : ';opacity:.55') + '">🧪 Novo teste (depois do conserto)</button>' +
+          (chegou && window.REAB ? '<button type="button" class="sec" id="tlibBtnCorrigir" onclick="REAB.corrigir(this)">Enviei errado — corrigir este envio</button>' : '') +
+        '</div>' +
+        // a saída da tela: o botão do formulário diz "Concluir e voltar" — aqui nada foi concluído, então o rótulo é outro (a ação é a mesma)
+        (chegou && osId() ? '<button type="button" class="btn-sign" id="tlibBtnVoltar" onclick="TLIB.voltar()" style="width:100%;margin-top:12px">← Voltar para a OS</button>' : '');
+      cx = $('tlibOk');   // de novo DEPOIS do await: duas pinturas sobrepostas (boot + fila) não criam dois painéis
+      env = ls(kEnv(did()));
+      if(!(selado() && env && env.resultado === 'reprovado')){ if(cx) cx.remove(); ok.classList.remove('tlib-rep'); return; }
+      if(!cx){
+        cx = document.createElement('div'); cx.id = 'tlibOk'; cx.className = 'tlib-ok';
+        var host = ok.querySelector('.ok-msg') || ok; host.insertBefore(cx, host.firstChild);
+      }
+      if(cx._tlibHtml !== html){ cx.innerHTML = html; cx._tlibHtml = html; }
+    }catch(e){}
+  }
+
+  // ── embrulhos (instalados UMA vez, pela costura depois do REAB.antes — o REAB já embrulhou antes) ──
+  function instalar(){
+    if(_inst) return; _inst = true;
+    try{ window.addEventListener('beforeunload', function(e){ if(_recarregando){ try{ e.stopImmediatePropagation(); }catch(x){} } }, true); }catch(e){}
+    var oEnv = window.enviar;
+    if(typeof oEnv === 'function') window.enviar = async function(){
+      var okv = true;
+      try{ if(!selado()) okv = validar(); }catch(e){ okv = true; }
+      if(!okv) return;
+      return oEnv.apply(this, arguments);
+    };
+    var oOk = window.atualizarOkScreen;
+    if(typeof oOk === 'function') window.atualizarOkScreen = async function(){
+      var r; try{ r = await oOk.apply(this, arguments); } finally { try{ await pintarOk(); }catch(e){} } return r;
+    };
+    var oEnq = PS.enqueue;
+    PS.enqueue = function(job){
+      try{
+        if(job && job.kind === 'saveFormulario' && job.body && job.draftId && $('tlibHost')){
+          var cj = job.body.campos_json, txt = (typeof cj === 'string');
+          if(txt){ try{ cj = JSON.parse(cj); }catch(e){ cj = null; } }
+          if(cj && typeof cj === 'object'){
+            var p = payload();
+            if(p.resultado){
+              cj.teste_liberacao = p;
+              job.body.campos_json = txt ? JSON.stringify(cj) : cj;
+              if(p.resultado === 'reprovado') job.body.status = 'em_andamento';   // reprovado NÃO conclui a tarefa (o GAS v183 garante o mesmo)
+              ls(kEnv(job.draftId), { v:VERSAO, resultado:p.resultado, motivo:p.motivo, em:Date.now() });
+            }
+          }
+          ls(kNovo(job.draftId), null);
+        }
+      }catch(e){}
+      return oEnq.apply(PS, arguments);
+    };
+  }
+
+  // Costura 1 — logo depois do `REAB.antes()` do boot (antes do rascunho ser restaurado).
+  function antes(){ try{ instalar(); }catch(e){} }
+  // Costura 2 — fim do boot (o rascunho já voltou e, se selado, a tela final já foi pintada).
+  function depois(){
+    try{
+      render();
+      // a conta do "sozinho na oficina" acompanha o que o técnico preenche
+      var stack = $('stack'), tm = null;
+      var repinta = function(){ clearTimeout(tm); tm = setTimeout(function(){ try{ var s = st(); if(!selado() && s.resultado === 'aprovado' && s.liberacao === 'proprio') render(); }catch(e){} }, 700); };
+      if(stack){ ['input', 'change', 'click'].forEach(function(ev){ stack.addEventListener(ev, repinta); }); }
+      ['fileInput', 'fileInputGal'].forEach(function(id){ var fi = $(id); if(fi) fi.addEventListener('change', function(){ setTimeout(repinta, 1500); }); });
+      if(selado()) pintarOk();
+    }catch(e){}
+  }
+  return { versao:VERSAO, antes:antes, depois:depois, render:render, resultado:resultado, motivo:motivo, liberacao:liberacao, assinar:assinar,
+           validar:validar, payload:payload, pdf:pdf, novoTeste:novoTeste, voltar:voltar, _contar:contar, _pintarOk:pintarOk };
 })();
 </script>
 
@@ -4381,6 +4806,7 @@ function wireInputs(){
   });
   await PS.open();
   try{ if(window.REAB) await REAB.antes(); }catch(eReab){}   // REAB_V1 (29/09): embrulhos ANTES do restoreDraft
+  try{ if(window.TLIB) TLIB.antes(); }catch(eTlib){}   // TLIB_V1 (15/11): embrulhos do resultado e liberação (depois dos do REAB)
   ensureDraftId();
   var restaurou=false; try{ restaurou=await restoreDraft(); }catch(e){}
   if(restaurou){ toast(_sending?'Retomando os envios desta OS':'Rascunho restaurado'); }
@@ -4419,6 +4845,7 @@ function wireInputs(){
     atualizarOkScreen();
   }
   try{ if(window.REAB) REAB.depois(); }catch(eReab){}   // REAB_V1 (29/09): a verdade sobre a tarefa + ✏ Corrigir e reenviar
+  try{ if(window.TLIB) TLIB.depois(); }catch(eTlib){}   // TLIB_V1 (15/11): o cartão Resultado e liberação
   // ── Proteções de salvamento ──
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') saveDraft(); });
   window.addEventListener('pagehide', function(){ saveDraft(); });
@@ -5626,6 +6053,9 @@ function lvDocDiagOficinaCorpo(photosByKey){
     });
     L.p('Total: ' + interv.length + (interv.length===1 ? ' item.' : ' itens.'), { size:7.4, bold:true });
   }
+
+  _lvOnde = 'resultado e liberação do teste';
+  try{ if (window.TLIB && TLIB.pdf(L, { n: n + 1 })) n++; }catch(eTlib){}   // 15/11 — resultado e liberação (TLIB)
 
   // ── 4. assinaturas ────────────────────────────────────────────────────
   if(sigs.length){
