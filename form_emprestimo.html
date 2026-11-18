@@ -1818,8 +1818,11 @@ const SUBTIPO = 'emprestimo_entrega';
    HTML vira mentira silenciosa no dia em que a tabela mudar. Os três valores
    agora saem da TELA; estas constantes são só o valor que o campo nasce com. */
 const EMP_TAXA_PADRAO = 2800, EMP_DIARIA_PADRAO = 280, EMP_MENSAL_PADRAO = 2800;
-const EMP_APROV_MIN = 15, EMP_TOTAL_LIVRE = 30, EMP_DIAG_PADRAO = 15;
-const EMP_DIAS_DIARIA = 10;
+/* ProperCare-backlog#244 (3B, 17/11) — os prazos podem vir da PROPOSTA de cessão aceita (a linha "Cessão remunerada …" da descrição
+   da OS, empDaProposta): por isso são `let`. Sem a linha, valem estes (a regra ditada em 31/08). */
+let EMP_APROV_MIN = 15, EMP_TOTAL_LIVRE = 30;
+const EMP_DIAG_PADRAO = 15;
+let EMP_DIAS_DIARIA = 10;
 
 /* aceita "2.800,00", "2800", "2 800,50" — o técnico digita como fala */
 function empNum(t, padrao){
@@ -1835,6 +1838,37 @@ function empValores(){
   return { taxa:   empNum(g('f_vl_taxa'),   EMP_TAXA_PADRAO),
            diaria: empNum(g('f_vl_diaria'), EMP_DIARIA_PADRAO),
            mensal: empNum(g('f_vl_mensal'), EMP_MENSAL_PADRAO) };
+}
+/* ProperCare-backlog#244 (3B, 17/11) — A OS DE ENTREGA DA CESSÃO NASCE DA PROPOSTA ACEITA NO PCM. A descrição dela leva a linha
+   "Cessão remunerada PROP-AAAA-NNNN vN: valor da cessão R$ … · diária R$ … · mensal R$ … · aprovar em N dias · cessão até N dias ·
+   diárias até N · máquina do cliente: …" (o banco escreve; aqui só se lê). Os três valores e os prazos da proposta entram no
+   formulário — o termo assinado diz o que o cliente aprovou e o técnico não redigita. Campo que o técnico já mudou (diferente do valor
+   com que o campo nasce) fica como está; os prazos valem sempre (são os do termo). Sem a linha, nada muda. */
+var _empProp = null;
+function empDaProposta(os){
+  var d = String((os && os.descricao) || '');
+  var m = /Cessão remunerada (\S+) v(\d+): valor da cessão R\$ ([\d.]+,\d{2}) · diária R\$ ([\d.]+,\d{2}) · mensal R\$ ([\d.]+,\d{2}) · aprovar em (\d+) dias · cessão até (\d+) dias · diárias até (\d+)(?: · máquina do cliente: (.*))?$/.exec(d);
+  if(!m) return false;
+  var ap = Number(m[6]), tot = Number(m[7]), dd = Number(m[8]);
+  if(ap >= 1 && ap <= 90 && tot >= ap && tot <= 180){ EMP_APROV_MIN = ap; EMP_TOTAL_LIVRE = tot; }
+  if(dd >= 1 && dd <= 31) EMP_DIAS_DIARIA = dd;
+  _empProp = { prop:m[1], versao:m[2], taxa:m[3], diaria:m[4], mensal:m[5] };
+  var poe = function(id, v, padrao){ var e = document.getElementById(id); if(!e) return; var a = String(e.value || '').trim();
+    if(!a || (padrao != null && empNum(a, -1) === padrao)) e.value = v; };
+  poe('f_vl_taxa', m[3], EMP_TAXA_PADRAO); poe('f_vl_diaria', m[4], EMP_DIARIA_PADRAO); poe('f_vl_mensal', m[5], EMP_MENSAL_PADRAO);
+  var ec = document.getElementById('f_contrato');   // o nº gerado pela OS (empAplicarNumeros) dá lugar ao da proposta; o digitado fica
+  if(ec && (!ec.value.trim() || (typeof _numAuto !== 'undefined' && _numAuto && ec.value.trim() === _numAuto))) ec.value = m[1] + ' v' + m[2];
+  var mc = String(m[9] || '').trim(), mm = /^marca (.*?) · modelo (.*?) · série (.*)$/.exec(mc);
+  if(mm){ poe('f_mc_marca', mm[1].trim(), null); poe('f_mc_modelo', mm[2].trim(), null); poe('f_mc_serie', mm[3].trim(), null); }
+  else if(/^a identificar: /.test(mc)) poe('f_mc_modelo', mc.replace(/^a identificar: /, ''), null);
+  var nota = document.getElementById('empPropNota');
+  if(!nota){ var tx = document.getElementById('f_vl_taxa'), sec = tx && tx.closest('.emp-sec');
+    if(sec){ nota = document.createElement('div'); nota.id = 'empPropNota'; nota.className = 'parte-nota'; sec.appendChild(nota); } }
+  if(nota) nota.innerHTML = '📝 Da proposta aceita <b>' + esc(m[1] + ' v' + m[2]) + '</b>: cessão <b>R$ ' + esc(m[3]) + '</b> · diária <b>R$ ' + esc(m[4])
+    + '</b> · mensal <b>R$ ' + esc(m[5]) + '</b> · aprovar em <b>' + EMP_APROV_MIN + '</b> dias · cessão até <b>' + EMP_TOTAL_LIVRE + '</b> dias.';
+  empRecalcular();
+  scheduleSave();
+  return true;
 }
 function empJanelaLivre(D){
   D = Math.max(0, Math.round(Number(D) || 0));
@@ -3686,6 +3720,7 @@ async function carregarMaquinasOS(){
   // logo remover parts do objeto nao apaga peca nenhuma.
     const data=await gcFetchJson({ action:'getMaquinasByOS', sem_pecas:true, id_os:_osId, com_presenca:true, id_tecnico:_v140IdTecnico() });   // v140: + presença
     try{ pgpPreencherClienteDaOS(data && data.os); }catch(_eCli){}   // 21/08 (cabeçalho do cliente)
+    try{ empDaProposta(data && data.os); }catch(_eProp){ console.warn('[cessão] valores da proposta:', _eProp); }   // #244 (3B): os valores da proposta aceita
     try{ _v140PosBoot(data); }catch(_e140){}   // v140 (G-6 / L-4)
     const machines=(data&&data.machines)||[]; if(!machines.length) return;
     _maquinas=machines;
