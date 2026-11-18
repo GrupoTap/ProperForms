@@ -1847,7 +1847,7 @@ function empValores(){
 var _empProp = null;
 function empDaProposta(os){
   var d = String((os && os.descricao) || '');
-  var m = /Cessão remunerada (\S+) v(\d+): valor da cessão R\$ ([\d.]+,\d{2}) · diária R\$ ([\d.]+,\d{2}) · mensal R\$ ([\d.]+,\d{2}) · aprovar em (\d+) dias · cessão até (\d+) dias · diárias até (\d+)(?: · máquina do cliente: (.*))?$/.exec(d);
+  var m = /Cessão remunerada (\S+) v(\d+): valor da cessão R\$ ([\d.]+,\d{2}) · diária R\$ ([\d.]+,\d{2}) · mensal R\$ ([\d.]+,\d{2}) · aprovar em (\d+) dias · cessão até (\d+) dias · diárias até (\d+)(?: · máquina do cliente: (.*))?/.exec(d);   /* sem $: texto acrescentado depois não apaga a proposta */
   if(!m) return false;
   var ap = Number(m[6]), tot = Number(m[7]), dd = Number(m[8]);
   if(ap >= 1 && ap <= 90 && tot >= ap && tot <= 180){ EMP_APROV_MIN = ap; EMP_TOTAL_LIVRE = tot; }
@@ -1858,7 +1858,7 @@ function empDaProposta(os){
   poe('f_vl_taxa', m[3], EMP_TAXA_PADRAO); poe('f_vl_diaria', m[4], EMP_DIARIA_PADRAO); poe('f_vl_mensal', m[5], EMP_MENSAL_PADRAO);
   var ec = document.getElementById('f_contrato');   // o nº gerado pela OS (empAplicarNumeros) dá lugar ao da proposta; o digitado fica
   if(ec && (!ec.value.trim() || (typeof _numAuto !== 'undefined' && _numAuto && ec.value.trim() === _numAuto))) ec.value = m[1] + ' v' + m[2];
-  var mc = String(m[9] || '').trim(), mm = /^marca (.*?) · modelo (.*?) · série (.*)$/.exec(mc);
+  var mc = String(m[9] || '').trim(), mm = /^marca (.*?) · modelo (.*?) · série ?(.*)$/.exec(mc);   /* sem série a linha termina em "série" (o trim come o espaço) */
   if(mm){ poe('f_mc_marca', mm[1].trim(), null); poe('f_mc_modelo', mm[2].trim(), null); poe('f_mc_serie', mm[3].trim(), null); }
   else if(/^a identificar: /.test(mc)) poe('f_mc_modelo', mc.replace(/^a identificar: /, ''), null);
   var nota = document.getElementById('empPropNota');
